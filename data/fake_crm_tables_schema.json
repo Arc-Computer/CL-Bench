@@ -1,0 +1,132 @@
+{
+  "$schema": "",
+  "title": "CRM Schema",
+  "type": "object",
+  "properties": {
+    "Client": {
+      "type": "object",
+      "properties": {
+        "client_id": { "type": "string" },
+        "name": { "type": "string" },
+        "industry": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "phone": { "type": "string" },
+        "address": { "type": "string" },
+        "status": { "type": "string", "enum": ["Active", "Prospect", "Inactive"] },
+        "created_date": { "type": "string", "format": "date-time" },
+        "owner": { "type": "string" }
+      },
+      "required": ["client_id", "name"]
+    },
+
+    "Contact": {
+      "type": "object",
+      "properties": {
+        "contact_id": { "type": "string" },
+        "first_name": { "type": "string" },
+        "last_name": { "type": "string" },
+        "title": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "phone": { "type": "string" },
+        "client_id": { "type": "string" },
+        "notes": { "type": "string" }
+      },
+      "required": ["contact_id", "first_name", "last_name", "client_id"]
+    },
+
+    "Opportunity": {
+      "type": "object",
+      "properties": {
+        "opportunity_id": { "type": "string" },
+        "name": { "type": "string" },
+        "client_id": { "type": "string" },
+        "stage": { 
+          "type": "string",
+          "enum": ["Prospecting", "Qualification", "Proposal", "Negotiation", "Closed-Won", "Closed-Lost"]
+        },
+        "amount": { "type": "number" },
+        "close_date": { "type": "string", "format": "date" },
+        "owner": { "type": "string" },
+        "probability": { "type": "number", "minimum": 0, "maximum": 100 },
+        "notes": { "type": "string" }
+      },
+      "required": ["opportunity_id", "name", "client_id"]
+    },
+
+    "Quote": {
+      "type": "object",
+      "properties": {
+        "quote_id": { "type": "string" },
+        "opportunity_id": { "type": "string" },
+        "version": { "type": "string" },
+        "amount": { "type": "number" },
+        "status": { 
+          "type": "string",
+          "enum": ["Draft", "Sent", "Approved", "Rejected", "Canceled"]
+        },
+        "valid_until": { "type": "string", "format": "date" },
+        "created_date": { "type": "string", "format": "date-time" },
+        "quote_prefix": { "type": "string" }
+      },
+      "required": ["quote_id", "opportunity_id"]
+    },
+
+    "Contract": {
+      "type": "object",
+      "properties": {
+        "contract_id": { "type": "string" },
+        "client_id": { "type": "string" },
+        "opportunity_id": { "type": "string" },
+        "start_date": { "type": "string", "format": "date" },
+        "end_date": { "type": "string", "format": "date" },
+        "value": { "type": "number" },
+        "status": { "type": "string", "enum": ["Active", "Pending", "Expired"] },
+        "document_url": { "type": "string", "format": "uri" }
+      },
+      "required": ["contract_id", "client_id"]
+    },
+
+    "Company": {
+      "type": "object",
+      "properties": {
+        "company_id": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string", "enum": ["Partner", "Vendor", "Competitor"] },
+        "industry": { "type": "string" },
+        "address": { "type": "string" },
+        "contacts": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["company_id", "name"]
+    },
+
+    "Document": {
+      "type": "object",
+      "properties": {
+        "document_id": { "type": "string" },
+        "entity_type": { "type": "string", "enum": ["Opportunity", "Contract", "Quote", "Client"] },
+        "entity_id": { "type": "string" },
+        "file_name": { "type": "string" },
+        "uploaded_by": { "type": "string" },
+        "uploaded_at": { "type": "string", "format": "date-time" },
+        "file_url": { "type": "string", "format": "uri" }
+      },
+      "required": ["document_id", "entity_type", "entity_id"]
+    },
+
+    "Note": {
+      "type": "object",
+      "properties": {
+        "note_id": { "type": "string" },
+        "entity_type": { "type": "string", "enum": ["Opportunity", "Client", "Contact", "Quote", "Contract"] },
+        "entity_id": { "type": "string" },
+        "content": { "type": "string" },
+        "created_by": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["note_id", "entity_type", "entity_id", "content"]
+    }
+  }
+}

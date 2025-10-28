@@ -1,0 +1,29 @@
+﻿Task Description,Count,,Intent,Typical User Phrasing,Example Sub-Actions
+CREATE NEW OPPORTUNITY,3683,,Opportunity Management,"“Create a new opportunity,” “Show me open deals,” “Edit this opportunity”","CREATE NEW OPPORTUNITY, MODIFY OPPORTUNITY, DELETE OPPORTUNITY, OPPORTUNITY SEARCH, CLONE OPPORTUNITY, VIEW OPPORTUNITY DETAILS, SUMMARIZE OPPORTUNITIES"
+MODIFY OPPORTUNITY,2939,,Client Management,"“Add a new client,” “Find this customer,” “Update client info”","CREATE NEW CLIENT, CLIENT SEARCH, MODIFY CLIENT"
+OPPORTUNITY SEARCH,2279,,Contact Management,"“Add contact,” “Search contact,” “Edit contact”","CREATE NEW CONTACT, CONTACT SEARCH, MODIFY CONTACT"
+UPLOAD DOCUMENT,2190,,Quote Management,"“Create a quote for this opportunity,” “Show quote details,” “Compare quotes”","CREATE QUOTE, MODIFY QUOTE, DELETE QUOTE, CANCEL QUOTE, QUOTE DETAILS, COMPARE QUOTES, COMPARE QUOTE DETAILS, QUOTE SEARCH, QUOTE PREFIXES"
+CREATE QUOTE,1804,,Contract Management,"“Generate a contract,” “Search contract,” “Edit contract”","CREATE NEW CONTRACT, CONTRACT SEARCH"
+VIEW OPPORTUNITY DETAILS,878,,Company / Account Management,"“Search company,” “Update company record”",COMPANY SEARCH
+CONTACT SEARCH,375,,Document Management,"“Upload proposal,” “Attach document to opportunity”",UPLOAD DOCUMENT
+CLONE OPPORTUNITY,267,,Notes & Collaboration,"“Add note to client,” “Add internal comment”",ADD NOTE
+SUMMARIZE OPPORTUNITIES,194,,,,
+CLIENT SEARCH,192,,,,
+CREATE NEW CLIENT,142,,,,
+CREATE NEW CONTACT,111,,,,
+CONTRACT SEARCH,40,,,,
+QUOTE SEARCH,32,,,,
+CREATE NEW CONTRACT,24,,,,
+COMPANY SEARCH,8,,,,
+OPPORTUNITY DETAILS,6,,,,
+MODIFY CLIENT,3,,,,
+MODIFY QUOTE,3,,,,
+CANCEL QUOTE,2,,,,
+MODIFY CONTACT,2,,,,
+ADD NOTE,1,,,,
+COMPARE QUOTE DETAILS,1,,,,
+COMPARE QUOTES,1,,,,
+DELETE OPPORTUNITY,1,,,,
+DELETE QUOTE,1,,,,
+QUOTE DETAILS,1,,,,
+QUOTE PREFIXES,1,,,,
