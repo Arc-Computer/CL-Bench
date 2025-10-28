@@ -105,7 +105,7 @@ class ClaudeAgent:
 
     def __init__(
         self,
-        model_name: str = "claude-3.5-sonnet",
+        model_name: str = "claude-sonnet-4-5-20250929",
         temperature: float = 0.0,
         max_output_tokens: int = 1024,
         api_key: Optional[str] = None,
@@ -120,17 +120,17 @@ class ClaudeAgent:
         self.max_output_tokens = max_output_tokens
 
     def tool_call(self, case: GoldenCase, prompt: str) -> ToolCall:  # noqa: D401 - interface
-        import anthropic  # type: ignore
-
-        response = self._client.responses.create(
+        response = self._client.messages.create(
             model=self.model_name,
-            max_output_tokens=self.max_output_tokens,
+            max_tokens=self.max_output_tokens,
             temperature=self.temperature,
-            messages=[
-                {"role": "user", "content": prompt},
-            ],
+            messages=[{"role": "user", "content": prompt}],
         )
-        text = anthropic.MessageStream(response).get_final_response_text() if hasattr(anthropic, "MessageStream") else response.output_text  # type: ignore[attr-defined]
+        text = "".join(
+            block.text for block in response.content if getattr(block, "type", None) == "text" and hasattr(block, "text")
+        ).strip()
+        if not text:
+            raise ValueError("Claude response did not return textual tool instructions.")
         return _parse_tool_call(text)
 
 
