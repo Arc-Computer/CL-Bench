@@ -155,7 +155,7 @@ class Quote(CRMBaseModel):
     quote_id: str = Field(default_factory=_create_id)
     opportunity_id: str
     version: Optional[str] = None
-    amount: Optional[float] = None
+    amount: Optional[float] = Field(default=None, ge=0)
     status: Optional[QuoteStatus] = None
     valid_until: Optional[date] = None
     created_date: Optional[datetime] = None
@@ -252,6 +252,13 @@ class MockCrmApi:
 
     def create_new_client(self, name: str, email: str, status: str, **kwargs: Any) -> Client:
         """Create a client record while relying on schema validation."""
+        # Reject duplicates before instantiating the model.
+        normalized_email = email.lower() if email else None
+        if normalized_email:
+            for existing in self.clients.values():
+                if existing.email and existing.email.lower() == normalized_email:
+                    raise ValueError(f"Client already exists with email '{email}'.")
+
         # Rely on the Client model to validate email format and status enum membership.
         client = Client(name=name, email=email, status=status, **kwargs)
         self.clients[client.client_id] = client

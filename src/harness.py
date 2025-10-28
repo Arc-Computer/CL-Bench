@@ -44,6 +44,7 @@ class EpisodeLog:
     provider: str
     model: str
     success: bool
+    expected_success: bool
     message: str
     tool_call: Dict[str, Any]
     agent_response: str
@@ -60,6 +61,7 @@ class EpisodeLog:
                 "provider": self.provider,
                 "model": self.model,
                 "success": self.success,
+                "expected_success": self.expected_success,
                 "message": self.message,
                 "tool_call": self.tool_call,
                 "agent_response": self.agent_response,
@@ -315,19 +317,48 @@ class BaselineHarness:
                     tool_call = self.agent.tool_call(case, prompt)
 
                 pre = CrmStateSnapshot.from_api(api)
-                result = self._execute_tool(api, tool_call)
+                execution_result = self._execute_tool(api, tool_call)
                 post = CrmStateSnapshot.from_api(api)
 
-                if not result.success:
-                    validation = ValidationResult.fail(
-                        f"Tool execution failed: {result.message}", details=result.details
-                    )
-                else:
-                    validator_kwargs = case.validator_kwargs(context, tool_call.arguments)
-                    validation = case.validator(pre, post, tool_call.arguments, **validator_kwargs)
+                tool_correct = tool_call.tool_name == case.expected_tool
+                validator_details: Optional[Dict[str, Any]]
 
-                success = validation.success and tool_call.tool_name == case.expected_tool
-                if success:
+                if case.expect_success:
+                    if execution_result.success and tool_correct:
+                        validator_kwargs = case.validator_kwargs(context, tool_call.arguments)
+                        validation = case.validator(pre, post, tool_call.arguments, **validator_kwargs)
+                        case_passed = validation.success
+                        message = validation.message if validation.success else validation.message
+                        validator_details = validation.details
+                    else:
+                        case_passed = False
+                        if not tool_correct:
+                            message = f"Expected tool '{case.expected_tool}' but agent called '{tool_call.tool_name}'."
+                            validator_details = None
+                        else:
+                            message = execution_result.message
+                            validator_details = execution_result.details
+                    outcome_message = message
+                else:
+                    if not tool_correct:
+                        case_passed = False
+                        outcome_message = f"Expected tool '{case.expected_tool}' but agent called '{tool_call.tool_name}'."
+                        validator_details = None
+                    elif execution_result.success:
+                        case_passed = False
+                        outcome_message = "Expected failure but tool executed successfully."
+                        validator_details = None
+                    else:
+                        substring_ok = (
+                            case.expected_error_substring is None
+                            or (case.expected_error_substring in execution_result.message)
+                        )
+                        state_unchanged = pre == post
+                        case_passed = substring_ok and state_unchanged
+                        outcome_message = execution_result.message
+                        validator_details = execution_result.details
+
+                if case_passed:
                     successes += 1
                 else:
                     failures += 1
@@ -338,11 +369,12 @@ class BaselineHarness:
                     timestamp=datetime.now(timezone.utc).isoformat(),
                     provider=self.agent.provider_name,
                     model=self.agent.model_name,
-                    success=success,
-                    message=validation.message if validation.success else validation.message,
+                    success=case_passed,
+                    expected_success=case.expect_success,
+                    message=outcome_message,
                     tool_call={"tool_name": tool_call.tool_name, "arguments": tool_call.arguments},
                     agent_response=tool_call.raw_response,
-                    validator_details=validation.details,
+                    validator_details=validator_details,
                     expected_tool=case.expected_tool,
                     expected_arguments=expected_args,
                 )
@@ -370,4 +402,4 @@ class BaselineHarness:
         return ValidationResult.ok()
 
 
-__all__ = ["BaselineHarness", "HarnessResult", "MockAgent", "ClaudeAgent", "OpenAIAgent", "build_prompt"]
+__all__ = ["BaselineHarness", "HarnessResult", "MockAgent", "ClaudeAgent", "OpenAIAgent", "build_prompt", "ToolCall"]
