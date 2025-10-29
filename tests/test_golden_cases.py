@@ -16,13 +16,13 @@ from src.validators import CrmStateSnapshot
 def test_case_counts() -> None:
     counts = summary()
     assert counts == {
-        "create_new_client": 13,
-        "create_new_opportunity": 13,
-        "create_quote": 13,
-        "upload_document": 12,
-        "modify_opportunity": 13,
+        "create_new_client": 14,
+        "create_new_opportunity": 15,
+        "create_quote": 15,
+        "upload_document": 13,
+        "modify_opportunity": 14,
     }
-    assert len(GOLDEN_CASES) == 64
+    assert len(GOLDEN_CASES) == 71
 
 
 @pytest.mark.parametrize("task", ["create_new_client", "create_new_opportunity", "create_quote", "upload_document", "modify_opportunity"])

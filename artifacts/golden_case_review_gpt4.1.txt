@@ -1,78 +1,103 @@
-Here’s a prioritized, actionable review of your golden-case suite for the synthetic CRM benchmark, focusing on **coverage gaps, brittle/ambiguous assumptions, and opportunities for more deterministic checks**. Suggestions for new or modified scenarios are included.
+Here’s a prioritized, actionable review of your golden-case suite for the synthetic CRM benchmark, focusing on **coverage gaps, brittle assumptions, and opportunities for more faithful customer validation**. Each section includes **suggested new scenarios or modifications** where appropriate.
 
 ---
 
 ## 1. **Coverage Gaps & Missing Edge Cases**
 
-### **A. General Gaps Across All Tasks**
-- **Required vs. Optional Fields**: No explicit tests for missing required fields (e.g., missing `name` or `email` for clients, `amount` for opportunities/quotes).
-- **Null/Empty Values**: No cases for fields being `null`, empty strings, or whitespace (e.g., `"name": ""` or `"email": null`).
-- **Field Length/Size Limits**: No tests for excessively long strings (e.g., 256+ chars in `name`, `notes`, `file_name`).
-- **Special Characters/Unicode**: No cases with special characters, emojis, or non-ASCII in names, notes, or file names.
-- **Case Sensitivity in Enums**: Only lowercase rejection is tested; mixed-case (e.g., `"Active"`, `"aCtIvE"`) is not.
-- **Date Format Robustness**: Only ISO format is used; no tests for alternate formats, invalid dates, or past/future logic.
-- **Numeric Boundaries**: No tests for zero values (e.g., `amount: 0`), or for maximum allowed values (e.g., `amount: 1e9`).
-- **Boolean/Flag Fields**: If any exist in the schema, not covered.
+### **A. General Data Validation**
 
-### **B. Task-Specific Gaps**
+- **Casing and Whitespace**
+  - You test lowercase enum values (e.g., status), but not mixed case ("Active", "aCtIvE"), trailing/leading whitespace, or internal whitespace ("Active ", " Active", "Closed - Won").
+    - **Add:** Cases for mixed case, whitespace-padded, and internal whitespace enum values for all enums (status, stage, entity_type, etc.).
 
-#### **create_new_client**
-- **Duplicate Name, Different Email**: Only duplicate email is tested.
-- **Industry/Owner/Address with Invalid Types**: No tests for non-string types (e.g., `industry: 123`).
-- **Phone Format**: Only valid phone numbers are present; no tests for invalid formats or country codes.
-- **Status Enum**: Only lowercase rejection; no test for invalid status (e.g., `"Pending"`).
+- **Required vs. Optional Fields**
+  - You test missing required fields (e.g., email), but not missing optional fields or all-minimal valid payloads.
+    - **Add:** Cases with only required fields, omitting all optional fields, for each tool.
 
-#### **create_new_opportunity**
-- **Probability Edge Cases**: Only >100 and <0 are tested; no test for exactly 0 or 100.
-- **Stage Regression/Progression Rules**: No explicit test for invalid stage transitions (e.g., skipping stages).
-- **Amount as String/Non-numeric**: No test for `"amount": "10000"` or `amount: null`.
-- **Owner/Notes as Non-string**: Not tested.
+- **Field Lengths and Limits**
+  - No cases for excessively long strings (e.g., name, notes, file_name), or empty strings.
+    - **Add:** Cases for max-length and empty string values for key fields.
 
-#### **create_quote**
-- **Status Enum**: Only lowercase rejection; no test for invalid status (e.g., `"InReview"`).
-- **Version Format**: No test for invalid version formats (e.g., `"version": 3` or `"version": "v1.0.0"`).
-- **valid_until in the Past**: No test for expired quotes.
-- **Amount as Zero or Excessively Large**: Not tested.
+- **Special Characters**
+  - No cases for special/unicode characters in names, notes, file names, etc.
+    - **Add:** Cases with emojis, accents, or symbols in string fields.
 
-#### **upload_document**
-- **File Name Edge Cases**: No test for empty, very long, or invalid file names (e.g., `"file_name": ""`, `"file_name": "a"*300+".pdf"`).
-- **Entity Type Enum**: Only lowercase rejection; no test for invalid entity types (e.g., `"entity_type": "Deal"`).
-- **File Extension Validation**: No test for unsupported extensions (e.g., `.exe`, `.bat`).
+### **B. Enum and Relationship Validation**
 
-#### **modify_opportunity**
-- **Partial Updates**: No test for empty `updates` dict.
-- **Multiple Invalid Updates**: No test for multiple errors in one update (e.g., invalid stage and negative probability).
-- **Immutable Fields**: Only unsupported field tested; not fields that should be immutable (e.g., `opportunity_id`).
+- **Enum Drift**
+  - You test invalid enum values, but not near-miss values ("Closedwon", "Closed Won", "closed-won").
+    - **Add:** Cases for common user typos or alternate spellings.
+
+- **Relationship Enforcement**
+  - You test unknown client/opportunity IDs, but not:
+    - **Inactive/Prospect client for opportunity creation:** Should you allow opportunities for inactive clients?
+    - **Quote for non-open opportunity:** Can you create a quote for a Closed-Lost opportunity?
+    - **Document upload to deleted/archived entities:** What happens if the entity is soft-deleted?
+    - **Add:** Cases for creating opportunities/quotes/documents against inactive, closed, or deleted entities.
+
+### **C. Date and Numeric Validation**
+
+- **Date Formats**
+  - You test invalid date format, but not:
+    - **Past vs. future dates:** Is close_date in the past allowed? Is valid_until before today allowed?
+    - **Leap years, end-of-month, ambiguous dates:** "2024-02-29", "2025-02-30", "2025-12-31", "2025-13-01".
+    - **Add:** Cases for past/future, leap day, and invalid calendar dates.
+
+- **Numeric Bounds**
+  - You test negative and over-100 probability, but not:
+    - **Probability at bounds (0, 100), floats (0.0, 99.9), or null.**
+    - **Amount as zero, extremely large, or as a string.**
+    - **Add:** Cases for edge values, floats, and type mismatches.
+
+### **D. File Uploads**
+
+- **File Name Validation**
+  - No cases for invalid file names (empty, special chars, double extensions, very long names).
+    - **Add:** Cases for invalid/edge-case file names.
+
+- **File Type/Extension**
+  - No explicit test for unsupported file types.
+    - **Add:** Case for unsupported extension (e.g., .exe, .bat).
+
+- **Duplicate Uploads**
+  - No test for uploading the same file twice to the same entity.
+    - **Add:** Duplicate upload scenario.
 
 ---
 
 ## 2. **Ambiguous or Brittle Assumptions**
 
-- **Casing**: Only lowercase is rejected; mixed-case and leading/trailing whitespace are not tested.
-- **Date Formats**: Only `"YYYY-MM-DD"` is used; no test for `"MM/DD/YYYY"`, `"YYYY/MM/DD"`, or invalid dates (`"2025-02-30"`).
-- **Probability**: Assumed integer; no test for float (e.g., `probability: 33.3`), string (`"33"`), or missing probability.
-- **Email Validation**: Only malformed email tested; no test for valid but unusual emails (e.g., `"user+tag@example.com"`).
-- **ID Placeholders**: All use `<derived_id>`; no test for invalid, empty, or non-string IDs.
-- **Enum Values**: Only one invalid value per enum tested; not comprehensive.
-- **Field Optionality**: Not clear which fields are required vs. optional in negative cases.
+### **A. Casing and Formatting**
+- Enum values are sometimes rejected for casing, sometimes not (e.g., "active" vs. "Active"). Is the system case-sensitive for all enums? Should it be?
+  - **Recommendation:** Standardize and document case sensitivity for all enums; add tests for all variants.
+
+### **B. Date Handling**
+- Date format is assumed to be "YYYY-MM-DD", but no test for timezones, times, or ISO 8601 variants.
+  - **Recommendation:** Add cases for "YYYY-MM-DDTHH:MM:SSZ", "YYYY/MM/DD", etc.
+
+### **C. Probability and Amount Types**
+- Probability is tested as int and string, but not as float or null.
+- Amount is tested as negative, but not as zero, string, or null.
+  - **Recommendation:** Add tests for these types and boundary values.
+
+### **D. Entity ID Format**
+- Only one test for non-UUID entity_id. No test for valid but non-existent UUIDs, or for IDs of wrong entity type (e.g., using a quote ID as a client ID).
+  - **Recommendation:** Add tests for valid-but-wrong-type IDs.
 
 ---
 
 ## 3. **Opportunities to Mirror Deterministic Customer Checks**
 
-- **Explicit Required Field Checks**: Add cases where required fields are missing or null.
-- **Strict Enum Enforcement**: Add tests for mixed-case, whitespace, and invalid enum values.
-- **Type Enforcement**: Add cases where fields are of the wrong type (e.g., string instead of float).
-- **Date Logic**: Add checks for past/future constraints, invalid dates, and alternate formats.
-- **Relationship Enforcement**: Add tests for referencing deleted or archived entities, not just unknown ones.
-- **Boundary Testing**: Add min/max/zero values for numerics and string lengths.
-- **Immutability**: Test attempts to modify immutable fields (e.g., IDs).
+### **A. Referential Integrity**
+- Ensure that all state-modifying actions enforce referential integrity (e.g., can't create a quote for a deleted opportunity).
+  - **Add:** Tests for actions on deleted/archived entities.
 
----
+### **B. Enum and Field Validation**
+- Mirror customer-side validation for:
+  - **Case-insensitive enums** (if customer allows).
+  - **Whitespace trimming** (if customer trims).
+  - **Strict type enforcement** (e.g., probability must be int, not float or string).
 
-## 4. **Actionable Suggestions (Prioritized)**
-
-### **High Impact**
-
-1. **Add Required Field Omission Cases**
-  
+### **C. Business Logic**
+- **Stage Transitions:** Are all transitions allowed? E.g., can you move from "Closed-Lost" back to "Negotiation"?
+  - **Add:** Cases for forbidden

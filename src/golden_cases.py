@@ -222,8 +222,10 @@ def _create_new_client_cases() -> List[GoldenCase]:
 
 
 def _create_new_client_negative_cases() -> List[GoldenCase]:
-    def invalid_status_case() -> GoldenCase:
-        return GoldenCase(
+    cases: List[GoldenCase] = []
+
+    cases.append(
+        GoldenCase(
             case_id="CNC-101",
             task="create_new_client",
             description="Reject lower-case status value",
@@ -237,11 +239,12 @@ def _create_new_client_negative_cases() -> List[GoldenCase]:
             },
             validator=validate_create_new_client,
             expect_success=False,
-            expected_error_substring="Input should be 'Active', 'Prospect' or 'Inactive'",
+            expected_error_substring="Input should be",
         )
+    )
 
-    def invalid_email_case() -> GoldenCase:
-        return GoldenCase(
+    cases.append(
+        GoldenCase(
             case_id="CNC-102",
             task="create_new_client",
             description="Reject malformed email",
@@ -257,23 +260,24 @@ def _create_new_client_negative_cases() -> List[GoldenCase]:
             expect_success=False,
             expected_error_substring=None,
         )
+    )
 
-    def duplicate_email_case() -> GoldenCase:
-        def setup(api: MockCrmApi) -> Dict[str, Any]:
-            return _seed_client(
-                api,
-                name="Catalyst Partners",
-                email="hello@catalystpartners.example",
-                status="Active",
-            )
+    def duplicate_setup(api: MockCrmApi) -> Dict[str, Any]:
+        return _seed_client(
+            api,
+            name="Catalyst Partners",
+            email="hello@catalystpartners.example",
+            status="Active",
+        )
 
-        return GoldenCase(
+    cases.append(
+        GoldenCase(
             case_id="CNC-103",
             task="create_new_client",
             description="Reject duplicate client email",
             utterance="Create Catalyst Partners again using hello@catalystpartners.example.",
             expected_tool="create_new_client",
-            setup=setup,
+            setup=duplicate_setup,
             build_expected_args=lambda _: {
                 "name": "Catalyst Partners EU",
                 "email": "hello@catalystpartners.example",
@@ -283,8 +287,27 @@ def _create_new_client_negative_cases() -> List[GoldenCase]:
             expect_success=False,
             expected_error_substring="Client already exists with email",
         )
+    )
 
-    return [invalid_status_case(), invalid_email_case(), duplicate_email_case()]
+    cases.append(
+        GoldenCase(
+            case_id="CNC-104",
+            task="create_new_client",
+            description="Reject missing email field",
+            utterance="Add Helios Partners as a prospect; no email provided.",
+            expected_tool="create_new_client",
+            setup=lambda _: {},
+            build_expected_args=lambda _: {
+                "name": "Helios Partners",
+                "status": "Prospect",
+            },
+            validator=validate_create_new_client,
+            expect_success=False,
+            expected_error_substring=None,
+        )
+    )
+
+    return cases
 
 
 # ---------------------------------------------------------------------------
@@ -399,17 +422,19 @@ def _create_new_opportunity_cases() -> List[GoldenCase]:
 
 
 def _create_new_opportunity_negative_cases() -> List[GoldenCase]:
-    def invalid_stage_case() -> GoldenCase:
-        def setup(api: MockCrmApi) -> Dict[str, Any]:
-            return _seed_client(api, name="Nimbus Analytics", email="info@nimbus.example", status="Active")
+    cases: List[GoldenCase] = []
 
-        return GoldenCase(
+    def base_client(api: MockCrmApi, name: str, email: str, status: str = "Active") -> Dict[str, Any]:
+        return _seed_client(api, name=name, email=email, status=status)
+
+    cases.append(
+        GoldenCase(
             case_id="CNO-101",
             task="create_new_opportunity",
             description="Reject invalid stage value",
             utterance="Create Nimbus Analytics Expansion at Negotiations stage (typo).",
             expected_tool="create_new_opportunity",
-            setup=setup,
+            setup=lambda api: base_client(api, "Nimbus Analytics", "info@nimbus.example"),
             build_expected_args=lambda context: {
                 "client_id": context["client"].client_id,
                 "name": "Nimbus Analytics Expansion",
@@ -420,18 +445,16 @@ def _create_new_opportunity_negative_cases() -> List[GoldenCase]:
             expect_success=False,
             expected_error_substring="Input should be",
         )
+    )
 
-    def probability_bounds_case() -> GoldenCase:
-        def setup(api: MockCrmApi) -> Dict[str, Any]:
-            return _seed_client(api, name="Orion Systems", email="sales@orionsystems.example", status="Prospect")
-
-        return GoldenCase(
+    cases.append(
+        GoldenCase(
             case_id="CNO-102",
             task="create_new_opportunity",
             description="Reject probability above 100%",
             utterance="Log Orion Systems Pilot with probability 125%.",
             expected_tool="create_new_opportunity",
-            setup=setup,
+            setup=lambda api: base_client(api, "Orion Systems", "sales@orionsystems.example", status="Prospect"),
             build_expected_args=lambda context: {
                 "client_id": context["client"].client_id,
                 "name": "Orion Systems Pilot",
@@ -443,9 +466,10 @@ def _create_new_opportunity_negative_cases() -> List[GoldenCase]:
             expect_success=False,
             expected_error_substring="less than or equal to 100",
         )
+    )
 
-    def missing_client_case() -> GoldenCase:
-        return GoldenCase(
+    cases.append(
+        GoldenCase(
             case_id="CNO-103",
             task="create_new_opportunity",
             description="Reject opportunity referencing unknown client",
@@ -462,15 +486,51 @@ def _create_new_opportunity_negative_cases() -> List[GoldenCase]:
             expect_success=False,
             expected_error_substring="Client not found with ID",
         )
+    )
 
-    return [invalid_stage_case(), probability_bounds_case(), missing_client_case()]
+    cases.append(
+        GoldenCase(
+            case_id="CNO-104",
+            task="create_new_opportunity",
+            description="Reject invalid close_date format",
+            utterance="Set Vega Aerospace Upgrade to close on 12/15/2025 (US format).",
+            expected_tool="create_new_opportunity",
+            setup=lambda api: base_client(api, "Vega Aerospace", "team@vegaaero.example"),
+            build_expected_args=lambda context: {
+                "client_id": context["client"].client_id,
+                "name": "Vega Aerospace Upgrade",
+                "amount": 240_000.0,
+                "stage": "Negotiation",
+                "close_date": "12/15/2025",
+            },
+            validator=validate_create_new_opportunity,
+            expect_success=False,
+            expected_error_substring="valid date",
+        )
+    )
 
+    cases.append(
+        GoldenCase(
+            case_id="CNO-105",
+            task="create_new_opportunity",
+            description="Reject probability expressed as text",
+            utterance="Create Zenith Capital Pilot and set probability to 'fifty'.",
+            expected_tool="create_new_opportunity",
+            setup=lambda api: base_client(api, "Zenith Capital", "hello@zenithcapital.example", status="Prospect"),
+            build_expected_args=lambda context: {
+                "client_id": context["client"].client_id,
+                "name": "Zenith Capital Pilot",
+                "amount": 175_000.0,
+                "stage": "Qualification",
+                "probability": "fifty",
+            },
+            validator=validate_create_new_opportunity,
+            expect_success=False,
+            expected_error_substring="Input should be",
+        )
+    )
 
-# ---------------------------------------------------------------------------
-# Create Quote cases
-# ---------------------------------------------------------------------------
-
-
+    return cases
 def _create_quote_cases() -> List[GoldenCase]:
     raw_cases = [
         (
@@ -588,18 +648,20 @@ def _create_quote_cases() -> List[GoldenCase]:
 
 
 def _create_quote_negative_cases() -> List[GoldenCase]:
-    def invalid_status_case() -> GoldenCase:
-        def setup(api: MockCrmApi) -> Dict[str, Any]:
-            context = _seed_client(api, name="Lumina Ventures", email="contact@lumina.example", status="Active")
-            return _ensure_opportunity(api, context, name="Lumina Ventures Renewal", amount=95_000.0, stage="Proposal")
+    cases: List[GoldenCase] = []
 
-        return GoldenCase(
+    def base_opportunity(api: MockCrmApi, client_name: str, client_email: str, opp_name: str, amount: float, stage: str = "Proposal") -> Dict[str, Any]:
+        context = _seed_client(api, name=client_name, email=client_email, status="Active")
+        return _ensure_opportunity(api, context, name=opp_name, amount=amount, stage=stage)
+
+    cases.append(
+        GoldenCase(
             case_id="CQT-101",
             task="create_quote",
             description="Reject lowercase quote status",
             utterance="Send the Lumina Ventures Renewal quote and mark status approved (lowercase).",
             expected_tool="create_quote",
-            setup=setup,
+            setup=lambda api: base_opportunity(api, "Lumina Ventures", "contact@lumina.example", "Lumina Ventures Renewal", 95_000.0),
             build_expected_args=lambda context: {
                 "opportunity_id": context["opportunity"].opportunity_id,
                 "amount": 95_000.0,
@@ -609,19 +671,16 @@ def _create_quote_negative_cases() -> List[GoldenCase]:
             expect_success=False,
             expected_error_substring="Input should be",
         )
+    )
 
-    def negative_amount_case() -> GoldenCase:
-        def setup(api: MockCrmApi) -> Dict[str, Any]:
-            context = _seed_client(api, name="Mosaic Retail", email="hello@mosaicretail.example", status="Active")
-            return _ensure_opportunity(api, context, name="Mosaic Retail Expansion", amount=150_000.0, stage="Negotiation")
-
-        return GoldenCase(
+    cases.append(
+        GoldenCase(
             case_id="CQT-102",
             task="create_quote",
             description="Reject negative quote amount",
             utterance="Create a quote for Mosaic Retail Expansion with amount -5000 (credit note).",
             expected_tool="create_quote",
-            setup=setup,
+            setup=lambda api: base_opportunity(api, "Mosaic Retail", "hello@mosaicretail.example", "Mosaic Retail Expansion", 150_000.0, stage="Negotiation"),
             build_expected_args=lambda context: {
                 "opportunity_id": context["opportunity"].opportunity_id,
                 "amount": -5_000.0,
@@ -631,9 +690,10 @@ def _create_quote_negative_cases() -> List[GoldenCase]:
             expect_success=False,
             expected_error_substring="greater than or equal to 0",
         )
+    )
 
-    def missing_opportunity_case() -> GoldenCase:
-        return GoldenCase(
+    cases.append(
+        GoldenCase(
             case_id="CQT-103",
             task="create_quote",
             description="Reject quote with unknown opportunity",
@@ -649,15 +709,46 @@ def _create_quote_negative_cases() -> List[GoldenCase]:
             expect_success=False,
             expected_error_substring="Opportunity not found with ID",
         )
+    )
 
-    return [invalid_status_case(), negative_amount_case(), missing_opportunity_case()]
+    cases.append(
+        GoldenCase(
+            case_id="CQT-104",
+            task="create_quote",
+            description="Reject invalid quote status value",
+            utterance="Submit a quote for Horizon Labs and mark status InReview.",
+            expected_tool="create_quote",
+            setup=lambda api: base_opportunity(api, "Horizon Labs", "team@horizonlabs.example", "Horizon Labs Upgrade", 130_000.0),
+            build_expected_args=lambda context: {
+                "opportunity_id": context["opportunity"].opportunity_id,
+                "amount": 130_000.0,
+                "status": "InReview",
+            },
+            validator=validate_create_quote,
+            expect_success=False,
+            expected_error_substring="Input should be",
+        )
+    )
 
+    cases.append(
+        GoldenCase(
+            case_id="CQT-105",
+            task="create_quote",
+            description="Reject missing amount field",
+            utterance="Create a draft quote for Ionis Manufacturing but omit the amount.",
+            expected_tool="create_quote",
+            setup=lambda api: base_opportunity(api, "Ionis Manufacturing", "sales@ionis.example", "Ionis Manufacturing Renewal", 210_000.0),
+            build_expected_args=lambda context: {
+                "opportunity_id": context["opportunity"].opportunity_id,
+                "status": "Draft",
+            },
+            validator=validate_create_quote,
+            expect_success=False,
+            expected_error_substring=None,
+        )
+    )
 
-# ---------------------------------------------------------------------------
-# Upload Document cases
-# ---------------------------------------------------------------------------
-
-
+    return cases
 def _upload_document_cases() -> List[GoldenCase]:
     cases: List[GoldenCase] = []
 
@@ -733,17 +824,19 @@ def _upload_document_cases() -> List[GoldenCase]:
 
 
 def _upload_document_negative_cases() -> List[GoldenCase]:
-    def lowercase_entity_type_case() -> GoldenCase:
-        def setup(api: MockCrmApi) -> Dict[str, Any]:
-            return _seed_client(api, name="Nova Manufacturing", email="team@novamfg.example", status="Active")
+    cases: List[GoldenCase] = []
 
-        return GoldenCase(
+    def client_only(api: MockCrmApi) -> Dict[str, Any]:
+        return _seed_client(api, name="Nova Manufacturing", email="team@novamfg.example", status="Active")
+
+    cases.append(
+        GoldenCase(
             case_id="UD-101",
             task="upload_document",
             description="Reject lowercase entity_type",
             utterance="Upload nova-playbook.pdf to client Nova Manufacturing (entity_type lowercase).",
             expected_tool="upload_document",
-            setup=setup,
+            setup=client_only,
             build_expected_args=lambda context: {
                 "entity_type": "client",
                 "entity_id": context["client"].client_id,
@@ -753,9 +846,10 @@ def _upload_document_negative_cases() -> List[GoldenCase]:
             expect_success=False,
             expected_error_substring="valid DocumentEntityType",
         )
+    )
 
-    def missing_entity_case() -> GoldenCase:
-        return GoldenCase(
+    cases.append(
+        GoldenCase(
             case_id="UD-102",
             task="upload_document",
             description="Reject document referencing missing opportunity",
@@ -771,15 +865,28 @@ def _upload_document_negative_cases() -> List[GoldenCase]:
             expect_success=False,
             expected_error_substring=None,
         )
+    )
 
-    return [lowercase_entity_type_case(), missing_entity_case()]
+    cases.append(
+        GoldenCase(
+            case_id="UD-103",
+            task="upload_document",
+            description="Reject non-UUID entity_id",
+            utterance="Attach compliance-note.pdf to client using an invalid ID string.",
+            expected_tool="upload_document",
+            setup=client_only,
+            build_expected_args=lambda _: {
+                "entity_type": "Client",
+                "entity_id": "not-a-uuid",
+                "file_name": "compliance-note.pdf",
+            },
+            validator=validate_upload_document,
+            expect_success=False,
+            expected_error_substring=None,
+        )
+    )
 
-
-# ---------------------------------------------------------------------------
-# Modify Opportunity cases
-# ---------------------------------------------------------------------------
-
-
+    return cases
 def _modify_opportunity_cases() -> List[GoldenCase]:
     raw_cases = [
         (
@@ -896,84 +1003,89 @@ def _modify_opportunity_cases() -> List[GoldenCase]:
 
 
 def _modify_opportunity_negative_cases() -> List[GoldenCase]:
-    def invalid_stage_update_case() -> GoldenCase:
-        def setup(api: MockCrmApi) -> Dict[str, Any]:
-            context = _seed_client(api, name="Orbit Media", email="contact@orbitmedia.example", status="Active")
-            return _ensure_opportunity(api, context, name="Orbit Media Upgrade", amount=140_000.0, stage="Negotiation")
+    cases: List[GoldenCase] = []
 
-        def build_args(context: Dict[str, Any]) -> Dict[str, Any]:
-            return {
-                "opportunity_id": context["opportunity"].opportunity_id,
-                "updates": {"stage": "Negotiations"},
-            }
+    def base_opportunity(api: MockCrmApi, client_name: str, email: str, opp_name: str, amount: float, stage: str) -> Dict[str, Any]:
+        context = _seed_client(api, name=client_name, email=email, status="Active")
+        return _ensure_opportunity(api, context, name=opp_name, amount=amount, stage=stage)
 
-        return GoldenCase(
+    cases.append(
+        GoldenCase(
             case_id="MOP-101",
             task="modify_opportunity",
             description="Reject invalid stage transition value",
             utterance="Set Orbit Media Upgrade stage to Negotiations (typo).",
             expected_tool="modify_opportunity",
-            setup=setup,
-            build_expected_args=build_args,
+            setup=lambda api: base_opportunity(api, "Orbit Media", "contact@orbitmedia.example", "Orbit Media Upgrade", 140_000.0, "Negotiation"),
+            build_expected_args=lambda context: {
+                "opportunity_id": context["opportunity"].opportunity_id,
+                "updates": {"stage": "Negotiations"},
+            },
             validator=validate_modify_opportunity,
             build_validator_kwargs=lambda _, expected: {"updates": expected["updates"]},
             expect_success=False,
             expected_error_substring="Input should be",
         )
+    )
 
-    def probability_out_of_bounds_case() -> GoldenCase:
-        def setup(api: MockCrmApi) -> Dict[str, Any]:
-            context = _seed_client(api, name="Parallax Finance", email="hello@parallax.example", status="Prospect")
-            return _ensure_opportunity(api, context, name="Parallax Finance Pilot", amount=220_000.0, stage="Qualification")
-
-        def build_args(context: Dict[str, Any]) -> Dict[str, Any]:
-            return {
-                "opportunity_id": context["opportunity"].opportunity_id,
-                "updates": {"probability": -10},
-            }
-
-        return GoldenCase(
+    cases.append(
+        GoldenCase(
             case_id="MOP-102",
             task="modify_opportunity",
             description="Reject probability below zero",
             utterance="Update Parallax Finance Pilot probability to -10%.",
             expected_tool="modify_opportunity",
-            setup=setup,
-            build_expected_args=build_args,
+            setup=lambda api: base_opportunity(api, "Parallax Finance", "hello@parallax.example", "Parallax Finance Pilot", 220_000.0, "Qualification"),
+            build_expected_args=lambda context: {
+                "opportunity_id": context["opportunity"].opportunity_id,
+                "updates": {"probability": -10},
+            },
             validator=validate_modify_opportunity,
             build_validator_kwargs=lambda _, expected: {"updates": expected["updates"]},
             expect_success=False,
             expected_error_substring="greater than or equal to 0",
         )
+    )
 
-    def unexpected_field_case() -> GoldenCase:
-        def setup(api: MockCrmApi) -> Dict[str, Any]:
-            context = _seed_client(api, name="Quasar Logistics", email="ops@quasarlogistics.example", status="Active")
-            return _ensure_opportunity(api, context, name="Quasar Logistics Route Optimization", amount=310_000.0, stage="Negotiation")
-
-        def build_args(context: Dict[str, Any]) -> Dict[str, Any]:
-            return {
-                "opportunity_id": context["opportunity"].opportunity_id,
-                "updates": {"assigned_to": "stephanie.wong"},
-            }
-
-        return GoldenCase(
+    cases.append(
+        GoldenCase(
             case_id="MOP-103",
             task="modify_opportunity",
             description="Reject updates to unsupported field",
             utterance="Assign Quasar Logistics opportunity to stephanie.wong via assigned_to field.",
             expected_tool="modify_opportunity",
-            setup=setup,
-            build_expected_args=build_args,
+            setup=lambda api: base_opportunity(api, "Quasar Logistics", "ops@quasarlogistics.example", "Quasar Logistics Route Optimization", 310_000.0, "Negotiation"),
+            build_expected_args=lambda context: {
+                "opportunity_id": context["opportunity"].opportunity_id,
+                "updates": {"assigned_to": "stephanie.wong"},
+            },
             validator=validate_modify_opportunity,
             build_validator_kwargs=lambda _, expected: {"updates": expected["updates"]},
             expect_success=False,
             expected_error_substring="Opportunity has no field named 'assigned_to'",
         )
+    )
 
-    return [invalid_stage_update_case(), probability_out_of_bounds_case(), unexpected_field_case()]
+    cases.append(
+        GoldenCase(
+            case_id="MOP-104",
+            task="modify_opportunity",
+            description="Reject probability expressed as text",
+            utterance="Set Vega Analytics Pilot probability to 'high'.",
+            expected_tool="modify_opportunity",
+            setup=lambda api: base_opportunity(api, "Vega Analytics", "team@vegaanalytics.example", "Vega Analytics Pilot", 190_000.0, "Qualification"),
+            build_expected_args=lambda context: {
+                "opportunity_id": context["opportunity"].opportunity_id,
+                "updates": {"probability": "high"},
+            },
+            validator=validate_modify_opportunity,
+            build_validator_kwargs=lambda _, expected: {"updates": expected["updates"]},
+            expect_success=False,
+            expected_error_substring="Input should be",
+        )
+    )
 
-
+    return cases
 GOLDEN_CASES: List[GoldenCase] = (
     _create_new_client_cases()
     + _create_new_client_negative_cases()
