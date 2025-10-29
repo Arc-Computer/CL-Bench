@@ -32,9 +32,15 @@ import numpy as np
 try:  # Prefer Gymnasium if available.
     import gymnasium as gym
     from gymnasium import spaces
-except ImportError:  # pragma: no cover - fallback for legacy installs.
-    import gym  # type: ignore
-    from gym import spaces  # type: ignore
+except ImportError:
+    try:  # pragma: no cover - fallback for legacy installs.
+        import gym  # type: ignore
+        from gym import spaces  # type: ignore
+    except ImportError as exc:  # pragma: no cover - dependency guard
+        raise ImportError(
+            "CrmEnv requires either the `gymnasium` package (preferred) or a modern `gym` install. "
+            "Install with `pip install gymnasium`."
+        ) from exc
 
 try:  # Gymnasium re-exports seeding utilities from gym.
     from gymnasium.utils import seeding

@@ -4,6 +4,11 @@ The CRM benchmark now exposes a Gymnasium-compatible environment so continual-le
 
 > **Import path:** `from src.crm_env import CrmEnv, TaskManager, RewardConfig`
 
+> **Dependencies:** Install `gymnasium` (preferred) or a compatible `gym` release before importing the environment:
+> ```bash
+> pip install gymnasium
+> ```
+
 ## Observation Schema
 
 Each observation is a dictionary that conforms to `CrmEnv.observation_space`:
