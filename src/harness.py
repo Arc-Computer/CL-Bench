@@ -17,7 +17,7 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Protocol, Seque
 
 from .crm_sandbox import MockCrmApi
 from .golden_cases import GOLDEN_CASES, GoldenCase
-from .validators import CrmStateSnapshot, ValidationResult
+from .validators import CrmStateSnapshot, ValidationResult, VerificationMode, get_task_verification_mode
 
 
 # ---------------------------------------------------------------------------
@@ -51,6 +51,7 @@ class EpisodeLog:
     validator_details: Optional[Dict[str, Any]]
     expected_tool: str
     expected_arguments: Dict[str, Any]
+    verification_mode: str
 
     def to_json(self) -> str:
         return json.dumps(
@@ -68,6 +69,7 @@ class EpisodeLog:
                 "validator_details": self.validator_details,
                 "expected_tool": self.expected_tool,
                 "expected_arguments": self.expected_arguments,
+                "verification_mode": self.verification_mode,
             },
             ensure_ascii=False,
         )
@@ -363,6 +365,7 @@ class BaselineHarness:
                 else:
                     failures += 1
 
+                verification_mode = get_task_verification_mode(case.task).value
                 episode = EpisodeLog(
                     case_id=case.case_id,
                     task=case.task,
@@ -377,6 +380,7 @@ class BaselineHarness:
                     validator_details=validator_details,
                     expected_tool=case.expected_tool,
                     expected_arguments=expected_args,
+                    verification_mode=verification_mode,
                 )
                 log_file.write(episode.to_json() + "\n")
                 episodes.append(episode)

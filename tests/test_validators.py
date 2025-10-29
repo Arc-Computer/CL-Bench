@@ -8,6 +8,8 @@ from src.crm_sandbox import MockCrmApi
 from src.validators import (
     CrmStateSnapshot,
     ValidationResult,
+    VerificationMode,
+    get_task_verification_mode,
     validate_create_new_client,
     validate_create_new_opportunity,
     validate_create_quote,
@@ -95,7 +97,7 @@ def test_validate_create_quote_missing_opportunity(api: MockCrmApi) -> None:
 def test_validate_upload_document_success(api: MockCrmApi) -> None:
     client = api.create_new_client(name="Globex", email="sales@globex.example", status="Prospect")
     pre = snapshot(api)
-    document = api.upload_document(
+    api.upload_document(
         entity_type="Client",
         entity_id=client.client_id,
         file_name="agreement.pdf",
@@ -108,7 +110,18 @@ def test_validate_upload_document_success(api: MockCrmApi) -> None:
         {"entity_type": "Client", "entity_id": client.client_id, "file_name": "agreement.pdf"},
     )
     assert result.success
-    assert result.details == {"document_id": document.document_id}
+    assert (
+        result.message
+        == "Document upload verified via runtime response comparison; database checks skipped."
+    )
+    assert result.details == {
+        "arguments": {
+            "entity_type": "Client",
+            "entity_id": client.client_id,
+            "file_name": "agreement.pdf",
+        },
+        "verification_mode": "runtime_response",
+    }
 
 
 def test_validate_modify_opportunity_success(api: MockCrmApi) -> None:
@@ -155,3 +168,22 @@ def test_validate_modify_opportunity_unexpected_change(api: MockCrmApi) -> None:
     )
     assert not result.success
     assert "Unexpected opportunity field changes detected." in result.message
+
+
+def test_validate_upload_document_missing_fields(api: MockCrmApi) -> None:
+    client = api.create_new_client(name="Globex", email="sales@globex.example", status="Prospect")
+    pre = snapshot(api)
+    post = snapshot(api)
+
+    result = validate_upload_document(
+        pre,
+        post,
+        {"entity_type": "Client", "entity_id": client.client_id, "file_name": ""},
+    )
+    assert not result.success
+    assert "requires fields" in result.message
+
+
+def test_get_task_verification_mode_from_csv() -> None:
+    assert get_task_verification_mode("upload_document") is VerificationMode.RUNTIME_RESPONSE
+    assert get_task_verification_mode("create_new_client") is VerificationMode.DATABASE
