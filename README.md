@@ -24,6 +24,7 @@ Prompt → tool → validator runner that executes the golden cases against an a
   - `golden_cases.py` – scenario definitions and seeding helpers.
   - `validators.py` – deterministic state checks used by tests and the harness.
   - `harness.py` – baseline harness (Claude/GPT integrations, logging, result types).
+  - `crm_env.py` – Gymnasium-compatible environment exposing the sandbox for RL loops.
 - `data/`
   - `fake_crm_tables_schema.json` – authoritative schema.
   - `Agent tasks.csv` – task-frequency signals used to prioritize scenarios.
@@ -79,6 +80,14 @@ api.create_quote(
 )
 ```
 All relationship and enum rules are enforced automatically; invalid calls raise `ValueError` with clear descriptions.
+
+## Reinforcement Learning Environment
+
+- `from src.crm_env import CrmEnv`: wraps `MockCrmApi` + validators as a Gymnasium environment.
+- Observations include task metadata, last tool outcome, and compact CRM state summaries.
+- Actions combine a discrete tool index and JSON arguments; `CrmEnv.step` also accepts structured dictionaries for convenience.
+- Default reward is binary 0/1; optional shaping hooks are exposed via `RewardConfig`.
+- See `docs/crm_env.md` for the full schema, TaskManager options, and a rollout example (`python examples/run_crm_env.py`).
 
 ## Contributing & Next Steps
 
