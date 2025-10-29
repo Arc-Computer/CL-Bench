@@ -19,7 +19,7 @@ Each observation is a dictionary that conforms to `CrmEnv.observation_space`:
 | `task.task` | `str` | Canonical task name (e.g., `"create_new_client"`). |
 | `task.description` | `str` | Short human-readable description of the goal. |
 | `task.expected_tool` | `str` | Tool the validator expects for the case. |
-| `task.expected_arguments` | `str (JSON)` | Reference payload encoded as JSON. |
+| `task.expected_arguments` | `str (JSON)` | Reference payload encoded as JSON. When `expose_reference=False`, this is an empty JSON object (`"{}"`). |
 | `last_tool.tool` | `str` | Tool name invoked on the previous step. Empty after reset. |
 | `last_tool.arguments` | `str (JSON)` | Arguments used on the previous step. |
 | `last_tool.success` | `int` | `0` before any call, `1` on success, `2` on error. |
@@ -55,6 +55,12 @@ If a raw string is supplied, it is parsed as JSON. Invalid actions produce rewar
 - `TaskManager`: supports deterministic sampling (via `seed`), filtering to explicit case IDs, and optionally including failure-oriented golden cases (`include_negative_cases=True`).
 - `reset(..., options={"case_id": "...", "task": "..."})`: force a specific golden case or task family.
 - `info["history"]`: cumulative record of tool calls, validator outcomes, and intermediate status for logging pipelines.
+
+## Configuration Flags
+
+- `expose_reference` (default `True`): when set to `False`, observations and `info` omit the ground-truth `expected_arguments`, forcing agents to infer parameters from natural language and context.
+- `include_tool_hints` (default `False`): when `True`, `CrmEnv.reset` includes `info["tool_hints"]`, a map of tool names to signature-style descriptions that can be inserted into prompts.
+- `CrmEnv.active_context`: property exposing the setup context (clients, opportunities, etc.) generated for the active episode—useful for prompt construction alongside the user utterance.
 
 ## Example Rollout
 
@@ -104,3 +110,18 @@ Before opening a PR that touches the environment:
 1. `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest`
 2. `python examples/run_crm_env.py`
 3. If you add new dependencies (e.g., `gymnasium`), update your installation instructions accordingly.
+
+## Running With Live LLM Agents
+
+Use `examples/run_crm_env_with_llm.py` to execute multiple episodes against a real model and log telemetry:
+
+```bash
+python examples/run_crm_env_with_llm.py --provider openai --model gpt-4.1 --episodes 5 --log-json artifacts/live_rollouts.jsonl
+```
+
+Key features:
+
+- Automatically hides reference arguments by instantiating `CrmEnv(..., expose_reference=False)`.
+- Reuses the existing harness prompt (`src.harness.build_prompt`) to keep prompting consistent with leaderboard evaluations.
+- Logs per-step rewards, validator messages, and success flags to stdout and (optionally) a JSONL file for further analysis.
+- Supports Anthropic (`--provider anthropic`) and a mock offline agent (`--provider mock`) for dry runs without API calls.

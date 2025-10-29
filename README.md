@@ -84,10 +84,11 @@ All relationship and enum rules are enforced automatically; invalid calls raise 
 ## Reinforcement Learning Environment
 
 - `from src.crm_env import CrmEnv`: wraps `MockCrmApi` + validators as a Gymnasium environment.
-- Observations include task metadata, last tool outcome, and compact CRM state summaries.
+- Observations include task metadata, last tool outcome, and compact CRM state summaries. Set `expose_reference=False` to hide ground-truth arguments during training and rely on natural-language reasoning instead.
 - Actions combine a discrete tool index and JSON arguments; `CrmEnv.step` also accepts structured dictionaries for convenience.
+- Optional prompt aids: pass `include_tool_hints=True` to surface signature-style descriptions for each tool.
 - Default reward is binary 0/1; optional shaping hooks are exposed via `RewardConfig`.
-- See `docs/crm_env.md` for the full schema, TaskManager options, and a rollout example (`python examples/run_crm_env.py`).
+- See `docs/crm_env.md` for the full schema plus rollout examples (`python examples/run_crm_env.py`). For a live model demo (OpenAI, Anthropic, or mock), run `python examples/run_crm_env_with_llm.py --provider openai --model gpt-4.1 --episodes 5` and inspect the logged telemetry.
 
 ## Contributing & Next Steps
 
