@@ -7,7 +7,8 @@ provides a MockCrmApi class that implements the top state-modifying tools.
 
 from datetime import date, datetime
 from enum import Enum
-from typing import Any, Dict, Optional
+import re
+from typing import Any, Dict, Mapping, Optional, Type
 from uuid import UUID, uuid4
 
 from pydantic import AnyUrl, BaseModel, ConfigDict, EmailStr, Field, field_validator
@@ -73,6 +74,105 @@ class NoteEntityType(str, Enum):
     CONTRACT = "Contract"
 
 
+_ALLOWED_FILE_EXTENSIONS = {"pdf", "doc", "docx", "ppt", "pptx", "xlsx", "csv", "txt", "key"}
+_FILE_NAME_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
+_MAX_AMOUNT = 10_000_000.0
+_CLOSED_STAGES = {OpportunityStage.CLOSED_WON.value, OpportunityStage.CLOSED_LOST.value}
+
+
+def _require_non_empty_string(value: Any, field_name: str) -> None:
+    """Ensure that a required string field is not empty or whitespace."""
+    if not isinstance(value, str):
+        raise ValueError(f"{field_name} must be provided as a string.")
+    if value.strip() == "":
+        raise ValueError(f"{field_name} must not be blank or whitespace.")
+
+
+def _validate_enum_value(raw_value: Any, enum_cls: Type[Enum], field_name: str) -> str:
+    """Validate that the provided value matches an enum exactly (case- and whitespace-sensitive)."""
+    if not isinstance(raw_value, str):
+        raise ValueError(f"{field_name} must be provided as a string.")
+    if raw_value != raw_value.strip():
+        raise ValueError(f"{field_name} must not contain leading or trailing whitespace.")
+    valid_values = {member.value for member in enum_cls}
+    if raw_value not in valid_values:
+        formatted = ", ".join(sorted(valid_values))
+        raise ValueError(f"{field_name} must be one of: {formatted}.")
+    return raw_value
+
+
+def _validate_amount(value: Any, field_name: str) -> None:
+    """Validate that monetary amounts are positive and below the configured ceiling."""
+    if not isinstance(value, (int, float)):
+        raise ValueError(f"{field_name} must be numeric.")
+    amount = float(value)
+    if amount <= 0:
+        raise ValueError(f"{field_name} must be greater than zero.")
+    if amount > _MAX_AMOUNT:
+        raise ValueError(f"{field_name} must not exceed {_MAX_AMOUNT:,.0f}.")
+
+
+def _validate_probability(value: Any) -> int | float:
+    """Ensure probability values are integer percentages between 1 and 99."""
+    if not isinstance(value, (int, float)):
+        raise ValueError("Probability must be numeric.")
+    if isinstance(value, float) and not value.is_integer():
+        raise ValueError("Probability must be expressed as a whole-number percentage.")
+    as_int = int(value)
+    if as_int <= 0 or as_int >= 100:
+        raise ValueError("Probability must be between 1 and 99.")
+    return as_int
+
+
+def _normalize_close_date(value: Any) -> date:
+    """Convert close_date inputs to date while surfacing parse errors."""
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    if isinstance(value, datetime):
+        if value.time() != datetime.min.time():
+            raise ValueError("Close date must not include a time component.")
+        return value.date()
+    if isinstance(value, str):
+        try:
+            return date.fromisoformat(value)
+        except ValueError as exc:
+            raise ValueError("Close date must be a valid ISO-8601 date (YYYY-MM-DD).") from exc
+    raise ValueError("Close date must be provided as a date or ISO-8601 string.")
+
+
+def _validate_close_date_not_past(value: Optional[date]) -> None:
+    """Ensure close dates are not in the past relative to today."""
+    if value is None:
+        return
+    if value < date.today():
+        raise ValueError("Close date must be today or in the future.")
+
+
+def _validate_file_name(file_name: str) -> None:
+    """Ensure uploaded documents use safe filenames and supported extensions."""
+    if not _FILE_NAME_PATTERN.fullmatch(file_name):
+        raise ValueError("Document file name may only include letters, numbers, dots, underscores, and hyphens.")
+    if "." not in file_name:
+        raise ValueError("Document file name must include an extension.")
+    extension = file_name.rsplit(".", 1)[1].lower()
+    if extension not in _ALLOWED_FILE_EXTENSIONS:
+        allowed = ", ".join(sorted(_ALLOWED_FILE_EXTENSIONS))
+        raise ValueError(f"Document file extension '.{extension}' is not supported (allowed: {allowed}).")
+
+
+def _ensure_closed_deal_edit_is_allowed(opportunity: "Opportunity", updates: Mapping[str, Any]) -> None:
+    """Block destructive edits to opportunities that are already closed."""
+    current_stage = opportunity.stage
+    if current_stage not in _CLOSED_STAGES:
+        return
+    blocked_fields = {"stage", "amount", "probability", "close_date"}
+    attempted = blocked_fields.intersection(updates.keys())
+    if attempted:
+        raise ValueError(
+            f"Cannot modify closed opportunity fields {sorted(attempted)} while stage is '{current_stage}'."
+        )
+
+
 class CRMBaseModel(BaseModel):
     """Shared configuration for all CRM entities."""
 
@@ -80,6 +180,7 @@ class CRMBaseModel(BaseModel):
         populate_by_name=True,
         validate_assignment=True,
         use_enum_values=True,
+        extra="forbid",
     )
 
     @field_validator("*", mode="before", check_fields=False)
@@ -259,8 +360,9 @@ class MockCrmApi:
                 if existing.email and existing.email.lower() == normalized_email:
                     raise ValueError(f"Client already exists with email '{email}'.")
 
-        # Rely on the Client model to validate email format and status enum membership.
-        client = Client(name=name, email=email, status=status, **kwargs)
+        _require_non_empty_string(name, "Client name")
+        status_value = _validate_enum_value(status, ClientStatus, "Client status")
+        client = Client(name=name, email=email, status=status_value, **kwargs)
         self.clients[client.client_id] = client
         return client
 
@@ -271,7 +373,21 @@ class MockCrmApi:
         # Enforce the foreign-key style constraint linking opportunities to clients.
         if client_id not in self.clients:
             raise ValueError(f"Client not found with ID '{client_id}'.")
-        opportunity = Opportunity(name=name, client_id=client_id, amount=amount, stage=stage, **kwargs)
+        _require_non_empty_string(name, "Opportunity name")
+        _validate_amount(amount, "Opportunity amount")
+        stage_value = _validate_enum_value(stage, OpportunityStage, "Opportunity stage")
+        if "probability" in kwargs:
+            kwargs["probability"] = _validate_probability(kwargs["probability"])
+        if "close_date" in kwargs:
+            kwargs["close_date"] = _normalize_close_date(kwargs["close_date"])
+        opportunity = Opportunity(
+            name=name,
+            client_id=client_id,
+            amount=amount,
+            stage=stage_value,
+            **kwargs,
+        )
+        _validate_close_date_not_past(opportunity.close_date)
         self.opportunities[opportunity.opportunity_id] = opportunity
         return opportunity
 
@@ -280,7 +396,9 @@ class MockCrmApi:
         # Enforce the opportunity relationship before instantiating the Quote model.
         if opportunity_id not in self.opportunities:
             raise ValueError(f"Opportunity not found with ID '{opportunity_id}'.")
-        quote = Quote(opportunity_id=opportunity_id, amount=amount, status=status, **kwargs)
+        _validate_amount(amount, "Quote amount")
+        status_value = _validate_enum_value(status, QuoteStatus, "Quote status")
+        quote = Quote(opportunity_id=opportunity_id, amount=amount, status=status_value, **kwargs)
         self.quotes[quote.quote_id] = quote
         return quote
 
@@ -289,6 +407,8 @@ class MockCrmApi:
     ) -> Document:
         """Attach a document to a valid entity, enforcing cross-entity links."""
         # Convert and validate the provided entity_type before hitting the mapping.
+        _require_non_empty_string(file_name, "Document file name")
+        _validate_file_name(file_name)
         doc_entity_type = DocumentEntityType(entity_type)
         entity_store = self._get_entity_store(doc_entity_type)
         # Check that the referenced entity actually exists in the target store.
@@ -305,12 +425,26 @@ class MockCrmApi:
             raise ValueError(f"Opportunity not found with ID '{opportunity_id}'.")
         opportunity = self.opportunities[opportunity_id]
 
+        _ensure_closed_deal_edit_is_allowed(opportunity, updates)
         # Mutate fields one-by-one so Pydantic can validate each assignment.
         for field_name, value in updates.items():
             if not hasattr(opportunity, field_name):
                 raise ValueError(f"Opportunity has no field named '{field_name}'.")
+            if field_name == "stage":
+                value = _validate_enum_value(value, OpportunityStage, "Opportunity stage update")
+            elif field_name == "probability":
+                value = _validate_probability(value)
+            elif field_name == "amount":
+                _validate_amount(value, "Opportunity amount")
+            elif field_name == "close_date":
+                value = _normalize_close_date(value)
+                _validate_close_date_not_past(value)
+            elif isinstance(value, str):
+                _require_non_empty_string(value, f"Opportunity {field_name}")
             setattr(opportunity, field_name, value)
 
+        if opportunity.close_date:
+            _validate_close_date_not_past(opportunity.close_date)
         self.opportunities[opportunity_id] = opportunity
         return opportunity
 

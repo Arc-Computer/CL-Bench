@@ -1,0 +1,29 @@
+﻿Task Description,Task verification,Count,,Intent,Typical User Phrasing,Example Sub-Actions
+CREATE NEW OPPORTUNITY,Verify on the DB that the opportunity exists,3683,,Opportunity Management,"“Create a new opportunity,” “Show me open deals,” “Edit this opportunity”","CREATE NEW OPPORTUNITY, MODIFY OPPORTUNITY, DELETE OPPORTUNITY, OPPORTUNITY SEARCH, CLONE OPPORTUNITY, VIEW OPPORTUNITY DETAILS, SUMMARIZE OPPORTUNITIES"
+MODIFY OPPORTUNITY,Verify on the DB that the opportunity has been modified with the correct parameter,2939,,Client Management,"“Add a new client,” “Find this customer,” “Update client info”","CREATE NEW CLIENT, CLIENT SEARCH, MODIFY CLIENT"
+OPPORTUNITY SEARCH,Verify on the DB that the correct opportunity records are retrieved according to the search criteria,2279,,Contact Management,"“Add contact,” “Search contact,” “Edit contact”","CREATE NEW CONTACT, CONTACT SEARCH, MODIFY CONTACT"
+UPLOAD DOCUMENT,"Not to be verified, there is a mechanism in which the user can upload the doc to perform RAG on it. Common use case, with the usual ground truth- runtime evaluation obtained response response comparison",2190,,Quote Management,"“Create a quote for this opportunity,” “Show quote details,” “Compare quotes”","CREATE QUOTE, MODIFY QUOTE, DELETE QUOTE, CANCEL QUOTE, QUOTE DETAILS, COMPARE QUOTES, COMPARE QUOTE DETAILS, QUOTE SEARCH, QUOTE PREFIXES"
+CREATE QUOTE,Verify on the DB that the quote has been created with the correct details and linked to the related opportunity,1804,,Contract Management,"“Generate a contract,” “Search contract,” “Edit contract”","CREATE NEW CONTRACT, CONTRACT SEARCH"
+VIEW OPPORTUNITY DETAILS,Verify on the DB that the displayed details match the data stored for the selected opportunity,878,,Company / Account Management,"“Search company,” “Update company record”",COMPANY SEARCH
+CONTACT SEARCH,Verify on the DB that the correct contact records are retrieved according to the search criteria,375,,Document Management,"“Upload proposal,” “Attach document to opportunity”",UPLOAD DOCUMENT
+CLONE OPPORTUNITY,"Verify on the DB that a new opportunity record has been created as an exact copy of the original, with a new identifier",267,,Notes & Collaboration,"“Add note to client,” “Add internal comment”",ADD NOTE
+SUMMARIZE OPPORTUNITIES,"Verify on the DB that the summarized data (totals, counts, etc.) reflect the actual data stored in the opportunities table",194,,,,
+CLIENT SEARCH,Verify on the DB that the correct client records are retrieved according to the search criteria,192,,,,
+CREATE NEW CLIENT,Verify on the DB that the client record has been created with the provided details,142,,,,
+CREATE NEW CONTACT,Verify on the DB that the contact record has been created and linked to the appropriate client or opportunity,111,,,,
+CONTRACT SEARCH,Verify on the DB that the correct contract records are retrieved according to the search criteria,40,,,,
+QUOTE SEARCH,Verify on the DB that the correct quote records are retrieved according to the search criteria,32,,,,
+CREATE NEW CONTRACT,Verify on the DB that the contract has been created with the correct details and linked to the related opportunity or quote,24,,,,
+COMPANY SEARCH,negligible,8,,,,
+OPPORTUNITY DETAILS,negligible,6,,,,
+MODIFY CLIENT,negligible,3,,,,
+MODIFY QUOTE,negligible,3,,,,
+CANCEL QUOTE,negligible,2,,,,
+MODIFY CONTACT,negligible,2,,,,
+ADD NOTE,negligible,1,,,,
+COMPARE QUOTE DETAILS,negligible,1,,,,
+COMPARE QUOTES,negligible,1,,,,
+DELETE OPPORTUNITY,negligible,1,,,,
+DELETE QUOTE,negligible,1,,,,
+QUOTE DETAILS,negligible,1,,,,
+QUOTE PREFIXES,negligible,1,,,,

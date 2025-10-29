@@ -239,7 +239,7 @@ def _create_new_client_negative_cases() -> List[GoldenCase]:
             },
             validator=validate_create_new_client,
             expect_success=False,
-            expected_error_substring="Input should be",
+            expected_error_substring="must be one of",
         )
     )
 
@@ -304,6 +304,83 @@ def _create_new_client_negative_cases() -> List[GoldenCase]:
             validator=validate_create_new_client,
             expect_success=False,
             expected_error_substring=None,
+        )
+    )
+
+    cases.append(
+        GoldenCase(
+            case_id="CNC-105",
+            task="create_new_client",
+            description="Reject status value with surrounding whitespace",
+            utterance="Add Juniper Logistics as Active but the status has extra spaces.",
+            expected_tool="create_new_client",
+            setup=lambda _: {},
+            build_expected_args=lambda _: {
+                "name": "Juniper Logistics",
+                "email": "ops@juniperlogistics.example",
+                "status": " Active ",
+            },
+            validator=validate_create_new_client,
+            expect_success=False,
+            expected_error_substring="must not contain leading or trailing whitespace",
+        )
+    )
+
+    cases.append(
+        GoldenCase(
+            case_id="CNC-106",
+            task="create_new_client",
+            description="Reject blank client name",
+            utterance="Create a client but the name field is empty.",
+            expected_tool="create_new_client",
+            setup=lambda _: {},
+            build_expected_args=lambda _: {
+                "name": "   ",
+                "email": "no-name@example.com",
+                "status": "Active",
+            },
+            validator=validate_create_new_client,
+            expect_success=False,
+            expected_error_substring="must not be blank",
+        )
+    )
+
+    cases.append(
+        GoldenCase(
+            case_id="CNC-107",
+            task="create_new_client",
+            description="Reject extraneous field on payload",
+            utterance="Add Keystone Advisory and include a region field that should not exist.",
+            expected_tool="create_new_client",
+            setup=lambda _: {},
+            build_expected_args=lambda _: {
+                "name": "Keystone Advisory",
+                "email": "team@keystoneadvisory.example",
+                "status": "Prospect",
+                "region": "EMEA",
+            },
+            validator=validate_create_new_client,
+            expect_success=False,
+            expected_error_substring="Extra inputs are not permitted",
+        )
+    )
+
+    cases.append(
+        GoldenCase(
+            case_id="CNC-108",
+            task="create_new_client",
+            description="Reject non-string name value",
+            utterance="Register Lumen Industrial but the tool payload mistakenly sends a numeric name.",
+            expected_tool="create_new_client",
+            setup=lambda _: {},
+            build_expected_args=lambda _: {
+                "name": 12345,
+                "email": "info@lumenindustrial.example",
+                "status": "Active",
+            },
+            validator=validate_create_new_client,
+            expect_success=False,
+            expected_error_substring="must be provided as a string",
         )
     )
 
@@ -443,7 +520,7 @@ def _create_new_opportunity_negative_cases() -> List[GoldenCase]:
             },
             validator=validate_create_new_opportunity,
             expect_success=False,
-            expected_error_substring="Input should be",
+            expected_error_substring="must be one of",
         )
     )
 
@@ -464,7 +541,7 @@ def _create_new_opportunity_negative_cases() -> List[GoldenCase]:
             },
             validator=validate_create_new_opportunity,
             expect_success=False,
-            expected_error_substring="less than or equal to 100",
+            expected_error_substring="Probability must be between 1 and 99",
         )
     )
 
@@ -505,7 +582,7 @@ def _create_new_opportunity_negative_cases() -> List[GoldenCase]:
             },
             validator=validate_create_new_opportunity,
             expect_success=False,
-            expected_error_substring="valid date",
+            expected_error_substring="valid ISO-8601 date",
         )
     )
 
@@ -526,7 +603,213 @@ def _create_new_opportunity_negative_cases() -> List[GoldenCase]:
             },
             validator=validate_create_new_opportunity,
             expect_success=False,
-            expected_error_substring="Input should be",
+            expected_error_substring="Probability must be numeric",
+        )
+    )
+
+    cases.append(
+        GoldenCase(
+            case_id="CNO-106",
+            task="create_new_opportunity",
+            description="Reject stage value with trailing whitespace",
+            utterance="Create Polaris Systems Upgrade but the stage has trailing spaces.",
+            expected_tool="create_new_opportunity",
+            setup=lambda api: base_client(api, "Polaris Systems", "contact@polarissystems.example"),
+            build_expected_args=lambda context: {
+                "client_id": context["client"].client_id,
+                "name": "Polaris Systems Upgrade",
+                "amount": 185_000.0,
+                "stage": "Negotiation ",
+            },
+            validator=validate_create_new_opportunity,
+            expect_success=False,
+            expected_error_substring="must not contain leading or trailing whitespace",
+        )
+    )
+
+    cases.append(
+        GoldenCase(
+            case_id="CNO-107",
+            task="create_new_opportunity",
+            description="Reject probability at 0%",
+            utterance="Log Quantum Analytics Pilot with probability 0%.",
+            expected_tool="create_new_opportunity",
+            setup=lambda api: base_client(api, "Quantum Analytics", "hello@quantumanalytics.example", status="Prospect"),
+            build_expected_args=lambda context: {
+                "client_id": context["client"].client_id,
+                "name": "Quantum Analytics Pilot",
+                "amount": 210_000.0,
+                "stage": "Qualification",
+                "probability": 0,
+            },
+            validator=validate_create_new_opportunity,
+            expect_success=False,
+            expected_error_substring="Probability must be between 1 and 99",
+        )
+    )
+
+    cases.append(
+        GoldenCase(
+            case_id="CNO-108",
+            task="create_new_opportunity",
+            description="Reject probability at 100%",
+            utterance="Set Relay Bio Renewal probability to 100%.",
+            expected_tool="create_new_opportunity",
+            setup=lambda api: base_client(api, "Relay Bio", "sales@relaybio.example", status="Active"),
+            build_expected_args=lambda context: {
+                "client_id": context["client"].client_id,
+                "name": "Relay Bio Renewal",
+                "amount": 95_000.0,
+                "stage": "Proposal",
+                "probability": 100,
+            },
+            validator=validate_create_new_opportunity,
+            expect_success=False,
+            expected_error_substring="Probability must be between 1 and 99",
+        )
+    )
+
+    cases.append(
+        GoldenCase(
+            case_id="CNO-109",
+            task="create_new_opportunity",
+            description="Reject probability supplied as a decimal",
+            utterance="Create Skyline Partners Expansion with probability 0.45.",
+            expected_tool="create_new_opportunity",
+            setup=lambda api: base_client(api, "Skyline Partners", "team@skylinepartners.example"),
+            build_expected_args=lambda context: {
+                "client_id": context["client"].client_id,
+                "name": "Skyline Partners Expansion",
+                "amount": 260_000.0,
+                "stage": "Negotiation",
+                "probability": 0.45,
+            },
+            validator=validate_create_new_opportunity,
+            expect_success=False,
+            expected_error_substring="whole-number percentage",
+        )
+    )
+
+    cases.append(
+        GoldenCase(
+            case_id="CNO-110",
+            task="create_new_opportunity",
+            description="Reject zero amount",
+            utterance="Open Summit Retail Pilot with amount 0.",
+            expected_tool="create_new_opportunity",
+            setup=lambda api: base_client(api, "Summit Retail", "info@summitretail.example"),
+            build_expected_args=lambda context: {
+                "client_id": context["client"].client_id,
+                "name": "Summit Retail Pilot",
+                "amount": 0.0,
+                "stage": "Prospecting",
+            },
+            validator=validate_create_new_opportunity,
+            expect_success=False,
+            expected_error_substring="amount must be greater than zero",
+        )
+    )
+
+    cases.append(
+        GoldenCase(
+            case_id="CNO-111",
+            task="create_new_opportunity",
+            description="Reject amount beyond ceiling",
+            utterance="Register Titan Aerospace Mega Deal for 25 million.",
+            expected_tool="create_new_opportunity",
+            setup=lambda api: base_client(api, "Titan Aerospace", "contact@titanaero.example"),
+            build_expected_args=lambda context: {
+                "client_id": context["client"].client_id,
+                "name": "Titan Aerospace Mega Deal",
+                "amount": 25_000_000.0,
+                "stage": "Prospecting",
+            },
+            validator=validate_create_new_opportunity,
+            expect_success=False,
+            expected_error_substring="must not exceed",
+        )
+    )
+
+    cases.append(
+        GoldenCase(
+            case_id="CNO-112",
+            task="create_new_opportunity",
+            description="Reject string amount with units",
+            utterance="Create Unity Health Pilot and set amount to 120K (string).",
+            expected_tool="create_new_opportunity",
+            setup=lambda api: base_client(api, "Unity Health", "sales@unityhealth.example"),
+            build_expected_args=lambda context: {
+                "client_id": context["client"].client_id,
+                "name": "Unity Health Pilot",
+                "amount": "120K",
+                "stage": "Qualification",
+            },
+            validator=validate_create_new_opportunity,
+            expect_success=False,
+            expected_error_substring="must be numeric",
+        )
+    )
+
+    cases.append(
+        GoldenCase(
+            case_id="CNO-113",
+            task="create_new_opportunity",
+            description="Reject past close date",
+            utterance="Set Vanguard Solutions Renewal to close on 2023-01-01.",
+            expected_tool="create_new_opportunity",
+            setup=lambda api: base_client(api, "Vanguard Solutions", "hello@vanguardsolutions.example"),
+            build_expected_args=lambda context: {
+                "client_id": context["client"].client_id,
+                "name": "Vanguard Solutions Renewal",
+                "amount": 175_000.0,
+                "stage": "Proposal",
+                "close_date": "2023-01-01",
+            },
+            validator=validate_create_new_opportunity,
+            expect_success=False,
+            expected_error_substring="Close date must be today or in the future",
+        )
+    )
+
+    cases.append(
+        GoldenCase(
+            case_id="CNO-114",
+            task="create_new_opportunity",
+            description="Reject impossible close date",
+            utterance="Schedule Orion Digital Upgrade to close on 2025-02-30.",
+            expected_tool="create_new_opportunity",
+            setup=lambda api: base_client(api, "Orion Digital", "team@oriondigital.example"),
+            build_expected_args=lambda context: {
+                "client_id": context["client"].client_id,
+                "name": "Orion Digital Upgrade",
+                "amount": 205_000.0,
+                "stage": "Negotiation",
+                "close_date": "2025-02-30",
+            },
+            validator=validate_create_new_opportunity,
+            expect_success=False,
+            expected_error_substring="valid ISO-8601 date",
+        )
+    )
+
+    cases.append(
+        GoldenCase(
+            case_id="CNO-115",
+            task="create_new_opportunity",
+            description="Reject close date with time component",
+            utterance="Assign Zenith Manufacturing Renewal a close date of 2025-12-31T12:00:00Z.",
+            expected_tool="create_new_opportunity",
+            setup=lambda api: base_client(api, "Zenith Manufacturing", "ops@zenithmanufacturing.example"),
+            build_expected_args=lambda context: {
+                "client_id": context["client"].client_id,
+                "name": "Zenith Manufacturing Renewal",
+                "amount": 315_000.0,
+                "stage": "Proposal",
+                "close_date": "2025-12-31T12:00:00Z",
+            },
+            validator=validate_create_new_opportunity,
+            expect_success=False,
+            expected_error_substring="valid ISO-8601 date",
         )
     )
 
@@ -669,7 +952,7 @@ def _create_quote_negative_cases() -> List[GoldenCase]:
             },
             validator=validate_create_quote,
             expect_success=False,
-            expected_error_substring="Input should be",
+            expected_error_substring="must be one of",
         )
     )
 
@@ -688,7 +971,7 @@ def _create_quote_negative_cases() -> List[GoldenCase]:
             },
             validator=validate_create_quote,
             expect_success=False,
-            expected_error_substring="greater than or equal to 0",
+            expected_error_substring="amount must be greater than zero",
         )
     )
 
@@ -726,7 +1009,7 @@ def _create_quote_negative_cases() -> List[GoldenCase]:
             },
             validator=validate_create_quote,
             expect_success=False,
-            expected_error_substring="Input should be",
+            expected_error_substring="must be one of",
         )
     )
 
@@ -745,6 +1028,101 @@ def _create_quote_negative_cases() -> List[GoldenCase]:
             validator=validate_create_quote,
             expect_success=False,
             expected_error_substring=None,
+        )
+    )
+
+    cases.append(
+        GoldenCase(
+            case_id="CQT-106",
+            task="create_quote",
+            description="Reject status value with padded whitespace",
+            utterance="Mark the Altura Networks quote as Sent but with extra spaces in the status.",
+            expected_tool="create_quote",
+            setup=lambda api: base_opportunity(api, "Altura Networks", "info@alturanetworks.example", "Altura Networks Upgrade", 180_000.0),
+            build_expected_args=lambda context: {
+                "opportunity_id": context["opportunity"].opportunity_id,
+                "amount": 180_000.0,
+                "status": " Sent ",
+            },
+            validator=validate_create_quote,
+            expect_success=False,
+            expected_error_substring="must not contain leading or trailing whitespace",
+        )
+    )
+
+    cases.append(
+        GoldenCase(
+            case_id="CQT-107",
+            task="create_quote",
+            description="Reject zero-amount quote",
+            utterance="Raise a draft quote for Beacon Lighting with amount 0.",
+            expected_tool="create_quote",
+            setup=lambda api: base_opportunity(api, "Beacon Lighting", "sales@beaconlighting.example", "Beacon Lighting Revamp", 95_000.0),
+            build_expected_args=lambda context: {
+                "opportunity_id": context["opportunity"].opportunity_id,
+                "amount": 0.0,
+                "status": "Draft",
+            },
+            validator=validate_create_quote,
+            expect_success=False,
+            expected_error_substring="amount must be greater than zero",
+        )
+    )
+
+    cases.append(
+        GoldenCase(
+            case_id="CQT-108",
+            task="create_quote",
+            description="Reject oversized quote amount",
+            utterance="Generate a quote for Circuit Dynamics worth 15 million.",
+            expected_tool="create_quote",
+            setup=lambda api: base_opportunity(api, "Circuit Dynamics", "hello@circuitdynamics.example", "Circuit Dynamics Rollout", 320_000.0),
+            build_expected_args=lambda context: {
+                "opportunity_id": context["opportunity"].opportunity_id,
+                "amount": 15_000_000.0,
+                "status": "Draft",
+            },
+            validator=validate_create_quote,
+            expect_success=False,
+            expected_error_substring="must not exceed",
+        )
+    )
+
+    cases.append(
+        GoldenCase(
+            case_id="CQT-109",
+            task="create_quote",
+            description="Reject string amount with units",
+            utterance="Issue a quote for Crestline Services with amount '120K'.",
+            expected_tool="create_quote",
+            setup=lambda api: base_opportunity(api, "Crestline Services", "team@crestlineservices.example", "Crestline Services Upgrade", 140_000.0),
+            build_expected_args=lambda context: {
+                "opportunity_id": context["opportunity"].opportunity_id,
+                "amount": "120K",
+                "status": "Draft",
+            },
+            validator=validate_create_quote,
+            expect_success=False,
+            expected_error_substring="must be numeric",
+        )
+    )
+
+    cases.append(
+        GoldenCase(
+            case_id="CQT-110",
+            task="create_quote",
+            description="Reject non-string status value",
+            utterance="Attempt to send a quote but status is provided as an integer.",
+            expected_tool="create_quote",
+            setup=lambda api: base_opportunity(api, "Dynamo Labs", "ops@dynamolabs.example", "Dynamo Labs Upgrade", 165_000.0),
+            build_expected_args=lambda context: {
+                "opportunity_id": context["opportunity"].opportunity_id,
+                "amount": 165_000.0,
+                "status": 1,
+            },
+            validator=validate_create_quote,
+            expect_success=False,
+            expected_error_substring="must be provided as a string",
         )
     )
 
@@ -886,6 +1264,101 @@ def _upload_document_negative_cases() -> List[GoldenCase]:
         )
     )
 
+    cases.append(
+        GoldenCase(
+            case_id="UD-104",
+            task="upload_document",
+            description="Reject empty file name",
+            utterance="Upload a document but the file name is blank.",
+            expected_tool="upload_document",
+            setup=client_only,
+            build_expected_args=lambda context: {
+                "entity_type": "Client",
+                "entity_id": context["client"].client_id,
+                "file_name": "",
+            },
+            validator=validate_upload_document,
+            expect_success=False,
+            expected_error_substring="file name must not be blank",
+        )
+    )
+
+    cases.append(
+        GoldenCase(
+            case_id="UD-105",
+            task="upload_document",
+            description="Reject file name with unsupported characters",
+            utterance="Upload plan#.pdf to Nova Manufacturing.",
+            expected_tool="upload_document",
+            setup=client_only,
+            build_expected_args=lambda context: {
+                "entity_type": "Client",
+                "entity_id": context["client"].client_id,
+                "file_name": "plan#.pdf",
+            },
+            validator=validate_upload_document,
+            expect_success=False,
+            expected_error_substring="may only include letters, numbers",
+        )
+    )
+
+    cases.append(
+        GoldenCase(
+            case_id="UD-106",
+            task="upload_document",
+            description="Reject unsupported file extension",
+            utterance="Attach the compiled binary payload.exe to the client record.",
+            expected_tool="upload_document",
+            setup=client_only,
+            build_expected_args=lambda context: {
+                "entity_type": "Client",
+                "entity_id": context["client"].client_id,
+                "file_name": "payload.exe",
+            },
+            validator=validate_upload_document,
+            expect_success=False,
+            expected_error_substring="extension '.exe' is not supported",
+        )
+    )
+
+    cases.append(
+        GoldenCase(
+            case_id="UD-107",
+            task="upload_document",
+            description="Reject file name missing extension",
+            utterance="Upload the proposal file without any extension.",
+            expected_tool="upload_document",
+            setup=client_only,
+            build_expected_args=lambda context: {
+                "entity_type": "Client",
+                "entity_id": context["client"].client_id,
+                "file_name": "proposal",
+            },
+            validator=validate_upload_document,
+            expect_success=False,
+            expected_error_substring="must include an extension",
+        )
+    )
+
+    cases.append(
+        GoldenCase(
+            case_id="UD-108",
+            task="upload_document",
+            description="Reject cross-entity ID mismatch",
+            utterance="Treat a client ID as if it were a quote when uploading.",
+            expected_tool="upload_document",
+            setup=client_only,
+            build_expected_args=lambda context: {
+                "entity_type": "Quote",
+                "entity_id": context["client"].client_id,
+                "file_name": "mislinked.pdf",
+            },
+            validator=validate_upload_document,
+            expect_success=False,
+            expected_error_substring="Quote not found with ID",
+        )
+    )
+
     return cases
 def _modify_opportunity_cases() -> List[GoldenCase]:
     raw_cases = [
@@ -1024,7 +1497,7 @@ def _modify_opportunity_negative_cases() -> List[GoldenCase]:
             validator=validate_modify_opportunity,
             build_validator_kwargs=lambda _, expected: {"updates": expected["updates"]},
             expect_success=False,
-            expected_error_substring="Input should be",
+            expected_error_substring="must be one of",
         )
     )
 
@@ -1043,7 +1516,7 @@ def _modify_opportunity_negative_cases() -> List[GoldenCase]:
             validator=validate_modify_opportunity,
             build_validator_kwargs=lambda _, expected: {"updates": expected["updates"]},
             expect_success=False,
-            expected_error_substring="greater than or equal to 0",
+            expected_error_substring="Probability must be between 1 and 99",
         )
     )
 
@@ -1081,7 +1554,159 @@ def _modify_opportunity_negative_cases() -> List[GoldenCase]:
             validator=validate_modify_opportunity,
             build_validator_kwargs=lambda _, expected: {"updates": expected["updates"]},
             expect_success=False,
-            expected_error_substring="Input should be",
+            expected_error_substring="Probability must be numeric",
+        )
+    )
+
+    cases.append(
+        GoldenCase(
+            case_id="MOP-105",
+            task="modify_opportunity",
+            description="Reject stage update with trailing whitespace",
+            utterance="Move Orbit Media Upgrade to Negotiation with a trailing space.",
+            expected_tool="modify_opportunity",
+            setup=lambda api: base_opportunity(api, "Orbit Media", "contact@orbitmedia.example", "Orbit Media Expansion", 140_000.0, "Qualification"),
+            build_expected_args=lambda context: {
+                "opportunity_id": context["opportunity"].opportunity_id,
+                "updates": {"stage": "Negotiation "},
+            },
+            validator=validate_modify_opportunity,
+            build_validator_kwargs=lambda _, expected: {"updates": expected["updates"]},
+            expect_success=False,
+            expected_error_substring="must not contain leading or trailing whitespace",
+        )
+    )
+
+    cases.append(
+        GoldenCase(
+            case_id="MOP-106",
+            task="modify_opportunity",
+            description="Reject probability updated to 0%",
+            utterance="Drop Parallax Finance Pilot probability to 0%.",
+            expected_tool="modify_opportunity",
+            setup=lambda api: base_opportunity(api, "Parallax Finance", "hello@parallax.example", "Parallax Finance Pilot", 220_000.0, "Qualification"),
+            build_expected_args=lambda context: {
+                "opportunity_id": context["opportunity"].opportunity_id,
+                "updates": {"probability": 0},
+            },
+            validator=validate_modify_opportunity,
+            build_validator_kwargs=lambda _, expected: {"updates": expected["updates"]},
+            expect_success=False,
+            expected_error_substring="Probability must be between 1 and 99",
+        )
+    )
+
+    cases.append(
+        GoldenCase(
+            case_id="MOP-107",
+            task="modify_opportunity",
+            description="Reject probability updated to decimal",
+            utterance="Set Vega Analytics Pilot probability to 42.5%.",
+            expected_tool="modify_opportunity",
+            setup=lambda api: base_opportunity(api, "Vega Analytics", "team@vegaanalytics.example", "Vega Analytics Pilot", 190_000.0, "Qualification"),
+            build_expected_args=lambda context: {
+                "opportunity_id": context["opportunity"].opportunity_id,
+                "updates": {"probability": 42.5},
+            },
+            validator=validate_modify_opportunity,
+            build_validator_kwargs=lambda _, expected: {"updates": expected["updates"]},
+            expect_success=False,
+            expected_error_substring="whole-number percentage",
+        )
+    )
+
+    cases.append(
+        GoldenCase(
+            case_id="MOP-108",
+            task="modify_opportunity",
+            description="Reject amount update to zero",
+            utterance="Set Summit Retail Pilot amount to 0 during negotiation.",
+            expected_tool="modify_opportunity",
+            setup=lambda api: base_opportunity(api, "Summit Retail", "info@summitretail.example", "Summit Retail Pilot", 130_000.0, "Negotiation"),
+            build_expected_args=lambda context: {
+                "opportunity_id": context["opportunity"].opportunity_id,
+                "updates": {"amount": 0.0},
+            },
+            validator=validate_modify_opportunity,
+            build_validator_kwargs=lambda _, expected: {"updates": expected["updates"]},
+            expect_success=False,
+            expected_error_substring="amount must be greater than zero",
+        )
+    )
+
+    cases.append(
+        GoldenCase(
+            case_id="MOP-109",
+            task="modify_opportunity",
+            description="Reject amount update above ceiling",
+            utterance="Increase Titan Aerospace Mega Deal to 18 million after negotiation.",
+            expected_tool="modify_opportunity",
+            setup=lambda api: base_opportunity(api, "Titan Aerospace", "contact@titanaero.example", "Titan Aerospace Mega Deal", 9_500_000.0, "Negotiation"),
+            build_expected_args=lambda context: {
+                "opportunity_id": context["opportunity"].opportunity_id,
+                "updates": {"amount": 18_000_000.0},
+            },
+            validator=validate_modify_opportunity,
+            build_validator_kwargs=lambda _, expected: {"updates": expected["updates"]},
+            expect_success=False,
+            expected_error_substring="must not exceed",
+        )
+    )
+
+    cases.append(
+        GoldenCase(
+            case_id="MOP-110",
+            task="modify_opportunity",
+            description="Reject close date update into the past",
+            utterance="Move Keystone Supplies Expansion close date back to 2022-12-31.",
+            expected_tool="modify_opportunity",
+            setup=lambda api: base_opportunity(api, "Keystone Supplies", "sales@keystonesupplies.example", "Keystone Supplies Expansion", 260_000.0, "Negotiation"),
+            build_expected_args=lambda context: {
+                "opportunity_id": context["opportunity"].opportunity_id,
+                "updates": {"close_date": "2022-12-31"},
+            },
+            validator=validate_modify_opportunity,
+            build_validator_kwargs=lambda _, expected: {"updates": expected["updates"]},
+            expect_success=False,
+            expected_error_substring="Close date must be today or in the future",
+        )
+    )
+
+    cases.append(
+        GoldenCase(
+            case_id="MOP-111",
+            task="modify_opportunity",
+            description="Reject close date with time component",
+            utterance="Set Glider Mobility Pilot close date to 2025-12-31T12:00:00Z.",
+            expected_tool="modify_opportunity",
+            setup=lambda api: base_opportunity(api, "Glider Mobility", "mobility@glider.example", "Glider Mobility Pilot", 140_000.0, "Qualification"),
+            build_expected_args=lambda context: {
+                "opportunity_id": context["opportunity"].opportunity_id,
+                "updates": {"close_date": "2025-12-31T12:00:00Z"},
+            },
+            validator=validate_modify_opportunity,
+            build_validator_kwargs=lambda _, expected: {"updates": expected["updates"]},
+            expect_success=False,
+            expected_error_substring="valid ISO-8601 date",
+        )
+    )
+
+    cases.append(
+        GoldenCase(
+            case_id="MOP-112",
+            task="modify_opportunity",
+            description="Reject stage change on closed opportunity",
+            utterance="Reopen a Closed-Won deal by moving it back to Negotiation.",
+            expected_tool="modify_opportunity",
+            setup=lambda api: base_opportunity(api, "NovaEdge", "team@novaedge.example", "NovaEdge Renewal", 185_000.0, "Closed-Won"),
+            build_expected_args=lambda context: {
+                "opportunity_id": context["opportunity"].opportunity_id,
+                "updates": {"stage": "Negotiation"},
+            },
+            validator=validate_modify_opportunity,
+            build_validator_kwargs=lambda _, expected: {"updates": expected["updates"]},
+            expect_success=False,
+            expected_error_substring="Cannot modify closed opportunity fields",
         )
     )
 

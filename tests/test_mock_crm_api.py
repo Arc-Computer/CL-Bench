@@ -246,24 +246,26 @@ def test_create_new_client_rejects_invalid_email(api: MockCrmApi) -> None:
 
 
 def test_create_new_client_rejects_unknown_status(api: MockCrmApi) -> None:
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValueError) as exc:
         api.create_new_client(
             name="Unknown Status Co",
             email="hello@unknown.example",
             status="Pending",  # not defined in ClientStatus enum
         )
+    assert "Client status must be one of" in str(exc.value)
 
 
 def test_create_new_opportunity_rejects_unknown_stage(
     api: MockCrmApi, client: Client
 ) -> None:
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValueError) as exc:
         api.create_new_opportunity(
             name="Invalid Stage Deal",
             client_id=client.client_id,
             amount=40_000.0,
             stage="Discovery",  # not in OpportunityStage enum
         )
+    assert "Opportunity stage must be one of" in str(exc.value)
 
 
 def test_upload_document_rejects_unknown_entity_type(api: MockCrmApi, client: Client) -> None:
@@ -286,6 +288,6 @@ def test_modify_opportunity_rejects_unknown_field(api: MockCrmApi, opportunity: 
 def test_modify_opportunity_probability_bounds(
     api: MockCrmApi, opportunity: Opportunity, bad_probability: int
 ) -> None:
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValueError) as exc:
         api.modify_opportunity(opportunity.opportunity_id, {"probability": bad_probability})
-
+    assert "Probability must be between 1 and 99" in str(exc.value)

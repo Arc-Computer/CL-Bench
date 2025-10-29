@@ -34,3 +34,4 @@ def test_harness_mock_run(tmp_path) -> None:
     assert len(lines) == len(GOLDEN_CASES)
     record = json.loads(lines[0])
     assert "case_id" in record and "tool_call" in record and "expected_success" in record
+    assert record["verification_mode"] == "database"

@@ -12,6 +12,7 @@ Pydantic entity definitions (with UUID defaults, enum validation, and assignment
 
 ### Golden cases
 71 scripted scenarios for the five highest-impact CRM tasks. They include both happy paths and negative edge cases (enum casing, invalid IDs, missing required fields, probability/date bounds, malformed document uploads) so you can surface real failure modes.
+Recent updates expanded the negative coverage to include whitespace/mixed-case enums, past or malformed close dates, numeric boundary violations (0/100 probabilities, non-numeric amounts), type mismatches, forbidden extra fields, unsafe filenames/extensions, cross-entity ID mix-ups, and edits to closed opportunities.
 
 ### Evaluation harness
 Prompt → tool → validator runner that executes the golden cases against an agent, captures tool calls, diffs CRM state, writes JSONL logs, and can optionally send the suite to a GPT-based “judge” for coverage feedback.

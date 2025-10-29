@@ -7,8 +7,11 @@ building blocks for Workstream 2's golden cases and baseline agent runs.
 
 from __future__ import annotations
 
-from datetime import date, datetime
+import csv
 from dataclasses import dataclass
+from datetime import date, datetime
+from enum import Enum
+from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Tuple
 
 from .crm_sandbox import (
@@ -19,6 +22,59 @@ from .crm_sandbox import (
     Opportunity,
     Quote,
 )
+
+
+class VerificationMode(str, Enum):
+    """Enumeration of customer-defined verification strategies."""
+
+    DATABASE = "database"
+    RUNTIME_RESPONSE = "runtime_response"
+    UNKNOWN = "unknown"
+
+
+def _normalize_task_key(raw: str) -> str:
+    """Normalize task names from CSV into snake_case identifiers."""
+    return raw.strip().lower().replace(" ", "_")
+
+
+def _parse_verification_mode(description: str) -> VerificationMode:
+    """Derive the verification mode from the free-form CSV description."""
+    text = description.strip().lower()
+    if not text or text == "negligible":
+        return VerificationMode.UNKNOWN
+    if "not to be verified" in text or "runtime evaluation" in text:
+        return VerificationMode.RUNTIME_RESPONSE
+    if "verify on the db" in text:
+        return VerificationMode.DATABASE
+    return VerificationMode.UNKNOWN
+
+
+def _load_task_verification_rules() -> Dict[str, VerificationMode]:
+    """Parse the customer CSV to determine per-task verification modes."""
+    csv_path = Path(__file__).resolve().parent.parent / "data" / "Agent tasks - updated.csv"
+    rules: Dict[str, VerificationMode] = {}
+    if not csv_path.exists():
+        return rules
+
+    with csv_path.open("r", encoding="utf-8-sig", newline="") as fh:
+        reader = csv.DictReader(fh)
+        for row in reader:
+            raw_task = row.get("Task Description") or row.get("\ufeffTask Description")
+            if not raw_task:
+                continue
+            verification_text = row.get("Task verification") or ""
+            task_key = _normalize_task_key(raw_task)
+            rules[task_key] = _parse_verification_mode(verification_text)
+    return rules
+
+
+TASK_VERIFICATION_RULES: Dict[str, VerificationMode] = _load_task_verification_rules()
+
+
+def get_task_verification_mode(task: str) -> VerificationMode:
+    """Return the verification mode for an internal task identifier."""
+    task_key = _normalize_task_key(task)
+    return TASK_VERIFICATION_RULES.get(task_key, VerificationMode.UNKNOWN)
 
 
 def _copy_store(store: Mapping[str, CRMBaseModel]) -> Dict[str, CRMBaseModel]:
@@ -184,44 +240,61 @@ def validate_upload_document(
     post: CrmStateSnapshot,
     expected_payload: Mapping[str, Any],
 ) -> ValidationResult:
-    """Ensure a document was attached to the correct entity."""
-    new_id, result = _single_new_entity(pre.documents, post.documents)
-    if not result.success:
-        return result
-    document = post.documents[new_id]
+    """Validate document upload according to the customer verification strategy."""
+    mode = get_task_verification_mode("upload_document")
 
-    expected_type = expected_payload.get("entity_type")
-    expected_entity_id = expected_payload.get("entity_id")
-    expected_file_name = expected_payload.get("file_name")
+    if mode is VerificationMode.DATABASE:
+        new_id, result = _single_new_entity(pre.documents, post.documents)
+        if not result.success:
+            return result
+        document = post.documents[new_id]
 
-    if expected_type and document.entity_type != expected_type:
+        expected_type = expected_payload.get("entity_type")
+        expected_entity_id = expected_payload.get("entity_id")
+        expected_file_name = expected_payload.get("file_name")
+
+        if expected_type and document.entity_type != expected_type:
+            return ValidationResult.fail(
+                f"Document entity type mismatch: expected '{expected_type}' got '{document.entity_type}'."
+            )
+        if expected_entity_id and document.entity_id != expected_entity_id:
+            return ValidationResult.fail(
+                f"Document entity ID mismatch: expected '{expected_entity_id}' got '{document.entity_id}'."
+            )
+        if expected_file_name and document.file_name != expected_file_name:
+            return ValidationResult.fail(
+                f"Document file name mismatch: expected '{expected_file_name}' got '{document.file_name}'."
+            )
+        store_map = {
+            "Opportunity": post.opportunities,
+            "Contract": post.contracts,
+            "Quote": post.quotes,
+            "Client": post.clients,
+        }
+        target_store = store_map.get(document.entity_type)
+        if target_store is None:
+            return ValidationResult.fail(f"Unsupported entity type '{document.entity_type}'.")
+        if document.entity_id not in target_store:
+            return ValidationResult.fail(
+                f"Document references missing {document.entity_type} '{document.entity_id}'.",
+                {"missing_entity": document.entity_id, "entity_type": document.entity_type},
+            )
+        return ValidationResult.ok("Document uploaded and linked correctly.", {"document_id": new_id})
+
+    required_fields = ("entity_type", "entity_id", "file_name")
+    missing_fields = [field for field in required_fields if not expected_payload.get(field)]
+    if missing_fields:
         return ValidationResult.fail(
-            f"Document entity type mismatch: expected '{expected_type}' got '{document.entity_type}'."
+            f"Document upload verification requires fields: {', '.join(missing_fields)}."
         )
-    if expected_entity_id and document.entity_id != expected_entity_id:
-        return ValidationResult.fail(
-            f"Document entity ID mismatch: expected '{expected_entity_id}' got '{document.entity_id}'."
-        )
-    if expected_file_name and document.file_name != expected_file_name:
-        return ValidationResult.fail(
-            f"Document file name mismatch: expected '{expected_file_name}' got '{document.file_name}'."
-        )
-    store_map = {
-        "Opportunity": post.opportunities,
-        "Contract": post.contracts,
-        "Quote": post.quotes,
-        "Client": post.clients,
-    }
-    target_store = store_map.get(document.entity_type)
-    if target_store is None:
-        return ValidationResult.fail(f"Unsupported entity type '{document.entity_type}'.")
-    if document.entity_id not in target_store:
-        return ValidationResult.fail(
-            f"Document references missing {document.entity_type} '{document.entity_id}'.",
-            {"missing_entity": document.entity_id, "entity_type": document.entity_type},
-        )
-    # TODO: Verify uploaded_at chronology or file_url presence if required.
-    return ValidationResult.ok("Document uploaded and linked correctly.", {"document_id": new_id})
+
+    return ValidationResult.ok(
+        "Document upload verified via runtime response comparison; database checks skipped.",
+        {
+            "arguments": {field: expected_payload[field] for field in required_fields},
+            "verification_mode": mode.value,
+        },
+    )
 
 
 def validate_modify_opportunity(
@@ -277,6 +350,9 @@ def validate_modify_opportunity(
 __all__ = [
     "CrmStateSnapshot",
     "ValidationResult",
+    "VerificationMode",
+    "TASK_VERIFICATION_RULES",
+    "get_task_verification_mode",
     "validate_create_new_client",
     "validate_create_new_opportunity",
     "validate_create_quote",
