@@ -37,8 +37,7 @@ Prompt → tool → validator runner that executes the golden cases against an a
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt  # or install deps manually:
-pip install pydantic pytest anthropic openai gymnasium
+pip install -r requirements.txt
 ```
 
 ### Run tests
