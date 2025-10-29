@@ -60,6 +60,30 @@ ALLOWED_TOOLS: Tuple[str, ...] = (
     "modify_opportunity",
 )
 
+DEFAULT_TOOL_HINTS: Mapping[str, str] = {
+    "create_new_client": (
+        "create_new_client(name: str, email: str, status: str, **optional_fields) – "
+        "Status must be exactly one of 'Active', 'Inactive', or 'Prospect'."
+    ),
+    "create_new_opportunity": (
+        "create_new_opportunity(name: str, client_id: str, amount: float, stage: str, **optional_fields) – "
+        "Stage must be one of 'Prospecting', 'Qualification', 'Proposal', 'Negotiation', 'Closed-Won', 'Closed-Lost'."
+    ),
+    "create_quote": (
+        "create_quote(opportunity_id: str, amount: float, status: str, **optional_fields) – "
+        "Quote status options: 'Draft', 'Sent', 'Approved', 'Rejected', 'Canceled'."
+    ),
+    "upload_document": (
+        "upload_document(entity_type: str, entity_id: str, file_name: str, **optional_fields) – "
+        "entity_type must be 'Client', 'Opportunity', 'Quote', or 'Contract'; file names must keep their extension."
+    ),
+    "modify_opportunity": (
+        "modify_opportunity(opportunity_id: str, updates: Dict[str, Any]) – "
+        "Updates may include 'stage', 'probability', 'amount', 'close_date', 'notes', or 'owner'; "
+        "stage/probability must follow the CRM enum rules."
+    ),
+}
+
 _TEXT_CHARSET = string.printable
 
 
@@ -158,6 +182,9 @@ class CrmEnv(gym.Env):
         include_negative_cases: bool = False,
         shaping_enabled: bool = False,
         seed: Optional[int] = None,
+        expose_reference: bool = True,
+        include_tool_hints: bool = False,
+        tool_hint_map: Optional[Mapping[str, str]] = None,
     ) -> None:
         super().__init__()
         if max_steps <= 0:
@@ -165,9 +192,13 @@ class CrmEnv(gym.Env):
         self._max_steps = int(max_steps)
         self._reward_config = reward_config or RewardConfig()
         self._shaping_enabled = shaping_enabled
+        self._expose_reference = bool(expose_reference)
 
         self._np_random, _ = seeding.np_random(seed)
         self._task_manager = task_manager or TaskManager(include_negative_cases=include_negative_cases)
+
+        resolved_hints = dict(tool_hint_map or DEFAULT_TOOL_HINTS)
+        self._tool_hints: Optional[Mapping[str, str]] = resolved_hints if include_tool_hints else None
 
         self.action_space = spaces.Dict(
             {
@@ -235,6 +266,13 @@ class CrmEnv(gym.Env):
         return self._task_sample.case if self._task_sample else None
 
     @property
+    def active_context(self) -> Optional[Mapping[str, Any]]:
+        """Return the setup context associated with the active case."""
+        if not self._task_sample:
+            return None
+        return dict(self._task_sample.context)
+
+    @property
     def history(self) -> Sequence[Mapping[str, Any]]:
         """Return a copy of the per-step telemetry history."""
         return tuple(self._history)
@@ -278,7 +316,7 @@ class CrmEnv(gym.Env):
 
         observation = self._build_observation()
         info = self._build_info(validator_result=None, verification_mode=get_task_verification_mode(case.task))
-        info["expected_arguments"] = expected_args.copy()
+        info["expected_arguments"] = expected_args.copy() if self._expose_reference else None
         info["expected_tool_index"] = ALLOWED_TOOLS.index(case.expected_tool)
         info["expected_tool"] = case.expected_tool
         info["case_id"] = case.case_id
@@ -286,6 +324,8 @@ class CrmEnv(gym.Env):
         info["utterance"] = case.utterance
         info["description"] = case.description
         info["expected_success"] = case.expect_success
+        if self._tool_hints is not None:
+            info["tool_hints"] = dict(self._tool_hints)
 
         return observation, info
 
@@ -444,13 +484,15 @@ class CrmEnv(gym.Env):
             raise RuntimeError("Cannot build observation without active task.")
         case = self._task_sample.case
         summary = self._summarize_crm()
+        expected_args = self._task_sample.expected_args if self._expose_reference else {}
+
         observation = {
             "task": {
                 "case_id": case.case_id,
                 "task": case.task,
                 "description": case.description,
                 "expected_tool": case.expected_tool,
-                "expected_arguments": json.dumps(self._task_sample.expected_args, sort_keys=True),
+                "expected_arguments": json.dumps(expected_args, sort_keys=True),
             },
             "last_tool": dict(self._last_result),
             "crm_summary": {
@@ -487,6 +529,8 @@ class CrmEnv(gym.Env):
             "validator_details": dict(validator_result.details) if validator_result and validator_result.details else None,
             "expected_success": self._task_sample.case.expect_success,
         }
+        if self._tool_hints is not None:
+            info["tool_hints"] = dict(self._tool_hints)
         return info
 
     @staticmethod

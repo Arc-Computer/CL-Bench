@@ -177,19 +177,24 @@ class OpenAIAgent:
 
 TASK_TOOL_BLURBS = {
     "create_new_client": (
-        "Call `create_new_client(name: str, email: str, status: str, **optional_fields)` with the appropriate values."
+        "Call `create_new_client(name: str, email: str, status: str, **optional_fields)` and ensure status is exactly "
+        "one of 'Active', 'Inactive', or 'Prospect'."
     ),
     "create_new_opportunity": (
-        "Call `create_new_opportunity(name: str, client_id: str, amount: float, stage: str, **optional_fields)`."
+        "Call `create_new_opportunity(name: str, client_id: str, amount: float, stage: str, **optional_fields)` with stage "
+        "set to one of 'Prospecting', 'Qualification', 'Proposal', 'Negotiation', 'Closed-Won', or 'Closed-Lost'."
     ),
     "create_quote": (
-        "Call `create_quote(opportunity_id: str, amount: float, status: str, **optional_fields)` to generate the quote."
+        "Call `create_quote(opportunity_id: str, amount: float, status: str, **optional_fields)` using a status from "
+        "'Draft', 'Sent', 'Approved', 'Rejected', or 'Canceled'."
     ),
     "upload_document": (
-        "Call `upload_document(entity_type: str, entity_id: str, file_name: str, **optional_fields)` to attach the document."
+        "Call `upload_document(entity_type: str, entity_id: str, file_name: str, **optional_fields)` and pass entity_type as "
+        "'Client', 'Opportunity', 'Quote', or 'Contract'; keep the file extension in the name."
     ),
     "modify_opportunity": (
-        "Call `modify_opportunity(opportunity_id: str, updates: Dict[str, Any])`, supplying the fields to change."
+        "Call `modify_opportunity(opportunity_id: str, updates: Dict[str, Any])`, using update keys such as 'stage', 'probability', "
+        "'amount', 'close_date', 'notes', or 'owner', and respect the CRM enum rules for those fields."
     ),
 }
 
