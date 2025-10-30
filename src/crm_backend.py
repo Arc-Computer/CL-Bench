@@ -265,7 +265,11 @@ class PostgresCrmBackend:
         if not assignments:
             return opportunity
 
-        set_clause = ", ".join(f"{field} = %({field})s" for field in assignments)
+        allowed_columns = {"name", "stage", "amount", "close_date", "owner", "probability", "notes"}
+        invalid = set(assignments) - allowed_columns
+        if invalid:
+            raise ValueError(f"Unsupported opportunity fields for update: {sorted(invalid)}")
+        set_clause = ", ".join(f"{field} = %({field})s" for field in assignments.keys())
         params = dict(assignments)
         params["opportunity_id"] = opportunity_id
         self._execute(f"UPDATE opportunities SET {set_clause} WHERE opportunity_id = %(opportunity_id)s;", params)
@@ -398,6 +402,17 @@ class PostgresCrmBackend:
 
     def summarize_counts(self) -> Dict[str, int]:
         def _count(table: str) -> int:
+            allowed_tables = {
+                "clients",
+                "contacts",
+                "opportunities",
+                "quotes",
+                "contracts",
+                "documents",
+                "notes",
+            }
+            if table not in allowed_tables:
+                raise ValueError(f"Invalid table name: {table}")
             record = self._fetchone(f"SELECT COUNT(*) AS count FROM {table};", {})
             return int(record["count"]) if record else 0
 
@@ -416,14 +431,15 @@ class PostgresCrmBackend:
     # ------------------------------------------------------------------
 
     def _entity_exists(self, entity_type: DocumentEntityType, entity_id: str) -> bool:
-        table = {
-            DocumentEntityType.OPPORTUNITY: "opportunities",
-            DocumentEntityType.CONTRACT: "contracts",
-            DocumentEntityType.QUOTE: "quotes",
-            DocumentEntityType.CLIENT: "clients",
-        }[entity_type]
+        table_map = {
+            DocumentEntityType.OPPORTUNITY: ("opportunities", "opportunity_id"),
+            DocumentEntityType.CONTRACT: ("contracts", "contract_id"),
+            DocumentEntityType.QUOTE: ("quotes", "quote_id"),
+            DocumentEntityType.CLIENT: ("clients", "client_id"),
+        }
+        table, pk_column = table_map[entity_type]
         record = self._fetchone(
-            f"SELECT 1 FROM {table} WHERE {table[:-1]}_id = %(entity_id)s LIMIT 1;",
+            f"SELECT 1 FROM {table} WHERE {pk_column} = %(entity_id)s LIMIT 1;",
             {"entity_id": entity_id},
         )
         return bool(record)

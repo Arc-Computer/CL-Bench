@@ -254,7 +254,9 @@ class CrmEnv(gym.Env):
         if backend_mode not in {"mock", "postgres"}:
             raise ValueError("backend must be either 'mock' or 'postgres'.")
         self._backend_mode = backend_mode
-        self._db_config = db_config or (DatabaseConfig.from_env() if backend_mode == "postgres" else None)
+        self._db_config = db_config
+        if backend_mode == "postgres" and self._db_config is None:
+            self._db_config = DatabaseConfig.from_env()
         self._db_backend: Optional[PostgresCrmBackend] = None
         if reset_database_each_episode is None:
             reset_database_each_episode = backend_mode == "postgres"
@@ -431,7 +433,6 @@ class CrmEnv(gym.Env):
             else:
                 if self._using_database and savepoint_name:
                     backend.rollback_to_savepoint(savepoint_name)
-                    post_snapshot = CrmStateSnapshot.from_backend(backend)
                 self._restore_snapshot(self._pre_snapshot)
         else:
             validator_result = ValidationResult.fail(action_decoding_error or "Invalid tool selection.")

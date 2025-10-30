@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Generator
 
 import pytest
@@ -52,7 +52,7 @@ def test_create_and_modify_entities(pg_backend: PostgresCrmBackend) -> None:
         client_id=client.client_id,
         opportunity_id=opportunity.opportunity_id,
         status="Active",
-        start_date=datetime.utcnow().date(),
+        start_date=datetime.now(timezone.utc).date(),
     )
     document = pg_backend.upload_document(
         entity_type="Opportunity",
