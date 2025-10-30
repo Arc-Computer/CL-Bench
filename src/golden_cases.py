@@ -16,7 +16,7 @@ from .validators import (
     validate_upload_document,
 )
 
-SetupFunc = Callable[[MockCrmApi], Dict[str, Any]]
+SetupFunc = Callable[[Any], Dict[str, Any]]
 BuildArgsFunc = Callable[[Dict[str, Any]], Dict[str, Any]]
 BuildValidatorKwargsFunc = Callable[[Dict[str, Any], Dict[str, Any]], Dict[str, Any]]
 ValidatorFunc = Callable[[CrmStateSnapshot, CrmStateSnapshot, Mapping[str, Any]], ValidationResult]
@@ -51,32 +51,31 @@ class GoldenCase:
 # ---------------------------------------------------------------------------
 
 
-def _seed_client(api: MockCrmApi, **client_kwargs: Any) -> Dict[str, Any]:
-    client = api.create_new_client(**client_kwargs)
+def _seed_client(api: Any, **client_kwargs: Any) -> Dict[str, Any]:
+    client = api.ensure_client(**client_kwargs)
     return {"client": client}
 
 
-def _ensure_opportunity(api: MockCrmApi, context: Dict[str, Any], **opp_kwargs: Any) -> Dict[str, Any]:
+def _ensure_opportunity(api: Any, context: Dict[str, Any], **opp_kwargs: Any) -> Dict[str, Any]:
     opportunity = api.create_new_opportunity(client_id=context["client"].client_id, **opp_kwargs)
     updated = dict(context)
     updated["opportunity"] = opportunity
     return updated
 
 
-def _ensure_quote(api: MockCrmApi, context: Dict[str, Any], **quote_kwargs: Any) -> Dict[str, Any]:
+def _ensure_quote(api: Any, context: Dict[str, Any], **quote_kwargs: Any) -> Dict[str, Any]:
     quote = api.create_quote(opportunity_id=context["opportunity"].opportunity_id, **quote_kwargs)
     updated = dict(context)
     updated["quote"] = quote
     return updated
 
 
-def _ensure_contract(api: MockCrmApi, context: Dict[str, Any], **contract_kwargs: Any) -> Dict[str, Any]:
-    contract = Contract(
+def _ensure_contract(api: Any, context: Dict[str, Any], **contract_kwargs: Any) -> Dict[str, Any]:
+    contract = api.create_contract(
         client_id=context["client"].client_id,
         opportunity_id=context["opportunity"].opportunity_id,
         **contract_kwargs,
     )
-    api.contracts[contract.contract_id] = contract
     updated = dict(context)
     updated["contract"] = contract
     return updated

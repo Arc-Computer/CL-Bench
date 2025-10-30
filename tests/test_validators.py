@@ -24,7 +24,7 @@ def api() -> MockCrmApi:
 
 
 def snapshot(api: MockCrmApi) -> CrmStateSnapshot:
-    return CrmStateSnapshot.from_api(api)
+    return CrmStateSnapshot.from_backend(api)
 
 
 def test_validate_create_new_client_success(api: MockCrmApi) -> None:

@@ -47,6 +47,7 @@ try:  # Gymnasium re-exports seeding utilities from gym.
 except ImportError:  # pragma: no cover - legacy gym fallback.
     from gym.utils import seeding  # type: ignore
 
+from .crm_backend import DatabaseConfig, PostgresCrmBackend
 from .crm_sandbox import MockCrmApi
 from .golden_cases import GOLDEN_CASES, GoldenCase
 from .validators import CrmStateSnapshot, ValidationResult, VerificationMode, get_task_verification_mode
@@ -185,6 +186,9 @@ class CrmEnv(gym.Env):
         expose_reference: bool = True,
         include_tool_hints: bool = False,
         tool_hint_map: Optional[Mapping[str, str]] = None,
+        backend: str = "mock",
+        db_config: Optional[DatabaseConfig] = None,
+        reset_database_each_episode: Optional[bool] = None,
     ) -> None:
         super().__init__()
         if max_steps <= 0:
@@ -246,7 +250,19 @@ class CrmEnv(gym.Env):
             }
         )
 
-        self._api: Optional[MockCrmApi] = None
+        backend_mode = backend.lower().strip()
+        if backend_mode not in {"mock", "postgres"}:
+            raise ValueError("backend must be either 'mock' or 'postgres'.")
+        self._backend_mode = backend_mode
+        self._db_config = db_config
+        if backend_mode == "postgres" and self._db_config is None:
+            self._db_config = DatabaseConfig.from_env()
+        self._db_backend: Optional[PostgresCrmBackend] = None
+        if reset_database_each_episode is None:
+            reset_database_each_episode = backend_mode == "postgres"
+        self._reset_database_each_episode = bool(reset_database_each_episode)
+
+        self._backend: Optional[Any] = None
         self._task_sample: Optional[TaskSample] = None
         self._pre_snapshot: Optional[CrmStateSnapshot] = None
         self._step_count = 0
@@ -295,7 +311,9 @@ class CrmEnv(gym.Env):
         if self._np_random is None:
             self.seed(None)
 
-        self._api = MockCrmApi()
+        self._teardown_backend()
+        backend = self._setup_backend()
+        self._backend = backend
         self._step_count = 0
         self._terminated = False
         self._truncated = False
@@ -309,10 +327,10 @@ class CrmEnv(gym.Env):
             task=options.get("task"),
         )
 
-        context = case.setup(self._api)
+        context = case.setup(backend)
         expected_args = case.expected_args(context)
         self._task_sample = TaskSample(case=case, context=context, expected_args=expected_args)
-        self._pre_snapshot = CrmStateSnapshot.from_api(self._api)
+        self._pre_snapshot = CrmStateSnapshot.from_backend(backend)
 
         observation = self._build_observation()
         info = self._build_info(validator_result=None, verification_mode=get_task_verification_mode(case.task))
@@ -337,7 +355,8 @@ class CrmEnv(gym.Env):
         if self._terminated or self._truncated:
             raise RuntimeError("Episode has already ended. Call reset() before step().")
 
-        if not self._api or not self._task_sample or not self._pre_snapshot:
+        backend = self._backend
+        if not backend or not self._task_sample or not self._pre_snapshot:
             raise RuntimeError("Environment not initialized. Call reset() first.")
 
         self._step_count += 1
@@ -361,6 +380,7 @@ class CrmEnv(gym.Env):
         truncated = False
         tool_correct = False
         execution_success = False
+        savepoint_name: Optional[str] = None
 
         if action_decoding_error is None and tool_name:
             tool_correct = tool_name == case.expected_tool
@@ -370,8 +390,10 @@ class CrmEnv(gym.Env):
                 )
                 post_snapshot = self._pre_snapshot
             else:
-                execution_result = self._execute_tool(self._api, tool_name, arguments)
-                post_snapshot = CrmStateSnapshot.from_api(self._api)
+                if self._using_database:
+                    savepoint_name = backend.create_savepoint()
+                execution_result = self._execute_tool(backend, tool_name, arguments)
+                post_snapshot = CrmStateSnapshot.from_backend(backend)
                 execution_success = execution_result.success
 
             if case.expect_success:
@@ -405,8 +427,12 @@ class CrmEnv(gym.Env):
                     terminated = success
 
             if execution_result.success and tool_correct:
+                if self._using_database and savepoint_name:
+                    backend.release_savepoint(savepoint_name)
                 self._pre_snapshot = post_snapshot
             else:
+                if self._using_database and savepoint_name:
+                    backend.rollback_to_savepoint(savepoint_name)
                 self._restore_snapshot(self._pre_snapshot)
         else:
             validator_result = ValidationResult.fail(action_decoding_error or "Invalid tool selection.")
@@ -474,7 +500,11 @@ class CrmEnv(gym.Env):
 
     def close(self) -> None:  # noqa: D401 - interface method
         """Release environment resources (no-op for in-memory sandbox)."""
-        self._api = None
+        self._teardown_backend()
+        self._backend = None
+        if self._backend_mode == "postgres" and self._db_backend:
+            self._db_backend.close()
+            self._db_backend = None
         self._task_sample = None
         self._pre_snapshot = None
         self._history = []
@@ -537,32 +567,60 @@ class CrmEnv(gym.Env):
     def _neutral_last_result() -> Dict[str, Any]:
         return {"tool": "", "tool_index": -1, "arguments": "{}", "success": 0, "error": ""}
 
+    def _setup_backend(self) -> Any:
+        if self._backend_mode == "postgres":
+            if not self._db_backend:
+                self._db_backend = PostgresCrmBackend(self._db_config)
+            self._db_backend.begin_session(reset=self._reset_database_each_episode)
+            return self._db_backend
+        return MockCrmApi()
+
+    def _teardown_backend(self) -> None:
+        if self._backend_mode == "postgres" and self._db_backend:
+            self._db_backend.rollback_session()
+
+    @property
+    def _using_database(self) -> bool:
+        return self._backend_mode == "postgres"
+
     def _summarize_crm(self) -> Dict[str, int]:
-        api = self._api or MockCrmApi()
+        backend = self._backend
+        if not backend:
+            return {
+                "clients": 0,
+                "contacts": 0,
+                "opportunities": 0,
+                "quotes": 0,
+                "contracts": 0,
+                "documents": 0,
+                "notes": 0,
+            }
+        counts = backend.summarize_counts()
         return {
-            "clients": len(api.clients),
-            "contacts": len(api.contacts),
-            "opportunities": len(api.opportunities),
-            "quotes": len(api.quotes),
-            "contracts": len(api.contracts),
-            "documents": len(api.documents),
-            "notes": len(api.notes),
+            "clients": int(counts.get("clients", 0)),
+            "contacts": int(counts.get("contacts", 0)),
+            "opportunities": int(counts.get("opportunities", 0)),
+            "quotes": int(counts.get("quotes", 0)),
+            "contracts": int(counts.get("contracts", 0)),
+            "documents": int(counts.get("documents", 0)),
+            "notes": int(counts.get("notes", 0)),
         }
 
     def _restore_snapshot(self, snapshot: CrmStateSnapshot) -> None:
-        if not self._api:
+        backend = self._backend
+        if not backend or self._using_database:
             return
 
         def _deep_copy(store: Mapping[str, Any]) -> Dict[str, Any]:
             return {key: value.model_copy(deep=True) for key, value in store.items()}
 
-        self._api.clients = _deep_copy(snapshot.clients)
-        self._api.contacts = _deep_copy(snapshot.contacts)
-        self._api.opportunities = _deep_copy(snapshot.opportunities)
-        self._api.quotes = _deep_copy(snapshot.quotes)
-        self._api.contracts = _deep_copy(snapshot.contracts)
-        self._api.documents = _deep_copy(snapshot.documents)
-        self._api.notes = _deep_copy(snapshot.notes)
+        backend.clients = _deep_copy(snapshot.clients)
+        backend.contacts = _deep_copy(snapshot.contacts)
+        backend.opportunities = _deep_copy(snapshot.opportunities)
+        backend.quotes = _deep_copy(snapshot.quotes)
+        backend.contracts = _deep_copy(snapshot.contracts)
+        backend.documents = _deep_copy(snapshot.documents)
+        backend.notes = _deep_copy(snapshot.notes)
 
     def _decode_action(
         self,
@@ -630,7 +688,7 @@ class CrmEnv(gym.Env):
         return tool_name, arguments, tool_index
 
     @staticmethod
-    def _execute_tool(api: MockCrmApi, tool_name: str, arguments: Mapping[str, Any]) -> ValidationResult:
+    def _execute_tool(api: Any, tool_name: str, arguments: Mapping[str, Any]) -> ValidationResult:
         try:
             tool = getattr(api, tool_name)
         except AttributeError:

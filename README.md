@@ -84,10 +84,15 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest
    from pathlib import Path
    from src.harness import BaselineHarness, ClaudeAgent
 
-   harness = BaselineHarness(agent=ClaudeAgent(), log_path=Path("artifacts/baseline_claude.jsonl"))
+   harness = BaselineHarness(
+       agent=ClaudeAgent(),
+       log_path=Path("artifacts/baseline_claude.jsonl"),
+       backend="postgres",  # pass "mock" to stay with the in-memory sandbox
+   )
    harness.run()
    ```
    The harness will replay all golden cases, diff CRM state via validators, and write one JSONL record per scenario containing the tool call, validator outcome, and expectations.
+   When `backend="postgres"`, the harness connects to the Dockerized database (make sure `docker compose up -d` is running). Each case executes inside a fresh transaction so the canonical seed data stays intact between runs.
 
 ### Programmatic sandbox usage
 ```python
@@ -115,9 +120,10 @@ All relationship and enum rules are enforced automatically; invalid calls raise 
 
 ## Reinforcement Learning Environment
 
-- `from src.crm_env import CrmEnv`: wraps `MockCrmApi` + validators as a Gymnasium environment.
+- `from src.crm_env import CrmEnv`: wraps the CRM backend (mock or Postgres) + validators as a Gymnasium environment.
 - Observations include task metadata, last tool outcome, and compact CRM state summaries. Set `expose_reference=False` to hide ground-truth arguments during training and rely on natural-language reasoning instead.
 - Actions combine a discrete tool index and JSON arguments; `CrmEnv.step` also accepts structured dictionaries for convenience.
+- Instantiate against Postgres with `CrmEnv(backend="postgres", reset_database_each_episode=True)`. The environment truncates tables at the start of each episode, runs the case inside a transaction, and rolls back afterwards so repeated episodes stay deterministic.
 - Optional prompt aids: pass `include_tool_hints=True` to surface signature-style descriptions for each tool.
 - Default reward is binary 0/1; optional shaping hooks are exposed via `RewardConfig`.
 - See `docs/crm_env.md` for the full schema plus rollout examples (`python examples/run_crm_env.py`). For a live model demo (OpenAI, Anthropic, or mock), run `python examples/run_crm_env_with_llm.py --provider openai --model gpt-4.1 --episodes 5` and inspect the logged telemetry.

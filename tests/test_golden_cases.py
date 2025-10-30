@@ -39,13 +39,13 @@ def test_each_case_validates() -> None:
         context = case.setup(api)
         expected_args = case.expected_args(context)
 
-        pre = CrmStateSnapshot.from_api(api)
+        pre = CrmStateSnapshot.from_backend(api)
         try:
             execution_result = BaselineHarness._execute_tool(api, ToolCall(case.expected_tool, expected_args, json.dumps(expected_args)))
         except Exception as exc:
             pytest.fail(f"{case.case_id} raised unexpected exception: {exc}")
 
-        post = CrmStateSnapshot.from_api(api)
+        post = CrmStateSnapshot.from_backend(api)
 
         if case.expect_success:
             assert execution_result.success, f"{case.case_id} expected success but tool failed: {execution_result.message}"
