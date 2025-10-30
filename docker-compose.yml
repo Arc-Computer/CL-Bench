@@ -1,0 +1,50 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: arc_crm_postgres
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    environment:
+      POSTGRES_DB: "${POSTGRES_DB:-crm_sandbox}"
+      POSTGRES_USER: "${POSTGRES_USER:-crm_app}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-crm_password}"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./sql:/app/sql:ro
+      - ./docker/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d ${POSTGRES_DB:-crm_sandbox} -U ${POSTGRES_USER:-crm_app}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - crm-net
+    restart: unless-stopped
+
+  pgadmin:
+    image: dpage/pgadmin4:8.8
+    container_name: arc_crm_pgadmin
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${PGADMIN_PORT:-8080}:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: "${PGADMIN_DEFAULT_EMAIL:-admin@example.com}"
+      PGADMIN_DEFAULT_PASSWORD: "${PGADMIN_DEFAULT_PASSWORD:-pgadmin}"
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+    networks:
+      - crm-net
+    restart: unless-stopped
+
+volumes:
+  db-data:
+  pgadmin-data:
+
+networks:
+  crm-net:
+    driver: bridge
