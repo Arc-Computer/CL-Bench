@@ -40,6 +40,38 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+### Start the Postgres CRM backend
+1. Copy the defaults and adjust as needed:
+   ```bash
+   cp .env.example .env
+   ```
+2. Launch the services (Docker Desktop must be running):
+   ```bash
+   docker compose up -d
+   ```
+   The Postgres container exposes port `${DB_PORT:-5432}` and automatically runs the schema + seed scripts found in `sql/`.
+3. Verify the database is ready:
+   ```bash
+   docker compose ps
+   ```
+   Once the `db` service is `healthy`, you can connect via `psql`, your IDE, or `pgAdmin` at `http://localhost:${PGADMIN_PORT:-8080}`.
+4. Re-run the seed data at any time (idempotent):
+   ```bash
+   ./scripts/db_seed.sh
+   ```
+
+Default credentials (safe for local dev) live in `.env.example`:
+
+| Variable | Value |
+| --- | --- |
+| `DB_HOST` | `localhost` |
+| `DB_PORT` | `5432` |
+| `DB_NAME` | `crm_sandbox` |
+| `DB_USER` | `crm_app` |
+| `DB_PASSWORD` | `crm_password` |
+
+> This Dockerized backend delivers the first milestone in Phase A of `CONTINUAL_LEARNING_PLAN.md`, giving the upcoming Atlas integrations a realistic datastore to target. Issue #9 will wire the runtime tools to this database while keeping the existing `MockCrmApi` for fast unit tests.
+
 ### Run tests
 ```bash
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest

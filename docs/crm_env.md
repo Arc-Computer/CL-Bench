@@ -9,6 +9,17 @@ The CRM benchmark now exposes a Gymnasium-compatible environment so continual-le
 > pip install gymnasium
 > ```
 
+## Postgres Sandbox Deployment
+
+Phase A of `CONTINUAL_LEARNING_PLAN.md` introduces a Dockerized Postgres backend that mirrors the in-memory schema. Bring it up alongside the environment to exercise agents against a realistic datastore:
+
+1. `cp .env.example .env` – provides `crm_app/ crm_password` defaults and optional pgAdmin credentials.
+2. `docker compose up -d` – starts Postgres (`db`) plus pgAdmin (`pgadmin`). On first boot the containers run `sql/01_schema.sql` and `sql/02_seed_data.sql`, loading the clients, opportunities, quotes, documents, and notes referenced in the golden cases' happy paths.
+3. `./scripts/db_seed.sh` – re-apply the seed data after resets; uses the same environment variables as Compose.
+4. Connect via `psql postgresql://crm_app:crm_password@localhost:5432/crm_sandbox` or browse `http://localhost:8080` (default pgAdmin).
+
+Issue #9 will adapt the tool layer (`MockCrmApi` replacements) to read/write this database while tests continue to rely on the in-memory mock for speed.
+
 ## Observation Schema
 
 Each observation is a dictionary that conforms to `CrmEnv.observation_space`:
