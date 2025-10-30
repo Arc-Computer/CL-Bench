@@ -351,6 +351,16 @@ class MockCrmApi:
         self.documents: Dict[str, Document] = {}
         self.notes: Dict[str, Note] = {}
 
+    def ensure_client(self, **client_kwargs: Any) -> Client:
+        """Return existing client by email (case-insensitive) or create it."""
+        email = client_kwargs.get("email")
+        if email:
+            normalized_email = email.lower()
+            for existing in self.clients.values():
+                if existing.email and existing.email.lower() == normalized_email:
+                    return existing
+        return self.create_new_client(**client_kwargs)
+
     def create_new_client(self, name: str, email: str, status: str, **kwargs: Any) -> Client:
         """Create a client record while relying on schema validation."""
         # Reject duplicates before instantiating the model.
@@ -390,6 +400,31 @@ class MockCrmApi:
         _validate_close_date_not_past(opportunity.close_date)
         self.opportunities[opportunity.opportunity_id] = opportunity
         return opportunity
+
+    def create_contract(
+        self,
+        client_id: str,
+        opportunity_id: Optional[str] = None,
+        **kwargs: Any,
+    ) -> Contract:
+        """Create a contract aligned with existing entities (used for setup)."""
+        if client_id not in self.clients:
+            raise ValueError(f"Client not found with ID '{client_id}'.")
+        if opportunity_id and opportunity_id not in self.opportunities:
+            raise ValueError(f"Opportunity not found with ID '{opportunity_id}'.")
+        status_value = _validate_enum_value(
+            kwargs.pop("status", ContractStatus.PENDING.value),
+            ContractStatus,
+            "Contract status",
+        )
+        contract = Contract(
+            client_id=client_id,
+            opportunity_id=opportunity_id,
+            status=status_value,
+            **kwargs,
+        )
+        self.contracts[contract.contract_id] = contract
+        return contract
 
     def create_quote(self, opportunity_id: str, amount: float, status: str, **kwargs: Any) -> Quote:
         """Create a quote that is strictly tied to an existing opportunity."""
@@ -459,3 +494,39 @@ class MockCrmApi:
         if entity_type is DocumentEntityType.CLIENT:
             return self.clients
         raise ValueError(f"Unsupported entity type '{entity_type}'.")
+
+    # ------------------------------------------------------------------
+    # Helpers for database parity
+    # ------------------------------------------------------------------
+
+    def list_clients(self) -> Dict[str, Client]:
+        return dict(self.clients)
+
+    def list_contacts(self) -> Dict[str, Contact]:
+        return dict(self.contacts)
+
+    def list_opportunities(self) -> Dict[str, Opportunity]:
+        return dict(self.opportunities)
+
+    def list_quotes(self) -> Dict[str, Quote]:
+        return dict(self.quotes)
+
+    def list_contracts(self) -> Dict[str, Contract]:
+        return dict(self.contracts)
+
+    def list_documents(self) -> Dict[str, Document]:
+        return dict(self.documents)
+
+    def list_notes(self) -> Dict[str, Note]:
+        return dict(self.notes)
+
+    def summarize_counts(self) -> Dict[str, int]:
+        return {
+            "clients": len(self.clients),
+            "contacts": len(self.contacts),
+            "opportunities": len(self.opportunities),
+            "quotes": len(self.quotes),
+            "contracts": len(self.contracts),
+            "documents": len(self.documents),
+            "notes": len(self.notes),
+        }

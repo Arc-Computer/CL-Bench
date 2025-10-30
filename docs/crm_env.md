@@ -18,6 +18,14 @@ Phase A of `CONTINUAL_LEARNING_PLAN.md` introduces a Dockerized Postgres backen
 3. `./scripts/db_seed.sh` – re-apply the seed data after resets; uses the same environment variables as Compose.
 4. Connect via `psql postgresql://crm_app:crm_password@localhost:5432/crm_sandbox` or browse `http://localhost:8080` (default pgAdmin).
 
+To exercise the Gym environment against Postgres instead of the in-memory mock, instantiate it with:
+
+```python
+env = CrmEnv(backend="postgres", reset_database_each_episode=True)
+```
+
+Each episode truncates the CRM tables inside a transaction, executes the sampled golden case, and rolls back—so you get deterministic runs while keeping the seeded data available for ad-hoc inspection.
+
 Issue #9 will adapt the tool layer (`MockCrmApi` replacements) to read/write this database while tests continue to rely on the in-memory mock for speed.
 
 ## Observation Schema

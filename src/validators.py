@@ -107,6 +107,22 @@ class CrmStateSnapshot:
             notes=_copy_store(api.notes),
         )
 
+    @classmethod
+    def from_backend(cls, backend: Any) -> "CrmStateSnapshot":
+        """Capture a snapshot from any backend exposing list_* accessors."""
+        def _copy(models: Mapping[str, CRMBaseModel]) -> Dict[str, CRMBaseModel]:
+            return {entity_id: model.model_copy(deep=True) for entity_id, model in models.items()}
+
+        return cls(
+            clients=_copy(backend.list_clients()),
+            contacts=_copy(backend.list_contacts()),
+            opportunities=_copy(backend.list_opportunities()),
+            quotes=_copy(backend.list_quotes()),
+            contracts=_copy(backend.list_contracts()),
+            documents=_copy(backend.list_documents()),
+            notes=_copy(backend.list_notes()),
+        )
+
 
 @dataclass(frozen=True)
 class ValidationResult:

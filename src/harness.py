@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Protocol, Sequence, Tuple, Union
 
+from .crm_backend import DatabaseConfig, PostgresCrmBackend
 from .crm_sandbox import MockCrmApi
 from .golden_cases import GOLDEN_CASES, GoldenCase
 from .validators import CrmStateSnapshot, ValidationResult, VerificationMode, get_task_verification_mode
@@ -298,11 +299,26 @@ class BaselineHarness:
         agent: Agent,
         log_path: Union[str, Path],
         cases: Optional[Sequence[GoldenCase]] = None,
+        backend: str = "mock",
+        db_config: Optional[DatabaseConfig] = None,
+        reset_database_each_case: Optional[bool] = None,
     ) -> None:
         self.agent = agent
         self.log_path = Path(log_path)
         self.cases: Sequence[GoldenCase] = cases or GOLDEN_CASES
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
+
+        backend_mode = backend.lower().strip()
+        if backend_mode not in {"mock", "postgres"}:
+            raise ValueError("backend must be either 'mock' or 'postgres'.")
+        self._backend_mode = backend_mode
+        if backend_mode == "postgres":
+            self._db_backend = PostgresCrmBackend(db_config or DatabaseConfig.from_env())
+        else:
+            self._db_backend = None
+        if reset_database_each_case is None:
+            reset_database_each_case = backend_mode == "postgres"
+        self._reset_database_each_case = bool(reset_database_each_case)
 
     def run(self, mode: str = "agent") -> HarnessResult:
         """Run the selected cases; `mode='mock'` bypasses the agent."""
@@ -312,88 +328,99 @@ class BaselineHarness:
 
         with self.log_path.open("w", encoding="utf-8") as log_file:
             for case in self.cases:
-                api = MockCrmApi()
-                context = case.setup(api)
-
-                expected_args = case.expected_args(context)
-                prompt = build_prompt(case, context)
-
-                if mode == "mock":
-                    tool_call = ToolCall(case.expected_tool, expected_args, raw_response=json.dumps(expected_args))
+                if self._backend_mode == "postgres":
+                    if not self._db_backend:
+                        raise RuntimeError("Postgres backend not initialized.")
+                    backend = self._db_backend
+                    backend.begin_session(reset=self._reset_database_each_case)
                 else:
-                    tool_call = self.agent.tool_call(case, prompt)
+                    backend = MockCrmApi()
 
-                pre = CrmStateSnapshot.from_api(api)
-                execution_result = self._execute_tool(api, tool_call)
-                post = CrmStateSnapshot.from_api(api)
+                try:
+                    context = case.setup(backend)
 
-                tool_correct = tool_call.tool_name == case.expected_tool
-                validator_details: Optional[Dict[str, Any]]
+                    expected_args = case.expected_args(context)
+                    prompt = build_prompt(case, context)
 
-                if case.expect_success:
-                    if execution_result.success and tool_correct:
-                        validator_kwargs = case.validator_kwargs(context, tool_call.arguments)
-                        validation = case.validator(pre, post, tool_call.arguments, **validator_kwargs)
-                        case_passed = validation.success
-                        message = validation.message if validation.success else validation.message
-                        validator_details = validation.details
+                    if mode == "mock":
+                        tool_call = ToolCall(case.expected_tool, expected_args, raw_response=json.dumps(expected_args))
                     else:
-                        case_passed = False
+                        tool_call = self.agent.tool_call(case, prompt)
+
+                    pre = CrmStateSnapshot.from_backend(backend)
+                    execution_result = self._execute_tool(backend, tool_call)
+                    post = CrmStateSnapshot.from_backend(backend)
+
+                    tool_correct = tool_call.tool_name == case.expected_tool
+                    validator_details: Optional[Dict[str, Any]]
+
+                    if case.expect_success:
+                        if execution_result.success and tool_correct:
+                            validator_kwargs = case.validator_kwargs(context, tool_call.arguments)
+                            validation = case.validator(pre, post, tool_call.arguments, **validator_kwargs)
+                            case_passed = validation.success
+                            message = validation.message if validation.success else validation.message
+                            validator_details = validation.details
+                        else:
+                            case_passed = False
+                            if not tool_correct:
+                                message = f"Expected tool '{case.expected_tool}' but agent called '{tool_call.tool_name}'."
+                                validator_details = None
+                            else:
+                                message = execution_result.message
+                                validator_details = execution_result.details
+                        outcome_message = message
+                    else:
                         if not tool_correct:
-                            message = f"Expected tool '{case.expected_tool}' but agent called '{tool_call.tool_name}'."
+                            case_passed = False
+                            outcome_message = f"Expected tool '{case.expected_tool}' but agent called '{tool_call.tool_name}'."
+                            validator_details = None
+                        elif execution_result.success:
+                            case_passed = False
+                            outcome_message = "Expected failure but tool executed successfully."
                             validator_details = None
                         else:
-                            message = execution_result.message
+                            substring_ok = (
+                                case.expected_error_substring is None
+                                or (case.expected_error_substring in execution_result.message)
+                            )
+                            state_unchanged = pre == post
+                            case_passed = substring_ok and state_unchanged
+                            outcome_message = execution_result.message
                             validator_details = execution_result.details
-                    outcome_message = message
-                else:
-                    if not tool_correct:
-                        case_passed = False
-                        outcome_message = f"Expected tool '{case.expected_tool}' but agent called '{tool_call.tool_name}'."
-                        validator_details = None
-                    elif execution_result.success:
-                        case_passed = False
-                        outcome_message = "Expected failure but tool executed successfully."
-                        validator_details = None
+
+                    if case_passed:
+                        successes += 1
                     else:
-                        substring_ok = (
-                            case.expected_error_substring is None
-                            or (case.expected_error_substring in execution_result.message)
-                        )
-                        state_unchanged = pre == post
-                        case_passed = substring_ok and state_unchanged
-                        outcome_message = execution_result.message
-                        validator_details = execution_result.details
+                        failures += 1
 
-                if case_passed:
-                    successes += 1
-                else:
-                    failures += 1
-
-                verification_mode = get_task_verification_mode(case.task).value
-                episode = EpisodeLog(
-                    case_id=case.case_id,
-                    task=case.task,
-                    timestamp=datetime.now(timezone.utc).isoformat(),
-                    provider=self.agent.provider_name,
-                    model=self.agent.model_name,
-                    success=case_passed,
-                    expected_success=case.expect_success,
-                    message=outcome_message,
-                    tool_call={"tool_name": tool_call.tool_name, "arguments": tool_call.arguments},
-                    agent_response=tool_call.raw_response,
-                    validator_details=validator_details,
-                    expected_tool=case.expected_tool,
-                    expected_arguments=expected_args,
-                    verification_mode=verification_mode,
-                )
-                log_file.write(episode.to_json() + "\n")
-                episodes.append(episode)
+                    verification_mode = get_task_verification_mode(case.task).value
+                    episode = EpisodeLog(
+                        case_id=case.case_id,
+                        task=case.task,
+                        timestamp=datetime.now(timezone.utc).isoformat(),
+                        provider=self.agent.provider_name,
+                        model=self.agent.model_name,
+                        success=case_passed,
+                        expected_success=case.expect_success,
+                        message=outcome_message,
+                        tool_call={"tool_name": tool_call.tool_name, "arguments": tool_call.arguments},
+                        agent_response=tool_call.raw_response,
+                        validator_details=validator_details,
+                        expected_tool=case.expected_tool,
+                        expected_arguments=expected_args,
+                        verification_mode=verification_mode,
+                    )
+                    log_file.write(episode.to_json() + "\n")
+                    episodes.append(episode)
+                finally:
+                    if self._backend_mode == "postgres":
+                        backend.rollback_session()
 
         return HarnessResult(success_count=successes, failure_count=failures, episodes=episodes)
 
     @staticmethod
-    def _execute_tool(api: MockCrmApi, tool_call: ToolCall) -> ValidationResult:
+    def _execute_tool(api: Any, tool_call: ToolCall) -> ValidationResult:
         """Run the tool call against the MockCrmApi and capture immediate errors."""
         try:
             tool = getattr(api, tool_call.tool_name)
