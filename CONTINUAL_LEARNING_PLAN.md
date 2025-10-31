@@ -1,5 +1,5 @@
 # CRM Continual-Learning Benchmark Plan  
-_Updated: October 30, 2025 (evening)_
+_Updated: October 31, 2025 (evening)_
 
 ## 1. Background & Objectives
 - **Customer mandate:** Deliver a synthetic yet production-faithful CRM benchmark by mid-November to demonstrate we can push state-modifying workflows from ~80 % to ≥95 % reliability using continual learning. Customer cannot share raw data; all artifacts must be reproducible on our infrastructure.
@@ -10,11 +10,11 @@ _Updated: October 30, 2025 (evening)_
   3. Atlas-driven continual-learning loop (teacher/student orchestration, reward ensemble, persistent learning memory).  
   4. Telemetry capturing _what_ was learned (reward deltas + pamphlets), _how_ (adapter/teacher events), and _why_ (verifier rationale, drift notes).  
 
-## 2. Current Status (October 30)
-- **Environment:** `CrmEnv` (Gymnasium wrapper) + harness + docs shipped; GPT‑4.1 rollouts succeed on the existing mock backend with improved tool hints. Postgres sandbox now available via Docker Compose with schema + seed data aligned to `fake_crm_tables_schema.json`.  
-- **Telemetry:** JSONL per-episode logs (steps, validators, rewards) captured but lack verifier explanations or Atlas signals.  
-- **Open GitHub issues:** #4, #5, #9–#15.  
-- **Gap:** No real datastore, no pluggable verifier, no Atlas adapters yet.
+## 2. Current Status (October 31)
+- **Environment:** `CrmEnv` (Gymnasium wrapper) + harness + docs shipped; GPT‑4.1 rollouts succeed on the Postgres-backed sandbox with schema + seeds aligned to `fake_crm_tables_schema.json`. Snapshot/reset CLIs (`scripts/db_snapshot.py`, `scripts/db_reset.py`) keep database state deterministic.  
+- **Telemetry:** JSONL per-episode logs now include reward breakdowns, verifier scores/rationales, validator metadata, and placeholder learning signals (student/teacher, drift notes) ahead of Atlas integration.  
+- **Open GitHub issues:** #4, #12, #13, #14, #21.  
+- **Gap:** Atlas dual-agent adapter (Issue #14) and the uplift evaluation/hand-off (Issue #21) remain outstanding; telemetry needs real adapter events once Atlas hooks land.
 
 ## 3. Atlas Architecture & Integration Requirements
 Based on the Atlas SDK (`atlas-sdk`) and the _Continual Learning Online Adaptation_ paper:
@@ -50,26 +50,26 @@ Timeline assumes parallel effort but respects dependencies. “Week” reference
    - SQL schema, docker-compose, seed data aligning with `fake_crm_tables_schema.json`.  
 2. **Issue #9 – Rewire CRM tools to DB** ✅ (delivered Oct 31)  
    - Postgres repository + transaction helpers wired into `CrmEnv`, harness, validators; mock backend retained for fast unit tests.  
-3. **Issue #10 – Snapshot/reset utilities**  
-   - CLI or Make targets to restore canonical state pre/post rollouts.
+3. **Issue #10 – Snapshot/reset utilities** ✅ (delivered Oct 31)  
+   - CLI tools (`db_snapshot.py`, `db_reset.py`) restore canonical Postgres state before/after rollouts.
 
 _Milestone A:_ `CrmEnv` successfully executes against Postgres; snapshots ensure deterministic tests.
 
 ### Phase B – Failure Coverage & Verification (KW+1)  
 4. **Issue #13 – Map failure taxonomy into negative cases**  
-   - Translate customer CSV + future traces into golden cases with validators.  
-5. **Issue #15 – Add native verifier interface**  
-   - Implement structured + LLM judge verifiers; surface rationale in telemetry.
+   - Translate customer CSV + future traces into golden cases with validators; ensure coverage feeds the continual-learning evaluation suite.  
+5. **Issue #15 – Add native verifier interface** ✅ (delivered Oct 31)  
+   - Structured + LLM judge verifiers registered; telemetry captures rationale/score for continual-learning analysis.
 
 _Milestone B:_ Environment reproduces high-frequency failure modes with verifier scoring.
 
 ### Phase C – Telemetry & Atlas Instrumentation (KW+2)  
-6. **Issue #11 – Extend telemetry with continual-learning signals**  
-   - Add learning strings, adapter events, drift notes, and verifier outputs.  
-7. **Issue #14 – Integrate Atlas continual-learning adapter** (includes legacy Issue #5)  
+6. **Issue #11 – Extend telemetry with continual-learning signals** ✅ (delivered Oct 31)  
+   - Rollouts emit reward breakdowns, verifier metadata, and learning signal placeholders; Atlas adapter events to populate in Issue #14.  
+7. **Issue #14 – Integrate Atlas continual-learning adapter**  
    - Embed Teacher/Student orchestration, pamphlet persistence, reward ensemble.  
    - Ensure toggles for baseline vs. CL runs, leveraging Atlas SDK connectors.  
-   - Validate that guidance history aligns with PLM updates.
+   - Populate adapter event telemetry and validate guidance history aligns with PLM updates.
 
 _Milestone C:_ Rollouts emit Atlas telemetry; pamphlets persisted via PLM.
 
@@ -81,11 +81,19 @@ _Milestone C:_ Rollouts emit Atlas telemetry; pamphlets persisted via PLM.
 
 _Milestone D:_ Deliver reproducible baselines and a narrative that benchmarks Atlas uplift.
 
+### Phase E – Atlas Uplift Delivery (KW+4)  
+10. **Issue #21 – Deliver Atlas uplift evaluation and hand-off package**  
+    - Seed PLM, run guided continual-learning episodes, and execute Atlas-enabled evaluations covering all golden cases (positive + negative).  
+    - Produce comparative analytics (baseline vs. Atlas) and bundle reproducible artifacts (snapshots, telemetry, pamphlets, docs) for the customer.  
+
+_Milestone E:_ Demonstrate ≥95 % reliability uplift with a turnkey hand-off bundle reproducible on Arc infrastructure.
+
 ### Cross-cutting Considerations
 - **Security & secrets:** `.env.example` must include Postgres + Atlas keys.  
 - **Cost controls:** Document token spend per run; consider dry-run mode.  
 - **Testing:** Add Postgres-backed CI job (nightly) once Docker services stabilise.  
 - **Docs:** Update README/docs after each milestone (setup, telemetry schema, Atlas usage).  
+- **Customer bundle:** Final delivery must include database snapshot, telemetry schema, pamphlets, and regeneration docs validated on a clean environment.
 
 ## 5. Expected Atlas Experiment Flow
 1. **Baseline pass:** Run Student-only (GPT‑4.1) against Postgres environment to establish ~80 % starting point.  
@@ -103,10 +111,11 @@ _Milestone D:_ Deliver reproducible baselines and a narrative that benchmarks At
 - **Token costs:** Use smaller seeds for development; reserve full runs (Claude/GPT) for nightly pipeline.
 
 ## 7. Next Steps (immediate)
-1. Kick off Phase A follow-on tasks (#9/#10); finalize repository abstraction design and snapshot CLI requirements.  
-2. Design verifier API surface so Phase B can start as soon as Postgres endpoints exist.  
-3. Align with Atlas team on SDK usage, secrets management, and telemetry expectations.  
-4. Schedule weekly sync with Federico’s team to share progress snapshots and gather failure mode data.
+1. Align with Atlas team to scope adapter orchestration & PLM hooks (Issue #14); build stub that emits adapter events into telemetry.  
+2. Expand negative-case coverage from customer taxonomy (`Agent tasks - updated.csv`) to close Issue #13 and feed verifier regression tests + Atlas evaluation.  
+3. Prepare Postgres-backed baseline reruns (Issue #12) using the new snapshot/reset tooling; document token/cost assumptions for customer share-outs and Issue #21 comparisons.  
+4. Draft the Atlas uplift evaluation/checklist (Issue #21) so the hand-off bundle scope is clear ahead of integration completion.  
+5. Continue weekly sync with Federico’s team to surface telemetry progress and gather pending failure traces.
 
 ---
 _Document owner:_ **Jarrod Barnes**  
