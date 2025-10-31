@@ -99,6 +99,9 @@ def run_episode(
     terminated = False
     truncated = False
     final_validator_success = False
+    last_reward_breakdown: Dict[str, Any] = {}
+    last_learning_signals: Dict[str, Any] = {}
+    last_validator_metadata: Dict[str, Any] = {}
 
     while not (terminated or truncated):
         tool_call = agent.tool_call(case, prompt)
@@ -107,6 +110,9 @@ def run_episode(
 
         cumulative_reward += reward
         final_validator_success = bool(step_info.get("validator_success", False))
+        last_reward_breakdown = step_info.get("reward_breakdown", {})
+        last_learning_signals = step_info.get("learning_signals", {})
+        last_validator_metadata = step_info.get("validator_metadata", {})
 
         step_record = {
             "step": len(episode_steps) + 1,
@@ -117,6 +123,16 @@ def run_episode(
             "truncated": truncated,
             "validator_message": step_info.get("validator_message"),
             "validator_success": step_info.get("validator_success"),
+            "reward_breakdown": last_reward_breakdown,
+            "learning_signals": last_learning_signals,
+            "validator_metadata": last_validator_metadata,
+            "verifier": {
+                "name": step_info.get("verifier_name"),
+                "score": step_info.get("verifier_score"),
+                "weight": step_info.get("verifier_weight"),
+                "rationale": step_info.get("verifier_rationale"),
+                "metadata": step_info.get("verifier_metadata"),
+            },
         }
 
         episode_steps.append(step_record)
@@ -141,6 +157,9 @@ def run_episode(
         "validator_success": final_validator_success,
         "steps": episode_steps,
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "reward_breakdown": last_reward_breakdown,
+        "learning_signals": last_learning_signals,
+        "validator_metadata": last_validator_metadata,
     }
 
     return episode_summary

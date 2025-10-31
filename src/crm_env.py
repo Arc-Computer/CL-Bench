@@ -284,6 +284,9 @@ class CrmEnv(gym.Env):
         self._active_verifier_config: Dict[str, Any] = {}
         self._last_verifier_result: Optional[VerifierResult] = None
         self._tool_traces: List[ToolTrace] = []
+        self._last_reward_breakdown: Dict[str, Any] = self._empty_reward_breakdown()
+        self._last_learning_signals: Dict[str, Any] = self._empty_learning_signals()
+        self._last_validator_metadata: Dict[str, Any] = self._empty_validator_metadata()
 
     @property
     def max_steps(self) -> int:
@@ -338,6 +341,9 @@ class CrmEnv(gym.Env):
         self._active_verifier = None
         self._active_verifier_name = None
         self._active_verifier_config = {}
+        self._last_reward_breakdown = self._empty_reward_breakdown()
+        self._last_learning_signals = self._empty_learning_signals()
+        self._last_validator_metadata = self._empty_validator_metadata()
 
         options = dict(options or {})
         case = self._task_manager.sample(
@@ -464,22 +470,6 @@ class CrmEnv(gym.Env):
             validator_result = ValidationResult.fail(action_decoding_error or "Invalid tool selection.")
             execution_result = ValidationResult.fail(action_decoding_error or "Invalid tool selection.")
 
-        if validator_result.success:
-            reward = self._reward_config.success
-        else:
-            reward = self._reward_config.failure
-            if self._shaping_enabled:
-                shaped = reward
-                if tool_correct:
-                    shaped = max(shaped, self._reward_config.tool_match_bonus)
-                if execution_success:
-                    shaped = max(shaped, self._reward_config.partial_progress)
-                reward = shaped
-
-        truncated = not terminated and self._step_count >= self._max_steps
-        self._terminated = terminated
-        self._truncated = truncated
-
         self._last_result = {
             "tool": tool_name or "",
             "tool_index": tool_index if tool_index is not None else -1,
@@ -501,6 +491,30 @@ class CrmEnv(gym.Env):
         }
         self._history.append(history_entry)
 
+        base_reward = self._reward_config.success if validator_result.success else self._reward_config.failure
+        shaping_details = {
+            "enabled": bool(self._shaping_enabled),
+            "applied": False,
+            "tool_match_bonus": 0.0,
+            "partial_progress": 0.0,
+            "delta": 0.0,
+        }
+        reward_after_shaping = base_reward
+        if not validator_result.success and self._shaping_enabled:
+            shaping_details["applied"] = True
+            if tool_correct:
+                updated_reward = max(reward_after_shaping, self._reward_config.tool_match_bonus)
+                if updated_reward > reward_after_shaping:
+                    shaping_details["tool_match_bonus"] = updated_reward - reward_after_shaping
+                    reward_after_shaping = updated_reward
+            if execution_success:
+                updated_reward = max(reward_after_shaping, self._reward_config.partial_progress)
+                if updated_reward > reward_after_shaping:
+                    shaping_details["partial_progress"] = updated_reward - reward_after_shaping
+                    reward_after_shaping = updated_reward
+            shaping_details["delta"] = reward_after_shaping - base_reward
+        reward = reward_after_shaping
+
         self._append_tool_trace(
             step=self._step_count,
             tool_name=tool_name,
@@ -515,11 +529,57 @@ class CrmEnv(gym.Env):
             validator_result=validator_result,
         )
         self._last_verifier_result = verifier_result
+
+        verifier_contribution = 0.0
+        verifier_score = verifier_result.score if verifier_result else 0.0
         if verifier_result and self._verifier_reward_weight > 0.0:
             success_reward = self._reward_config.success
-            reward = (1.0 - self._verifier_reward_weight) * reward + self._verifier_reward_weight * (
-                verifier_result.score * success_reward
+            blended_reward = (1.0 - self._verifier_reward_weight) * reward + self._verifier_reward_weight * (
+                verifier_score * success_reward
             )
+            verifier_contribution = blended_reward - reward
+            reward = blended_reward
+
+        final_reward = reward
+        clipped_reward = float(self._reward_config.clip(final_reward))
+
+        self._last_reward_breakdown = {
+            "base": float(base_reward),
+            "shaping": {
+                "enabled": shaping_details["enabled"],
+                "applied": shaping_details["applied"],
+                "tool_match_bonus": float(shaping_details["tool_match_bonus"]),
+                "partial_progress": float(shaping_details["partial_progress"]),
+                "delta": float(shaping_details["delta"]),
+            },
+            "verifier": {
+                "enabled": bool(verifier_result and self._verifier_reward_weight > 0.0),
+                "weight": self._verifier_reward_weight,
+                "score": float(verifier_score),
+                "contribution": float(verifier_contribution),
+            },
+            "final": clipped_reward,
+        }
+
+        self._last_validator_metadata = self._build_validator_metadata(
+            validator_result=validator_result,
+            action_decoding_error=action_decoding_error,
+            tool_correct=tool_correct,
+            execution_success=execution_success,
+        )
+        self._last_learning_signals = self._build_learning_signals(
+            validator_result=validator_result,
+            verifier_result=verifier_result,
+            reward_breakdown=self._last_reward_breakdown,
+        )
+
+        history_entry["reward"] = clipped_reward
+        history_entry["reward_breakdown"] = self._last_reward_breakdown
+        history_entry["learning_signals"] = self._last_learning_signals
+
+        truncated = not terminated and self._step_count >= self._max_steps
+        self._terminated = terminated
+        self._truncated = truncated
 
         observation = self._build_observation()
         info = self._build_info(validator_result=validator_result, verification_mode=verification_mode)
@@ -527,7 +587,6 @@ class CrmEnv(gym.Env):
         info["truncated"] = truncated
         info["history"] = list(self._history)
         info["tool_correct"] = tool_correct
-        clipped_reward = float(self._reward_config.clip(reward))
         info["reward"] = clipped_reward
 
         return observation, clipped_reward, terminated, truncated, info
@@ -620,6 +679,10 @@ class CrmEnv(gym.Env):
             info["verifier_score"] = None
             info["verifier_rationale"] = None
             info["verifier_metadata"] = None
+        info["reward_breakdown"] = self._last_reward_breakdown
+        info["learning_signals"] = self._last_learning_signals
+        info["validator_metadata"] = self._last_validator_metadata
+        info["drift_notes"] = self._last_learning_signals.get("drift_notes", "")
         return info
 
     def _activate_verifier(self, case: GoldenCase) -> None:
@@ -705,6 +768,103 @@ class CrmEnv(gym.Env):
                 rationale=f"Verifier '{self._active_verifier_name}' raised an exception: {exc}",
                 metadata={"exception": repr(exc)},
             )
+
+    def _empty_reward_breakdown(self) -> Dict[str, Any]:
+        return {
+            "base": float(self._reward_config.failure),
+            "shaping": {
+                "enabled": bool(self._shaping_enabled),
+                "applied": False,
+                "tool_match_bonus": 0.0,
+                "partial_progress": 0.0,
+                "delta": 0.0,
+            },
+            "verifier": {
+                "enabled": bool(self._verifier_enabled and self._verifier_reward_weight > 0.0),
+                "weight": self._verifier_reward_weight,
+                "score": 0.0,
+                "contribution": 0.0,
+            },
+            "final": float(self._reward_config.failure),
+        }
+
+    @staticmethod
+    def _empty_learning_signals() -> Dict[str, Any]:
+        return {
+            "student": {"summary": "", "score": 0.0},
+            "teacher": {"summary": "", "score": 0.0},
+            "adapter_events": [],
+            "reason": "",
+            "drift_notes": "",
+        }
+
+    def _empty_validator_metadata(self) -> Dict[str, Any]:
+        return {
+            "success": False,
+            "message": "",
+            "details": None,
+            "error_category": "unknown",
+        }
+
+    def _build_validator_metadata(
+        self,
+        *,
+        validator_result: ValidationResult,
+        action_decoding_error: Optional[str],
+        tool_correct: bool,
+        execution_success: bool,
+    ) -> Dict[str, Any]:
+        return {
+            "success": bool(validator_result.success),
+            "message": validator_result.message or "",
+            "details": dict(validator_result.details) if validator_result.details else None,
+            "error_category": self._classify_validator_error(
+                validator_result=validator_result,
+                action_decoding_error=action_decoding_error,
+                tool_correct=tool_correct,
+                execution_success=execution_success,
+            ),
+        }
+
+    @staticmethod
+    def _classify_validator_error(
+        *,
+        validator_result: ValidationResult,
+        action_decoding_error: Optional[str],
+        tool_correct: bool,
+        execution_success: bool,
+    ) -> str:
+        if validator_result.success:
+            return "success"
+        if action_decoding_error:
+            return "action_decoding_error"
+        if not tool_correct:
+            return "wrong_tool"
+        if not execution_success:
+            return "execution_failure"
+        return "validator_failure"
+
+    def _build_learning_signals(
+        self,
+        *,
+        validator_result: ValidationResult,
+        verifier_result: Optional[VerifierResult],
+        reward_breakdown: Mapping[str, Any],
+    ) -> Dict[str, Any]:
+        student_score = 1.0 if validator_result.success else 0.0
+        student_summary = validator_result.message or ""
+        teacher_score = verifier_result.score if verifier_result else 0.0
+        teacher_summary = verifier_result.rationale if verifier_result else ""
+        reason = validator_result.message or ""
+        final_reward = float(reward_breakdown.get("final", 0.0))
+        return {
+            "student": {"summary": student_summary, "score": float(student_score)},
+            "teacher": {"summary": teacher_summary, "score": float(teacher_score)},
+            "adapter_events": [],
+            "reason": reason,
+            "drift_notes": "",
+            "reward_observation": final_reward,
+        }
 
     @staticmethod
     def _neutral_last_result() -> Dict[str, Any]:

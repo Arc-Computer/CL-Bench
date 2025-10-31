@@ -58,6 +58,9 @@ class EpisodeLog:
     verifier_score: Optional[float]
     verifier_rationale: Optional[str]
     verifier_metadata: Optional[Dict[str, Any]]
+    reward_breakdown: Dict[str, Any]
+    learning_signals: Dict[str, Any]
+    validator_metadata: Dict[str, Any]
 
     def to_json(self) -> str:
         return json.dumps(
@@ -80,6 +83,9 @@ class EpisodeLog:
                 "verifier_score": self.verifier_score,
                 "verifier_rationale": self.verifier_rationale,
                 "verifier_metadata": self.verifier_metadata,
+                "reward_breakdown": self.reward_breakdown,
+                "learning_signals": self.learning_signals,
+                "validator_metadata": self.validator_metadata,
             },
             ensure_ascii=False,
         )
@@ -314,6 +320,7 @@ class BaselineHarness:
         enable_verifier: bool = False,
         verifier_name: Optional[str] = None,
         verifier_config: Optional[Mapping[str, Any]] = None,
+        verifier_reward_weight: float = 0.0,
     ) -> None:
         self.agent = agent
         self.log_path = Path(log_path)
@@ -334,6 +341,7 @@ class BaselineHarness:
         self._verifier_enabled = bool(enable_verifier)
         self._default_verifier_name = verifier_name.strip() if verifier_name else None
         self._default_verifier_config: Dict[str, Any] = dict(verifier_config or {})
+        self._verifier_reward_weight = float(max(0.0, min(1.0, verifier_reward_weight)))
 
     def run(self, mode: str = "agent") -> HarnessResult:
         """Run the selected cases; `mode='mock'` bypasses the agent."""
@@ -469,6 +477,21 @@ class BaselineHarness:
                     else:
                         failures += 1
 
+                    reward_breakdown = self._build_reward_breakdown(
+                        success=case_passed,
+                        verifier_result=verifier_result,
+                    )
+                    learning_signals = self._build_learning_signals(
+                        validator_result=validator_result_for_verifier,
+                        verifier_result=verifier_result,
+                        final_reward=reward_breakdown["final"],
+                    )
+                    validator_metadata = self._build_validator_metadata(
+                        validator_result=validator_result_for_verifier,
+                        tool_correct=tool_correct,
+                        execution_success=execution_result.success,
+                    )
+
                     verification_mode = get_task_verification_mode(case.task).value
                     episode = EpisodeLog(
                         case_id=case.case_id,
@@ -489,6 +512,9 @@ class BaselineHarness:
                         verifier_score=verifier_result.score if verifier_result else None,
                         verifier_rationale=verifier_result.rationale if verifier_result else None,
                         verifier_metadata=verifier_result.metadata if verifier_result else None,
+                        reward_breakdown=reward_breakdown,
+                        learning_signals=learning_signals,
+                        validator_metadata=validator_metadata,
                     )
                     log_file.write(episode.to_json() + "\n")
                     episodes.append(episode)
@@ -497,6 +523,76 @@ class BaselineHarness:
                         backend.rollback_session()
 
         return HarnessResult(success_count=successes, failure_count=failures, episodes=episodes)
+
+    def _build_reward_breakdown(self, *, success: bool, verifier_result: Optional[VerifierResult]) -> Dict[str, Any]:
+        base_reward = 1.0 if success else 0.0
+        final_reward = base_reward
+        contribution = 0.0
+        score = verifier_result.score if verifier_result else 0.0
+        if verifier_result and self._verifier_reward_weight > 0.0:
+            blended = (1.0 - self._verifier_reward_weight) * base_reward + self._verifier_reward_weight * score
+            contribution = blended - base_reward
+            final_reward = blended
+        return {
+            "base": float(base_reward),
+            "shaping": {
+                "enabled": False,
+                "applied": False,
+                "tool_match_bonus": 0.0,
+                "partial_progress": 0.0,
+                "delta": 0.0,
+            },
+            "verifier": {
+                "enabled": bool(self._verifier_reward_weight > 0.0),
+                "weight": self._verifier_reward_weight,
+                "score": float(score),
+                "contribution": float(contribution),
+            },
+            "final": float(final_reward),
+        }
+
+    @staticmethod
+    def _build_learning_signals(
+        *,
+        validator_result: ValidationResult,
+        verifier_result: Optional[VerifierResult],
+        final_reward: float,
+    ) -> Dict[str, Any]:
+        student_score = 1.0 if validator_result.success else 0.0
+        student_summary = validator_result.message or ""
+        teacher_score = verifier_result.score if verifier_result else 0.0
+        teacher_summary = verifier_result.rationale if verifier_result else ""
+        reason = validator_result.message or ""
+        return {
+            "student": {"summary": student_summary, "score": float(student_score)},
+            "teacher": {"summary": teacher_summary, "score": float(teacher_score)},
+            "adapter_events": [],
+            "reason": reason,
+            "drift_notes": "",
+            "reward_observation": float(final_reward),
+        }
+
+    @staticmethod
+    def _build_validator_metadata(
+        *,
+        validator_result: ValidationResult,
+        tool_correct: bool,
+        execution_success: bool,
+    ) -> Dict[str, Any]:
+        if validator_result.success:
+            category = "success"
+        elif not tool_correct:
+            category = "wrong_tool"
+        elif not execution_success:
+            category = "execution_failure"
+        else:
+            category = "validator_failure"
+        return {
+            "success": bool(validator_result.success),
+            "message": validator_result.message or "",
+            "details": dict(validator_result.details) if validator_result.details else None,
+            "error_category": category,
+        }
 
     @staticmethod
     def _execute_tool(api: Any, tool_call: ToolCall) -> ValidationResult:
