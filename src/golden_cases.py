@@ -36,6 +36,8 @@ class GoldenCase:
     expect_success: bool = True
     expected_error_substring: Optional[str] = None
     tags: Sequence[str] = field(default_factory=tuple)
+    verifier_name: Optional[str] = None
+    verifier_options: Mapping[str, Any] = field(default_factory=dict)
 
     def expected_args(self, context: Dict[str, Any]) -> Dict[str, Any]:
         return dict(self.build_expected_args(context))

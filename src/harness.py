@@ -19,6 +19,7 @@ from .crm_backend import DatabaseConfig, PostgresCrmBackend
 from .crm_sandbox import MockCrmApi
 from .golden_cases import GOLDEN_CASES, GoldenCase
 from .validators import CrmStateSnapshot, ValidationResult, VerificationMode, get_task_verification_mode
+from .verifier import VerifierRequest, VerifierResult, get_registered_verifier, ToolTrace as VerifierToolTrace
 
 
 # ---------------------------------------------------------------------------
@@ -53,6 +54,10 @@ class EpisodeLog:
     expected_tool: str
     expected_arguments: Dict[str, Any]
     verification_mode: str
+    verifier_name: Optional[str]
+    verifier_score: Optional[float]
+    verifier_rationale: Optional[str]
+    verifier_metadata: Optional[Dict[str, Any]]
 
     def to_json(self) -> str:
         return json.dumps(
@@ -71,6 +76,10 @@ class EpisodeLog:
                 "expected_tool": self.expected_tool,
                 "expected_arguments": self.expected_arguments,
                 "verification_mode": self.verification_mode,
+                "verifier_name": self.verifier_name,
+                "verifier_score": self.verifier_score,
+                "verifier_rationale": self.verifier_rationale,
+                "verifier_metadata": self.verifier_metadata,
             },
             ensure_ascii=False,
         )
@@ -302,6 +311,9 @@ class BaselineHarness:
         backend: str = "mock",
         db_config: Optional[DatabaseConfig] = None,
         reset_database_each_case: Optional[bool] = None,
+        enable_verifier: bool = False,
+        verifier_name: Optional[str] = None,
+        verifier_config: Optional[Mapping[str, Any]] = None,
     ) -> None:
         self.agent = agent
         self.log_path = Path(log_path)
@@ -319,6 +331,9 @@ class BaselineHarness:
         if reset_database_each_case is None:
             reset_database_each_case = backend_mode == "postgres"
         self._reset_database_each_case = bool(reset_database_each_case)
+        self._verifier_enabled = bool(enable_verifier)
+        self._default_verifier_name = verifier_name.strip() if verifier_name else None
+        self._default_verifier_config: Dict[str, Any] = dict(verifier_config or {})
 
     def run(self, mode: str = "agent") -> HarnessResult:
         """Run the selected cases; `mode='mock'` bypasses the agent."""
@@ -352,42 +367,102 @@ class BaselineHarness:
                     post = CrmStateSnapshot.from_backend(backend)
 
                     tool_correct = tool_call.tool_name == case.expected_tool
-                    validator_details: Optional[Dict[str, Any]]
+                    validator_result_for_verifier: Optional[ValidationResult] = None
 
                     if case.expect_success:
                         if execution_result.success and tool_correct:
                             validator_kwargs = case.validator_kwargs(context, tool_call.arguments)
                             validation = case.validator(pre, post, tool_call.arguments, **validator_kwargs)
+                            validator_result_for_verifier = validation
                             case_passed = validation.success
-                            message = validation.message if validation.success else validation.message
-                            validator_details = validation.details
+                            outcome_message = validation.message or "Validation succeeded."
                         else:
-                            case_passed = False
                             if not tool_correct:
-                                message = f"Expected tool '{case.expected_tool}' but agent called '{tool_call.tool_name}'."
-                                validator_details = None
+                                failure_message = (
+                                    f"Expected tool '{case.expected_tool}' but agent called '{tool_call.tool_name}'."
+                                )
+                                details = None
                             else:
-                                message = execution_result.message
-                                validator_details = execution_result.details
-                        outcome_message = message
+                                failure_message = execution_result.message
+                                details = execution_result.details
+                            validator_result_for_verifier = ValidationResult.fail(failure_message, details)
+                            case_passed = False
+                            outcome_message = failure_message
                     else:
                         if not tool_correct:
+                            failure_message = (
+                                f"Expected tool '{case.expected_tool}' but agent called '{tool_call.tool_name}'."
+                            )
+                            validator_result_for_verifier = ValidationResult.fail(failure_message)
                             case_passed = False
-                            outcome_message = f"Expected tool '{case.expected_tool}' but agent called '{tool_call.tool_name}'."
-                            validator_details = None
+                            outcome_message = failure_message
                         elif execution_result.success:
+                            failure_message = "Expected failure but tool executed successfully."
+                            validator_result_for_verifier = ValidationResult.fail(failure_message)
                             case_passed = False
-                            outcome_message = "Expected failure but tool executed successfully."
-                            validator_details = None
+                            outcome_message = failure_message
                         else:
                             substring_ok = (
                                 case.expected_error_substring is None
                                 or (case.expected_error_substring in execution_result.message)
                             )
                             state_unchanged = pre == post
+                            details = dict(execution_result.details or {})
+                            details["substring_match"] = substring_ok
+                            details["state_unchanged"] = state_unchanged
                             case_passed = substring_ok and state_unchanged
                             outcome_message = execution_result.message
-                            validator_details = execution_result.details
+                            validator_result_for_verifier = ValidationResult(case_passed, execution_result.message, details)
+
+                    if validator_result_for_verifier is None:
+                        validator_result_for_verifier = ValidationResult.fail("Validator result unavailable.")
+                    validator_details = validator_result_for_verifier.details
+
+                    tool_trace = VerifierToolTrace(
+                        step=1,
+                        tool_name=tool_call.tool_name,
+                        arguments=dict(tool_call.arguments),
+                        execution_success=execution_result.success,
+                        validator_success=validator_result_for_verifier.success,
+                        message=validator_result_for_verifier.message,
+                    )
+                    verifier_result: Optional[VerifierResult] = None
+                    verifier_name_used: Optional[str] = None
+                    if self._verifier_enabled:
+                        selected_name = case.verifier_name or self._default_verifier_name
+                        if selected_name:
+                            verifier_config: Dict[str, Any] = dict(self._default_verifier_config)
+                            if case.verifier_options:
+                                verifier_config.update(case.verifier_options)
+                            try:
+                                verifier = get_registered_verifier(selected_name, verifier_config)
+                            except ValueError as exc:
+                                raise ValueError(
+                                    f"Failed to initialize verifier '{selected_name}' for case '{case.case_id}': {exc}"
+                                ) from exc
+                            request = VerifierRequest(
+                                case_id=case.case_id,
+                                task=case.task,
+                                utterance=case.utterance,
+                                expect_success=case.expect_success,
+                                expected_error_substring=case.expected_error_substring,
+                                expected_tool=case.expected_tool,
+                                expected_arguments=expected_args,
+                                tool_traces=(tool_trace,),
+                                final_response=tool_call.raw_response,
+                                validator_result=validator_result_for_verifier,
+                                pre_state=pre,
+                                post_state=post,
+                            )
+                            try:
+                                verifier_result = verifier.evaluate(request)
+                            except Exception as exc:  # pragma: no cover - defensive path
+                                verifier_result = VerifierResult(
+                                    score=0.0,
+                                    rationale=f"Verifier '{selected_name}' raised an exception: {exc}",
+                                    metadata={"exception": repr(exc)},
+                                )
+                            verifier_name_used = selected_name
 
                     if case_passed:
                         successes += 1
@@ -410,6 +485,10 @@ class BaselineHarness:
                         expected_tool=case.expected_tool,
                         expected_arguments=expected_args,
                         verification_mode=verification_mode,
+                        verifier_name=verifier_name_used,
+                        verifier_score=verifier_result.score if verifier_result else None,
+                        verifier_rationale=verifier_result.rationale if verifier_result else None,
+                        verifier_metadata=verifier_result.metadata if verifier_result else None,
                     )
                     log_file.write(episode.to_json() + "\n")
                     episodes.append(episode)

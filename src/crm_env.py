@@ -51,6 +51,7 @@ from .crm_backend import DatabaseConfig, PostgresCrmBackend
 from .crm_sandbox import MockCrmApi
 from .golden_cases import GOLDEN_CASES, GoldenCase
 from .validators import CrmStateSnapshot, ValidationResult, VerificationMode, get_task_verification_mode
+from .verifier import ToolTrace, Verifier, VerifierRequest, VerifierResult, get_registered_verifier
 
 
 ALLOWED_TOOLS: Tuple[str, ...] = (
@@ -189,6 +190,10 @@ class CrmEnv(gym.Env):
         backend: str = "mock",
         db_config: Optional[DatabaseConfig] = None,
         reset_database_each_episode: Optional[bool] = None,
+        enable_verifier: bool = False,
+        verifier_name: Optional[str] = None,
+        verifier_config: Optional[Mapping[str, Any]] = None,
+        verifier_reward_weight: float = 0.0,
     ) -> None:
         super().__init__()
         if max_steps <= 0:
@@ -270,6 +275,15 @@ class CrmEnv(gym.Env):
         self._truncated = False
         self._last_result: Dict[str, Any] = self._neutral_last_result()
         self._history: List[Dict[str, Any]] = []
+        self._verifier_enabled = bool(enable_verifier)
+        self._default_verifier_name = verifier_name.strip() if verifier_name else None
+        self._default_verifier_config: Dict[str, Any] = dict(verifier_config or {})
+        self._verifier_reward_weight = float(np.clip(verifier_reward_weight, 0.0, 1.0))
+        self._active_verifier: Optional[Verifier] = None
+        self._active_verifier_name: Optional[str] = None
+        self._active_verifier_config: Dict[str, Any] = {}
+        self._last_verifier_result: Optional[VerifierResult] = None
+        self._tool_traces: List[ToolTrace] = []
 
     @property
     def max_steps(self) -> int:
@@ -319,6 +333,11 @@ class CrmEnv(gym.Env):
         self._truncated = False
         self._history = []
         self._last_result = self._neutral_last_result()
+        self._tool_traces = []
+        self._last_verifier_result = None
+        self._active_verifier = None
+        self._active_verifier_name = None
+        self._active_verifier_config = {}
 
         options = dict(options or {})
         case = self._task_manager.sample(
@@ -331,6 +350,7 @@ class CrmEnv(gym.Env):
         expected_args = case.expected_args(context)
         self._task_sample = TaskSample(case=case, context=context, expected_args=expected_args)
         self._pre_snapshot = CrmStateSnapshot.from_backend(backend)
+        self._activate_verifier(case)
 
         observation = self._build_observation()
         info = self._build_info(validator_result=None, verification_mode=get_task_verification_mode(case.task))
@@ -362,6 +382,9 @@ class CrmEnv(gym.Env):
         self._step_count += 1
         case = self._task_sample.case
         verification_mode = get_task_verification_mode(case.task)
+        pre_snapshot = self._pre_snapshot
+        post_snapshot = self._pre_snapshot
+        post_snapshot_for_verifier: Optional[CrmStateSnapshot] = pre_snapshot
 
         action_decoding_error: Optional[str] = None
         tool_name: Optional[str] = None
@@ -389,12 +412,14 @@ class CrmEnv(gym.Env):
                     f"Expected tool '{case.expected_tool}' but received '{tool_name}'."
                 )
                 post_snapshot = self._pre_snapshot
+                post_snapshot_for_verifier = post_snapshot
             else:
                 if self._using_database:
                     savepoint_name = backend.create_savepoint()
                 execution_result = self._execute_tool(backend, tool_name, arguments)
                 post_snapshot = CrmStateSnapshot.from_backend(backend)
                 execution_success = execution_result.success
+                post_snapshot_for_verifier = post_snapshot
 
             if case.expect_success:
                 if execution_result.success and tool_correct:
@@ -425,6 +450,7 @@ class CrmEnv(gym.Env):
                     details["state_unchanged"] = state_unchanged
                     validator_result = ValidationResult(success, msg, details)
                     terminated = success
+                post_snapshot_for_verifier = post_snapshot
 
             if execution_result.success and tool_correct:
                 if self._using_database and savepoint_name:
@@ -475,15 +501,36 @@ class CrmEnv(gym.Env):
         }
         self._history.append(history_entry)
 
+        self._append_tool_trace(
+            step=self._step_count,
+            tool_name=tool_name,
+            arguments=arguments,
+            execution_result=execution_result,
+            validator_result=validator_result,
+        )
+        verifier_result = self._invoke_active_verifier(
+            case=case,
+            pre_state=pre_snapshot,
+            post_state=post_snapshot_for_verifier,
+            validator_result=validator_result,
+        )
+        self._last_verifier_result = verifier_result
+        if verifier_result and self._verifier_reward_weight > 0.0:
+            success_reward = self._reward_config.success
+            reward = (1.0 - self._verifier_reward_weight) * reward + self._verifier_reward_weight * (
+                verifier_result.score * success_reward
+            )
+
         observation = self._build_observation()
         info = self._build_info(validator_result=validator_result, verification_mode=verification_mode)
         info["terminated"] = terminated
         info["truncated"] = truncated
         info["history"] = list(self._history)
         info["tool_correct"] = tool_correct
-        info["reward"] = reward
+        clipped_reward = float(self._reward_config.clip(reward))
+        info["reward"] = clipped_reward
 
-        return observation, float(self._reward_config.clip(reward)), terminated, truncated, info
+        return observation, clipped_reward, terminated, truncated, info
 
     def render(self, mode: str = "human") -> None:
         """Render the latest step outcome (textual debug info only)."""
@@ -561,7 +608,103 @@ class CrmEnv(gym.Env):
         }
         if self._tool_hints is not None:
             info["tool_hints"] = dict(self._tool_hints)
+        info["verifier_enabled"] = self._verifier_enabled
+        info["verifier_weight"] = self._verifier_reward_weight
+        info["verifier_name"] = self._active_verifier_name
+        info["verifier_config"] = dict(self._active_verifier_config) if self._active_verifier_config else None
+        if self._last_verifier_result:
+            info["verifier_score"] = self._last_verifier_result.score
+            info["verifier_rationale"] = self._last_verifier_result.rationale
+            info["verifier_metadata"] = dict(self._last_verifier_result.metadata or {})
+        else:
+            info["verifier_score"] = None
+            info["verifier_rationale"] = None
+            info["verifier_metadata"] = None
         return info
+
+    def _activate_verifier(self, case: GoldenCase) -> None:
+        """Instantiate the verifier for the active episode, if configured."""
+        self._active_verifier = None
+        self._active_verifier_name = None
+        self._active_verifier_config = {}
+        self._last_verifier_result = None
+        if not self._verifier_enabled:
+            return
+        name = case.verifier_name or self._default_verifier_name
+        if not name:
+            return
+        config = dict(self._default_verifier_config)
+        if case.verifier_options:
+            config.update(case.verifier_options)
+        try:
+            verifier = get_registered_verifier(name, config)
+        except ValueError as exc:
+            raise ValueError(f"Failed to initialize verifier '{name}' for case '{case.case_id}': {exc}") from exc
+        self._active_verifier = verifier
+        self._active_verifier_name = name
+        self._active_verifier_config = config
+
+    def _append_tool_trace(
+        self,
+        *,
+        step: int,
+        tool_name: Optional[str],
+        arguments: Mapping[str, Any],
+        execution_result: Optional[ValidationResult],
+        validator_result: Optional[ValidationResult],
+    ) -> None:
+        """Persist the latest tool invocation for verifier consumption."""
+        if not self._verifier_enabled:
+            return
+        safe_args = dict(arguments) if isinstance(arguments, Mapping) else {}
+        message = ""
+        if validator_result and validator_result.message:
+            message = validator_result.message
+        elif execution_result and execution_result.message:
+            message = execution_result.message
+        trace = ToolTrace(
+            step=step,
+            tool_name=tool_name,
+            arguments=safe_args,
+            execution_success=bool(execution_result.success) if execution_result else False,
+            validator_success=bool(validator_result.success) if validator_result else False,
+            message=message,
+        )
+        self._tool_traces.append(trace)
+
+    def _invoke_active_verifier(
+        self,
+        *,
+        case: GoldenCase,
+        pre_state: Optional[CrmStateSnapshot],
+        post_state: Optional[CrmStateSnapshot],
+        validator_result: Optional[ValidationResult],
+    ) -> Optional[VerifierResult]:
+        """Run the active verifier, capturing exceptions as failure signals."""
+        if not self._active_verifier or not self._verifier_enabled or not self._task_sample:
+            return None
+        try:
+            request = VerifierRequest(
+                case_id=case.case_id,
+                task=case.task,
+                utterance=case.utterance,
+                expect_success=case.expect_success,
+                expected_error_substring=case.expected_error_substring,
+                expected_tool=case.expected_tool,
+                expected_arguments=dict(self._task_sample.expected_args),
+                tool_traces=tuple(self._tool_traces),
+                final_response=None,
+                validator_result=validator_result,
+                pre_state=pre_state,
+                post_state=post_state,
+            )
+            return self._active_verifier.evaluate(request)
+        except Exception as exc:  # pragma: no cover - defensive guard
+            return VerifierResult(
+                score=0.0,
+                rationale=f"Verifier '{self._active_verifier_name}' raised an exception: {exc}",
+                metadata={"exception": repr(exc)},
+            )
 
     @staticmethod
     def _neutral_last_result() -> Dict[str, Any]:
