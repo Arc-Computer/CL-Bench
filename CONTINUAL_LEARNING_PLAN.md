@@ -3,7 +3,7 @@ _Updated: October 31, 2025 (evening)_
 
 ## 1. Background & Objectives
 - **Customer mandate:** Deliver a synthetic yet production-faithful CRM benchmark by mid-November to demonstrate we can push state-modifying workflows from ~80 % to ≥95 % reliability using continual learning. Customer cannot share raw data; all artifacts must be reproducible on our infrastructure.
-- **Target models:** Claude 4.5 (Teacher) paired with GPT‑4.1 (Student), reflecting the architecture described in _Continual Learning, Not Training: Online Adaptation for Agents_.  
+- **Target models:** Claude 4.5 (Teacher) paired with GPT‑4.1 (Student), reflecting the architecture described in _Continual Learning, Not Training: Online Adaptation for Agents_. Salesforce CRM LLM Leaderboard (Oct 8, 2025) benchmarks provide baseline expectations, with Claude 4 Sonnet as the reference top-line model.  
 - **Key deliverables:**  
   1. Reproducible CRM sandbox with realistic state transitions (schema, enums, failure modes).  
   2. Baseline evaluations (Claude, GPT) against the new environment.  
@@ -75,7 +75,7 @@ _Milestone C:_ Rollouts emit Atlas telemetry; pamphlets persisted via PLM.
 
 ### Phase D – Baselines & Reporting (KW+3)  
 8. **Issue #12 – Re-run baselines on Postgres + verifier**  
-   - GPT‑4.1, Claude 4 Sonnet, mock agent. Capture token usage, verifier scores.  
+   - GPT‑4.1, Claude 4 Sonnet, mock agent. Capture token usage, verifier scores, and align reporting with Salesforce CRM LLM Leaderboard reference metrics.  
 9. **Issue #4 – Generate baseline analytics & report**  
    - Summaries, plots, and narratives for customer + investor briefings.  
 
@@ -94,6 +94,7 @@ _Milestone E:_ Demonstrate ≥95 % reliability uplift with a turnkey hand-off 
 - **Testing:** Add Postgres-backed CI job (nightly) once Docker services stabilise.  
 - **Docs:** Update README/docs after each milestone (setup, telemetry schema, Atlas usage).  
 - **Customer bundle:** Final delivery must include database snapshot, telemetry schema, pamphlets, and regeneration docs validated on a clean environment.
+- **Atlas SDK integration:** Document how to run `atlas env init` / `atlas run` with the CRM environment wrapper implementing `AtlasEnvironmentProtocol` + telemetry emitters so discovery and continual-learning loops work out of the box.
 
 ## 5. Expected Atlas Experiment Flow
 1. **Baseline pass:** Run Student-only (GPT‑4.1) against Postgres environment to establish ~80 % starting point.  
@@ -111,7 +112,7 @@ _Milestone E:_ Demonstrate ≥95 % reliability uplift with a turnkey hand-off 
 - **Token costs:** Use smaller seeds for development; reserve full runs (Claude/GPT) for nightly pipeline.
 
 ## 7. Next Steps (immediate)
-1. Align with Atlas team to scope adapter orchestration & PLM hooks (Issue #14); build stub that emits adapter events into telemetry.  
+1. Align with Atlas team to scope adapter orchestration & PLM hooks (Issue #14); build stub that emits adapter events into telemetry and validates against `atlas env init` discovery expectations.  
 2. Expand negative-case coverage from customer taxonomy (`Agent tasks - updated.csv`) to close Issue #13 and feed verifier regression tests + Atlas evaluation.  
 3. Prepare Postgres-backed baseline reruns (Issue #12) using the new snapshot/reset tooling; document token/cost assumptions for customer share-outs and Issue #21 comparisons.  
 4. Draft the Atlas uplift evaluation/checklist (Issue #21) so the hand-off bundle scope is clear ahead of integration completion.  
