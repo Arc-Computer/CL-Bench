@@ -13,8 +13,8 @@ _Updated: October 31, 2025 (evening)_
 ## 2. Current Status (October 31)
 - **Environment:** `CrmEnv` (Gymnasium wrapper) + harness + docs shipped; GPT‑4.1 rollouts succeed on the Postgres-backed sandbox with schema + seeds aligned to `fake_crm_tables_schema.json`. Snapshot/reset CLIs (`scripts/db_snapshot.py`, `scripts/db_reset.py`) keep database state deterministic.  
 - **Telemetry:** JSONL per-episode logs now include reward breakdowns, verifier scores/rationales, validator metadata, and placeholder learning signals (student/teacher, drift notes) ahead of Atlas integration.  
-- **Open GitHub issues:** #4, #12, #13, #14, #21.  
-- **Gap:** Atlas dual-agent adapter (Issue #14) and the uplift evaluation/hand-off (Issue #21) remain outstanding; telemetry needs real adapter events once Atlas hooks land.
+- **Open GitHub issues:** #4, #12, #13, #14, #21, #22.  
+- **Gap:** Golden-case corpus still at 103 scenarios (Issue #22) and must reach ≥1000 before uplift; Atlas dual-agent adapter (Issue #14) and the uplift evaluation/hand-off (Issue #21) remain outstanding; telemetry needs real adapter events once Atlas hooks land.
 
 ## 3. Atlas Architecture & Integration Requirements
 Based on the Atlas SDK (`atlas-sdk`) and the _Continual Learning Online Adaptation_ paper:
@@ -56,16 +56,16 @@ Timeline assumes parallel effort but respects dependencies. “Week” reference
 _Milestone A:_ `CrmEnv` successfully executes against Postgres; snapshots ensure deterministic tests.
 
 ### Phase B – Failure Coverage & Verification (KW+1)  
-4. **Issue #13 – Map failure taxonomy into negative cases**  
-   - Translate customer CSV + future traces into golden cases with validators; ensure coverage feeds the continual-learning evaluation suite.  
-5. **Issue #15 – Add native verifier interface** ✅ (delivered Oct 31)  
+4. **Issue #13 – Failure taxonomy blueprints**  
+   - Convert customer failure categories into structured templates (tool, argument tweaks, schema violation) so the generator can instantiate negative cases with validator/verifier expectations.  
+5. **Issue #22 – Synthetic case generator (~1.5K scenarios)**  
+   - Build the blueprint-driven generator aligned to the customer schema/intent taxonomy, emitting manifests + seeds for ≥1,500 success/failure cases.  
+6. **Issue #15 – Add native verifier interface** ✅ (delivered Oct 31)  
    - Structured + LLM judge verifiers registered; telemetry captures rationale/score for continual-learning analysis.
 
-_Milestone B:_ Environment reproduces high-frequency failure modes with verifier scoring.
+_Milestone B:_ Environment reproduces high-frequency failure modes with verifier scoring and a broad dataset.
 
 ### Phase C – Telemetry & Atlas Instrumentation (KW+2)  
-6. **Issue #11 – Extend telemetry with continual-learning signals** ✅ (delivered Oct 31)  
-   - Rollouts emit reward breakdowns, verifier metadata, and learning signal placeholders; Atlas adapter events to populate in Issue #14.  
 7. **Issue #14 – Integrate Atlas continual-learning adapter**  
    - Embed Teacher/Student orchestration, pamphlet persistence, reward ensemble.  
    - Ensure toggles for baseline vs. CL runs, leveraging Atlas SDK connectors.  
@@ -112,11 +112,13 @@ _Milestone E:_ Demonstrate ≥95 % reliability uplift with a turnkey hand-off 
 - **Token costs:** Use smaller seeds for development; reserve full runs (Claude/GPT) for nightly pipeline.
 
 ## 7. Next Steps (immediate)
-1. Align with Atlas team to scope adapter orchestration & PLM hooks (Issue #14); build stub that emits adapter events into telemetry and validates against `atlas env init` discovery expectations.  
-2. Expand negative-case coverage from customer taxonomy (`Agent tasks - updated.csv`) to close Issue #13 and feed verifier regression tests + Atlas evaluation.  
-3. Prepare Postgres-backed baseline reruns (Issue #12) using the new snapshot/reset tooling; document token/cost assumptions for customer share-outs and Issue #21 comparisons.  
-4. Draft the Atlas uplift evaluation/checklist (Issue #21) so the hand-off bundle scope is clear ahead of integration completion.  
-5. Continue weekly sync with Federico’s team to surface telemetry progress and gather pending failure traces.
+1. Finalize failure taxonomy blueprints (Issue #13) and feed them into the case generator plans.  
+2. Implement the synthetic case generator and refresh manifests/seeds to reach ≥1,500 scenarios (Issue #22).  
+3. Integrate the Atlas continual-learning adapter and ensure telemetry emits adapter/PLM events (Issue #14).  
+4. Re-run baselines on the new dataset and update docs with token cost + reproduction steps (Issue #12).  
+5. Extend analytics/reporting to cover the expanded corpus and prep comparative views (Issue #4).  
+6. Execute the Atlas uplift evaluation and assemble the customer hand-off bundle (Issue #21).  
+7. Continue weekly sync with Federico’s team to surface telemetry progress and gather pending failure traces.
 
 ---
 _Document owner:_ **Jarrod Barnes**  
