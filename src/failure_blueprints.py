@@ -92,7 +92,7 @@ class ValidatorExpectation:
         if self.expect_state_unchanged and pre_state != post_state:
             return ValidationResult.fail(
                 "State changed when failure was expected",
-                {"pre_state_hash": hash(pre_state), "post_state_hash": hash(post_state)},
+                {"pre_state_id": id(pre_state), "post_state_id": id(post_state)},
             )
 
         return ValidationResult.ok("Validator expectation met")
