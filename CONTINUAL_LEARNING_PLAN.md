@@ -12,11 +12,12 @@ _Updated: November 2, 2025_
   4. Telemetry capturing _what_ was learned (reward deltas + pamphlets), _how_ (adapter/teacher events), and _why_ (verifier rationale, drift notes).
   5. Learning metrics demonstrating gradient-free adaptation: Cue Hit Rate, Adoption Rate, Reward Delta, Token Delta, Transfer Success.
 
-## 2. Current Status (November 2, 2025)
+## 2. Current Status (November 3, 2025)
 - **Environment:** `CrmEnv` (Gymnasium wrapper) + harness + docs shipped; GPT-4.1 rollouts succeed on the Postgres-backed sandbox with schema + seeds aligned to `fake_crm_tables_schema.json`. Snapshot/reset CLIs (`scripts/db_snapshot.py`, `scripts/db_reset.py`) keep database state deterministic.
 - **Telemetry:** JSONL per-episode logs now include reward breakdowns, verifier scores/rationales, validator metadata, and placeholder learning signals (student/teacher, drift notes) ahead of Atlas integration.
-- **Open GitHub issues:** #4, #12, #13, #14, #21, #22.
-- **Gap:** Golden-case corpus at 103 scenarios (Issue #22) must reach ≥1,500 for robust evaluation; Atlas dual-agent adapter (Issue #14) and the uplift evaluation/hand-off (Issue #21) remain outstanding; telemetry needs real adapter events and learning metrics once Atlas hooks land.
+- **Open GitHub issues:** #4, #12, #14, #21, #25.
+- **Completed issues:** #13 (failure taxonomy - 80 blueprints).
+- **Gap:** Golden-case corpus at 103 scenarios must reach ≥1,500 with production-faithful data. Issue #25 (dataset regeneration via Curator) now in progress. Heuristic approach (Issue #22/PR #24) was insufficient - produced formulaic patterns that won't transfer to production. Atlas dual-agent adapter (Issue #14) and the uplift evaluation/hand-off (Issue #21) blocked until Issue #25 complete.
 
 ## 3. Atlas Architecture & Integration Requirements
 Based on the Atlas SDK (`atlas-sdk`, v0.1.10+) and the _Continual Learning Online Adaptation_ paper:
@@ -89,7 +90,7 @@ _Milestone A:_ `CrmEnv` successfully executes against Postgres; snapshots ensure
 
 ### Phase B – Failure Coverage & Dataset Expansion (Nov 2-8, Week 1)
 
-#### 4. **Issue #13 – Failure taxonomy blueprints** (Nov 2-4, 3 days)
+#### 4. **Issue #13 – Failure taxonomy blueprints** (Nov 2-4, 3 days) ✅ COMPLETED
    - Convert customer failure categories into structured templates:
      - **Schema violations**: Invalid enum values, missing required fields, type mismatches
      - **State inconsistencies**: Creating quotes for non-existent opportunities, duplicate entity errors
@@ -97,19 +98,60 @@ _Milestone A:_ `CrmEnv` successfully executes against Postgres; snapshots ensure
    - Output: Blueprint schema with `FailureCategoryTemplate` dataclass
    - Generator hooks: Templates → negative case instantiation with validator/verifier expectations
 
-#### 5. **Issue #22 – Synthetic case generator (1,500 scenarios)** (Nov 4-8, 5 days)
-   - **Phased approach**:
-     - **Phase 1 (Nov 4-5)**: Build blueprint-driven generator, emit 500 scenarios, validate pipeline
-     - **Phase 2 (Nov 6-8)**: Scale to 1,500 scenarios (success/failure mix: 60/40)
-   - **Output format**: Manifests + DB seeds aligned to `fake_crm_tables_schema.json`
-   - **Validation**: Run 50-scenario smoke test, verify verifier coverage
-   - **Rationale for 1,500**:
-     - Statistical power for learning metrics (Cue Hit Rate, Transfer Success)
-     - Coverage across abstraction hierarchy (task-specific → universal principles)
-     - ExCyTIn-Bench used 98 tasks; CRM domain complexity justifies 15x scale
-     - Phased generation mitigates timeline risk (500 scenarios enables partial evaluation if needed)
+#### 5. **Issue #22 – Synthetic case generator (1,500 scenarios)** (Nov 4-8, 5 days) ❌ SUPERSEDED
+   - **Status**: Heuristic approach (PR #24) was insufficient for research requirements
+   - **Problem**: Generated formulaic patterns (all clients named "Client {id}", random amounts like $330,801.38) that don't transfer to production
+   - **Resolution**: Issue #25 replaces this with full Curator-based dataset regeneration
+   - **Preserved work**: Failure taxonomy blueprints (Issue #13) will be used by Curator generator
 
-_Milestone B:_ Environment reproduces high-frequency failure modes; 1,500-scenario corpus ready for baseline evaluation.
+_Milestone B:_ Environment reproduces high-frequency failure modes. Dataset generation moved to Issue #25 (Curator-based approach).
+
+---
+
+### Phase B.5 – Dataset Regeneration (Nov 3-8, Issue #25) ⚠️ IN PROGRESS
+
+#### 6. **Issue #25 – Regenerate full dataset via LLM (1,500 scenarios)** (Nov 3-8, 5 days)
+   - **Critical blocker**: Current dataset blocks Atlas integration and baseline evaluations
+   - **Problem with heuristic generation** (PR #24):
+     - Formulaic patterns: All clients named "Client {id}", random amounts like $330,801.38
+     - Random entity relationships: No realistic multi-step workflows
+     - Template-based failures: Random enum mutations (change "Active" → "active"), not contextual errors
+     - Won't stress continual learning: Artificial regularities don't exist in production
+     - Testing on heuristic data doesn't measure production readiness
+   - **Approach**: Regenerate entire dataset using Bespoke Curator
+     - Generate utterances: Natural language from CSV "Typical User Phrasing" patterns
+     - Generate setup entities: Realistic company names, industries, relationships
+     - Generate expected args: Contextual values (not random)
+     - Generate failure scenarios: Contextual errors (not random mutations)
+     - Generate multi-step workflows: Where applicable (create client → opportunity → quote)
+   - **Rationale for full regeneration**:
+     - Plan requires "synthetic yet production-faithful" data (line 5)
+     - Continual learning adapts to patterns; heuristic patterns don't transfer to production
+     - Transfer Success metric (≥+40%) requires realistic scenarios that generalize
+     - Atlas playbooks learned on heuristic data won't apply to production
+   - **Implementation**:
+     - Use [Bespoke Curator](https://github.com/bespokelabsai/curator) with GPT-4o-mini batch mode
+     - Load schema (`fake_crm_tables_schema.json`) and CSV taxonomy as constraints
+     - Generate 900 success + 600 failure scenarios (60/40 ratio maintained)
+     - Validate schema compliance, FK integrity, verifier coverage
+     - Cost: ~$375 (batch API discount, within $500 development budget)
+   - **Deliverables**:
+     - `src/curator_dataset_generator.py` - Full dataset generator with schema validation
+     - Regenerated `artifacts/generated_scenarios/scenarios.jsonl` (1,500 scenarios)
+     - All scenarios include: utterance, setup_entities, expected_args, verification_mode
+     - All scenarios executable by harness in mock and Postgres modes
+     - `requirements.txt` updated with `bespokelabs-curator` dependency
+   - **Timeline**:
+     - Day 1 (Nov 3): Design prompts, validation pipeline
+     - Day 2-3 (Nov 4-5): Generate scenarios via batch API
+     - Day 4 (Nov 6): Validation, schema fixes
+     - Day 5 (Nov 7-8): Testing, PR review, merge
+   - **Dependencies**:
+     - Supersedes Issue #22 and PR #24 (heuristic approach)
+     - Blocks Issue #21 (Atlas uplift evaluation requires executable scenarios)
+     - Blocks Issue #12 (baseline re-runs require full scenario corpus)
+
+_Milestone B.5:_ All 1,500 scenarios are production-faithful with realistic patterns; harness can execute full corpus; Atlas playbooks will learn patterns that transfer to production.
 
 ---
 
@@ -314,11 +356,16 @@ _Milestone E:_ Demonstrate ≥95% reliability uplift with turnkey hand-off bundl
     - Issue #12 (baselines) runs parallel with Phase C completion
   - **Buffer**: Phase E can slip to Nov 18 if critical path blocked (negotiate 2-day extension)
 
-## 7. Next Steps (November 2-3, Immediate)
-1. **Issue #13** (Jarrod/Aman): Finalize failure taxonomy blueprints, document template schema (target: Nov 4 EOD)
-2. **Issue #22 Phase 1** (Aman): Build blueprint-driven generator, emit first 500 scenarios (target: Nov 5 EOD)
-3. **Issue #14 Day 1** (Jarrod): Run `atlas env init` on CrmEnv, validate autodiscovery (target: Nov 9 AM)
-4. **Coordination**: Weekly sync with Federico's team (schedule Nov 6 or 7) to surface telemetry progress and gather pending failure traces
+## 7. Next Steps (November 3-8, Immediate)
+1. ✅ **Issue #13** (COMPLETED Nov 3): Failure taxonomy blueprints merged to master
+2. ⚠️ **Issue #25** (IN PROGRESS Nov 3-8): Regenerate full dataset via Curator (1,500 scenarios with production-faithful patterns)
+   - Nov 3: Design prompts, validation pipeline
+   - Nov 4-5: Generate via batch API
+   - Nov 6: Validation, schema fixes
+   - Nov 7-8: Testing, PR review, merge
+3. **Issue #22 / PR #24**: Superseded by Issue #25 (heuristic approach insufficient for research requirements)
+4. **Issue #14 Day 1** (Nov 9): Run `atlas env init` on CrmEnv, validate autodiscovery (blocked until Issue #25 complete)
+5. **Coordination**: Weekly sync with Federico's team (schedule Nov 6 or 7) to surface telemetry progress and gather pending failure traces
 
 ---
 
