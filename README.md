@@ -1,140 +1,308 @@
-# Arc CRM Benchmark Sandbox
+# Arc CRM Benchmark
 
-This repository provides a synthetic CRM environment and evaluation harness for testing state-modifying workflows. It mirrors a real CRM schema (contacts, clients, opportunities, quotes, contracts, documents, notes), enforces foreign-key relationships, and ships with a golden-case suite plus tooling to reproduce our baseline runs with leaderboard models such as Claude 4.5 Sonnet and GPT‑4.1.
+A synthetic CRM environment for evaluating continual learning in production LLM agents. This benchmark provides a production-realistic testbed for measuring agent adaptation through the [Atlas](https://arc.computer) continual learning framework, enabling systematic evaluation of runtime adaptation ([atlas-sdk](https://github.com/Arc-Computer/atlas-sdk)) and offline training improvements ([ATLAS Core](https://github.com/Arc-Computer/ATLAS)).
 
-## What's Inside
+## Purpose
 
-### Schema-backed models
-Pydantic entity definitions (with UUID defaults, enum validation, and assignment checks) covering every table in `data/fake_crm_tables_schema.json`.
+Arc CRM Benchmark tests whether agents can improve from ~80% to ≥95% reliability on state-modifying CRM workflows through continual learning. It provides:
 
-### Mock CRM API
-`MockCrmApi` offers in-memory storage with production-style guards: duplicate-email rejection, non-negative quote amounts, relationship validation, and human-readable error messaging.
+- **Production-realistic CRM environment** with full schema (contacts, clients, opportunities, quotes, contracts, documents, notes), enforcing foreign-key relationships, enum validation, and business logic constraints
+- **1,500+ synthetic scenarios** generated via Curator with GPT-5-mini, covering 28 CRM tasks with controlled success/failure ratios
+- **Atlas SDK integration** for runtime adaptive learning with dual-agent supervision (Student + Teacher)
+- **Evaluation harness** measuring agent performance, reward signals, and learning metrics
+- **Baseline comparisons** for Claude 4.5 Sonnet and GPT-4.1
 
-### Golden cases
-71 scripted scenarios for the five highest-impact CRM tasks. They include both happy paths and negative edge cases (enum casing, invalid IDs, missing required fields, probability/date bounds, malformed document uploads) so you can surface real failure modes.
-Recent updates expanded the negative coverage to include whitespace/mixed-case enums, past or malformed close dates, numeric boundary violations (0/100 probabilities, non-numeric amounts), type mismatches, forbidden extra fields, unsafe filenames/extensions, cross-entity ID mix-ups, and edits to closed opportunities.
+This environment serves as the evaluation layer in the Atlas continual learning loop:
 
-### Evaluation harness
-Prompt → tool → validator runner that executes the golden cases against an agent, captures tool calls, diffs CRM state, writes JSONL logs, and can optionally send the suite to a GPT-based “judge” for coverage feedback.
+```
+Runtime (atlas-sdk):  Agent executes CRM tasks → Adaptive supervision → Telemetry
+      ↓
+Benchmark (this repo): Scenario harness → Reward evaluation → Learning metrics
+      ↓
+Training (ATLAS Core): GRPO on exported traces → New teacher checkpoints
+```
+
+## How It Fits Into Atlas
+
+**Atlas SDK** ([runtime](https://github.com/Arc-Computer/atlas-sdk)) wraps any agent with an adaptive dual-agent reasoning loop. The Student executes tasks while the Teacher provides supervision based on a capability probe. Tasks route into supervision lanes (`auto`, `paired`, `coach`) depending on confidence, allowing agents to stay fast on familiar work while receiving guidance on novel challenges.
+
+**Arc CRM Benchmark** (this repo) provides the synthetic CRM environment and evaluation harness to measure adaptation. Scenarios test realistic state-modifying workflows (create client, update opportunity, generate quote) with production-style constraints.
+
+**ATLAS Core** ([training](https://github.com/Arc-Computer/ATLAS)) consumes exported runtime traces and uses GRPO (Group Relative Policy Optimization) to train improved teacher checkpoints from production data.
+
+## Key Features
+
+### Synthetic Dataset (1,500+ Scenarios)
+Generated using [Curator](https://github.com/bespokelabsai/curator) with GPT-5-mini, producing diverse test cases with:
+- Natural language task descriptions derived from production CRM patterns
+- Realistic entity relationships (companies, contacts, opportunities)
+- Contextual failures (not random mutations): wrong enums, missing FKs, workflow violations
+- Controlled 60/40 success/failure ratio for balanced evaluation
+
+### Production-Realistic CRM Schema
+Pydantic models with strict validation:
+- UUID defaults, enum constraints (Literal types), foreign-key enforcement
+- Production-style guards: duplicate email rejection, non-negative amounts, relationship validation
+- Human-readable error messages matching real CRM APIs
+
+### Evaluation Harness
+Executes scenarios against agents with:
+- Tool call capture and CRM state diffing
+- Structured JSONL logging compatible with Atlas telemetry
+- Verifier scoring (deterministic validators + optional LLM judge)
+- Support for multiple agent providers (Claude, OpenAI, mock)
+- Both in-memory (`mock`) and Postgres backends
+
+### Gymnasium-Compatible RL Environment
+For custom reinforcement learning workflows:
+- `CrmEnv` wraps CRM backend as standard Gymnasium environment
+- Configurable observations, actions, and reward shaping
+- Automatic state reset and transaction isolation
 
 ## Repository Structure
 
-- `src/`
-  - `crm_sandbox.py` – entity models and `MockCrmApi` implementation.
-  - `golden_cases.py` – scenario definitions and seeding helpers.
-  - `validators.py` – deterministic state checks used by tests and the harness.
-  - `failure_blueprints.py` – machine-readable failure taxonomy for synthetic case generation.
-  - `harness.py` – baseline harness (Claude/GPT integrations, logging, result types).
-  - `crm_env.py` – Gymnasium-compatible environment exposing the sandbox for RL loops.
-- `data/`
-  - `fake_crm_tables_schema.json` – authoritative schema.
-  - `Agent tasks.csv` – task-frequency signals used to prioritize scenarios.
-- `tests/` – pytest suite covering models, API tools, validators, golden cases, and the harness.
-- `docs/` – documentation including failure taxonomy workflow.
-- `artifacts/` (generated after runs) – JSONL baselines and judge feedback.
+```
+src/
+  crm_sandbox.py              # Entity models and MockCrmApi
+  scenario_generator.py       # Curator-based synthetic generation
+  scenario_harness.py         # Scenario execution and validation
+  crm_argument_schemas.py     # Pydantic schemas with Literal enum types
+  run_baseline.py             # CLI for baseline evaluations
+  harness.py                  # Agent integrations (Claude/OpenAI)
+  crm_env.py                  # Gymnasium RL environment
+  validators.py               # Deterministic state checks
+data/
+  fake_crm_tables_schema.json # Canonical CRM schema
+  Agent tasks.csv             # Task frequency weights for generation
+tests/                        # Pytest suite
+artifacts/
+  generated_scenarios/        # Curator-generated scenarios (JSONL)
+  baseline_*.jsonl            # Baseline evaluation results
+```
 
-## Quickstart
+## Quick Start
 
-### Install dependencies
+### Installation
+
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### Start the Postgres CRM backend
-1. Copy the defaults and adjust as needed:
-   ```bash
-   cp .env.example .env
-   ```
-2. Launch the services (Docker Desktop must be running):
-   ```bash
-   docker compose up -d
-   ```
-   The Postgres container exposes port `${DB_PORT:-5432}` and automatically runs the schema + seed scripts found in `sql/`.
-3. Verify the database is ready:
-   ```bash
-   docker compose ps
-   ```
-   Once the `db` service is `healthy`, you can connect via `psql`, your IDE, or `pgAdmin` at `http://localhost:${PGADMIN_PORT:-8080}`.
-4. Re-run the seed data at any time (idempotent):
-   ```bash
-   ./scripts/db_seed.sh
-   ```
+### Set Up Postgres Backend (Optional)
 
-Default credentials (safe for local dev) live in `.env.example`:
+For testing with a real database:
 
-| Variable | Value |
-| --- | --- |
-| `DB_HOST` | `localhost` |
-| `DB_PORT` | `5432` |
-| `DB_NAME` | `crm_sandbox` |
-| `DB_USER` | `crm_app` |
-| `DB_PASSWORD` | `crm_password` |
-
-> This Dockerized backend delivers the first milestone in Phase A of `CONTINUAL_LEARNING_PLAN.md`, giving the upcoming Atlas integrations a realistic datastore to target. Issue #9 will wire the runtime tools to this database while keeping the existing `MockCrmApi` for fast unit tests.
-
-### Run tests
 ```bash
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest
+cp .env.example .env
+docker compose up -d
+./scripts/db_seed.sh
 ```
 
-### Execute the baseline harness
-1. Export `ANTHROPIC_API_KEY` and/or `OPENAI_API_KEY` (or place them in `.env`).
-2. Example usage:
-   ```python
-   from pathlib import Path
-   from src.harness import BaselineHarness, ClaudeAgent
+Default credentials are in `.env.example` (safe for local development).
 
-   harness = BaselineHarness(
-       agent=ClaudeAgent(),
-       log_path=Path("artifacts/baseline_claude.jsonl"),
-       backend="postgres",  # pass "mock" to stay with the in-memory sandbox
-   )
-   harness.run()
-   ```
-   The harness will replay all golden cases, diff CRM state via validators, and write one JSONL record per scenario containing the tool call, validator outcome, and expectations.
-   When `backend="postgres"`, the harness connects to the Dockerized database (make sure `docker compose up -d` is running). Each case executes inside a fresh transaction so the canonical seed data stays intact between runs.
+### Run Baseline Evaluation
 
-### Programmatic sandbox usage
+```bash
+# Set API keys in .env
+ANTHROPIC_API_KEY=your_key
+OPENAI_API_KEY=your_key
+
+# Run evaluation
+python -m src.run_baseline \
+    --scenarios artifacts/generated_scenarios/scenarios.jsonl \
+    --agent claude \
+    --backend mock \
+    --sample 10 \
+    --output artifacts/baseline_results.jsonl
+```
+
+**Available agents:**
+- `claude` - Claude 4.5 Sonnet
+- `gpt4.1` - GPT-4.1
+- `gpt4` - GPT-4
+- `mock` - Ground truth (for validation)
+
+**Available backends:**
+- `mock` - In-memory (fast, deterministic)
+- `postgres` - Real database (production-realistic)
+
+### Programmatic Usage
+
 ```python
 from src.crm_sandbox import MockCrmApi
 
 api = MockCrmApi()
+
+# Create entities with automatic validation
 client = api.create_new_client(
     name="Acme Inc.",
     email="ops@acme.example",
     status="Active",
 )
+
 opportunity = api.create_new_opportunity(
-    name="Acme – FY26 Renewal",
+    name="Acme - FY26 Renewal",
     client_id=client.client_id,
     amount=125_000.0,
     stage="Negotiation",
 )
-api.create_quote(
+
+quote = api.create_quote(
     opportunity_id=opportunity.opportunity_id,
     amount=125_000.0,
     status="Draft",
 )
 ```
-All relationship and enum rules are enforced automatically; invalid calls raise `ValueError` with clear descriptions.
 
-## Reinforcement Learning Environment
+All relationship and enum constraints are enforced with clear error messages.
 
-- `from src.crm_env import CrmEnv`: wraps the CRM backend (mock or Postgres) + validators as a Gymnasium environment.
-- Observations include task metadata, last tool outcome, and compact CRM state summaries. Set `expose_reference=False` to hide ground-truth arguments during training and rely on natural-language reasoning instead.
-- Actions combine a discrete tool index and JSON arguments; `CrmEnv.step` also accepts structured dictionaries for convenience.
-- Instantiate against Postgres with `CrmEnv(backend="postgres", reset_database_each_episode=True)`. The environment truncates tables at the start of each episode, runs the case inside a transaction, and rolls back afterwards so repeated episodes stay deterministic.
-- Optional prompt aids: pass `include_tool_hints=True` to surface signature-style descriptions for each tool.
-- Default reward is binary 0/1; optional shaping hooks are exposed via `RewardConfig`.
-- See `docs/crm_env.md` for the full schema plus rollout examples (`python examples/run_crm_env.py`). For a live model demo (OpenAI, Anthropic, or mock), run `python examples/run_crm_env_with_llm.py --provider openai --model gpt-4.1 --episodes 5` and inspect the logged telemetry.
+## Atlas Integration
 
-## Contributing & Next Steps
+### Runtime Evaluation with Atlas SDK
 
-- Update `data/fake_crm_tables_schema.json` and `data/Agent tasks.csv` first when new schema fields or task priorities emerge.
-- Extend `golden_cases.py` with additional scenarios (mixed-case enums, alternate date formats, extreme numeric values) to cover new failure modes.
-- Add failure blueprints in `src/failure_blueprints.py` for new failure categories (see `docs/failure_taxonomy.md` for workflow).
-- Use the JSONL baselines as inputs to your own analytics or continual-learning pipelines.
+Use the Atlas SDK to run adaptive evaluations:
 
-Issues and pull requests are welcome—especially if you spot missing edge cases or want to contribute additional evaluation tooling.
+```python
+from atlas.core import run as atlas_run
+from src.scenario_harness import ScenarioBaselineHarness
+from src.harness import ClaudeAgent
+
+# Load scenarios
+scenarios = load_scenarios_from_jsonl("artifacts/generated_scenarios/scenarios.jsonl")
+
+# Create agent with Atlas wrapping
+agent = ClaudeAgent(model_name="claude-sonnet-4-5-20250929")
+
+# Run with Atlas SDK for adaptive learning
+# Atlas SDK routes tasks through supervision lanes (auto, paired, coach)
+# based on capability probe confidence
+result = atlas_run(
+    agent=agent,
+    scenarios=scenarios[:10],
+    storage_url="postgresql://atlas:atlas@localhost:5433/atlas",
+)
+
+# Export telemetry for training
+# arc-atlas --database-url postgresql://... --output traces.jsonl
+```
+
+### Training with ATLAS Core
+
+After collecting runtime traces, train improved teacher checkpoints:
+
+```bash
+# Export runtime traces from Atlas SDK
+arc-atlas \
+  --database-url postgresql://atlas:atlas@localhost:5433/atlas \
+  --output crm_traces.jsonl \
+  --include-status approved
+
+# Train new teacher checkpoint with ATLAS Core
+cd /path/to/ATLAS
+python scripts/run_offline_pipeline.py \
+  --export-path crm_traces.jsonl \
+  output_dir=results/crm-teacher-grpo
+```
+
+The CRM benchmark scenarios provide realistic failure modes for the training loop to learn from, enabling systematic improvement on state-modifying workflows.
+
+## Reinforcement Learning
+
+For custom RL workflows (Atlas SDK provides adaptive learning out-of-the-box):
+
+```python
+from src.crm_env import CrmEnv
+
+env = CrmEnv(
+    backend="mock",
+    reset_database_each_episode=True,
+    expose_reference=False,  # Hide ground truth for training
+)
+
+observation, info = env.reset()
+action = {
+    "tool": "opportunity_search",
+    "arguments": {"stage": "Prospecting"}
+}
+observation, reward, terminated, truncated, info = env.step(action)
+```
+
+The environment provides binary or shaped rewards (configurable via `RewardConfig`).
+
+## Running Tests
+
+```bash
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest
+```
+
+Tests cover entity models, API methods, validators, scenario generation, and the evaluation harness.
+
+## Learning Metrics
+
+The benchmark tracks five core metrics demonstrating continual learning (aligned with Atlas SDK telemetry):
+
+| Metric | Definition | Target |
+|--------|-----------|--------|
+| **Cue Hit Rate** | % of episodes triggering playbook retrieval | ≥60% |
+| **Adoption Rate** | % of retrieved playbooks injected into prompts | ≥90% |
+| **Reward Delta** | Δ(reward) baseline vs. guided episodes | ≥+15pp |
+| **Token Delta** | Δ(tokens) baseline vs. guided episodes | ≥-40% |
+| **Transfer Success** | Accuracy improvement on held-out tasks | ≥+40% |
+
+These metrics validate that agents are learning production-transferable patterns, not memorizing synthetic data.
+
+## Scenario Generation
+
+Scenarios are generated using Curator with strict schema validation:
+
+```bash
+python -m src.generate_scenarios \
+    --method curator \
+    --count 1500 \
+    --success-ratio 0.6 \
+    --seed 42
+```
+
+Each scenario includes:
+- `task` - Natural language description
+- `setup_entities` - Pre-populated CRM state
+- `expected_args` - Ground truth API arguments with validated enums
+- `verification_mode` - Success criteria
+- `expect_success` - True for happy paths, False for edge cases
+
+## Contributing
+
+Contributions are welcome to expand benchmark coverage:
+
+- **New scenarios**: Add task types or edge cases to `data/Agent tasks.csv`
+- **Additional validators**: Extend `validators.py` with new state checks
+- **Backend integrations**: Add support for other CRM APIs or databases
+- **Evaluation metrics**: Propose new reward functions or success criteria
+
+Please open an issue to discuss major changes before submitting a PR.
+
+## Research & Resources
+
+- **Atlas Documentation**: [docs.arc.computer](https://docs.arc.computer)
+- **Atlas SDK**: [github.com/Arc-Computer/atlas-sdk](https://github.com/Arc-Computer/atlas-sdk)
+- **ATLAS Core**: [github.com/Arc-Computer/ATLAS](https://github.com/Arc-Computer/ATLAS)
+- **Curator**: [github.com/bespokelabsai/curator](https://github.com/bespokelabsai/curator)
+
+## License
+
+MIT License - see LICENSE file for details.
+
+## Citation
+
+If you use this benchmark in your research:
+
+```bibtex
+@software{arc_crm_benchmark,
+  title = {Arc CRM Benchmark: A Synthetic Environment for Continual Learning Evaluation},
+  author = {Arc Computer},
+  year = {2025},
+  url = {https://github.com/arc-ai/arc-crm-benchmark}
+}
+```
