@@ -8,7 +8,7 @@ provides a MockCrmApi class that implements the top state-modifying tools.
 from datetime import date, datetime
 from enum import Enum
 import re
-from typing import Any, Dict, Mapping, Optional, Type
+from typing import Any, Dict, List, Mapping, Optional, Type
 from uuid import UUID, uuid4
 
 from pydantic import AnyUrl, BaseModel, ConfigDict, EmailStr, Field, field_validator
@@ -72,6 +72,12 @@ class NoteEntityType(str, Enum):
     CONTACT = "Contact"
     QUOTE = "Quote"
     CONTRACT = "Contract"
+
+
+class CompanyType(str, Enum):
+    PARTNER = "Partner"
+    VENDOR = "Vendor"
+    COMPETITOR = "Competitor"
 
 
 _ALLOWED_FILE_EXTENSIONS = {"pdf", "doc", "docx", "ppt", "pptx", "xlsx", "csv", "txt", "key"}
@@ -338,11 +344,24 @@ class Note(CRMBaseModel):
         return _validate_uuid("entity_id", value)
 
 
+class Company(CRMBaseModel):
+    company_id: str = Field(default_factory=_create_id)
+    name: str
+    type: Optional[CompanyType] = None
+    industry: Optional[str] = None
+    address: Optional[str] = None
+    contacts: List[str] = Field(default_factory=list)
+
+    @field_validator("company_id", mode="before")
+    @classmethod
+    def validate_company_id(cls, value: Optional[str]) -> Optional[str]:
+        return _validate_uuid("company_id", value)
+
+
 class MockCrmApi:
     """In-memory CRM API that enforces entity relationships and schema rules."""
 
     def __init__(self) -> None:
-        # Initialize per-entity stores keyed by identifier for fast lookups.
         self.clients: Dict[str, Client] = {}
         self.contacts: Dict[str, Contact] = {}
         self.opportunities: Dict[str, Opportunity] = {}
@@ -350,6 +369,7 @@ class MockCrmApi:
         self.contracts: Dict[str, Contract] = {}
         self.documents: Dict[str, Document] = {}
         self.notes: Dict[str, Note] = {}
+        self.companies: Dict[str, Company] = {}
 
     def ensure_client(self, **client_kwargs: Any) -> Client:
         """Return existing client by email (case-insensitive) or create it."""
@@ -483,6 +503,197 @@ class MockCrmApi:
         self.opportunities[opportunity_id] = opportunity
         return opportunity
 
+    def create_new_contact(
+        self, first_name: str, last_name: str, client_id: str, **kwargs: Any
+    ) -> Contact:
+        if client_id not in self.clients:
+            raise ValueError(f"Client not found with ID '{client_id}'.")
+        _require_non_empty_string(first_name, "Contact first name")
+        _require_non_empty_string(last_name, "Contact last name")
+        contact = Contact(first_name=first_name, last_name=last_name, client_id=client_id, **kwargs)
+        self.contacts[contact.contact_id] = contact
+        return contact
+
+    def add_note(self, entity_type: str, entity_id: str, content: str, **kwargs: Any) -> Note:
+        _require_non_empty_string(content, "Note content")
+        note_entity_type = NoteEntityType(entity_type)
+        entity_store = self._get_note_entity_store(note_entity_type)
+        if entity_id not in entity_store:
+            raise ValueError(f"{note_entity_type.value} not found with ID '{entity_id}'.")
+        note = Note(entity_type=note_entity_type, entity_id=entity_id, content=content, **kwargs)
+        self.notes[note.note_id] = note
+        return note
+
+    def modify_client(self, client_id: str, updates: Dict[str, Any]) -> Client:
+        if client_id not in self.clients:
+            raise ValueError(f"Client not found with ID '{client_id}'.")
+        client = self.clients[client_id]
+        for field_name, value in updates.items():
+            if not hasattr(client, field_name):
+                raise ValueError(f"Client has no field named '{field_name}'.")
+            if field_name == "status":
+                value = _validate_enum_value(value, ClientStatus, "Client status update")
+            elif isinstance(value, str):
+                _require_non_empty_string(value, f"Client {field_name}")
+            setattr(client, field_name, value)
+        self.clients[client_id] = client
+        return client
+
+    def modify_quote(self, quote_id: str, updates: Dict[str, Any]) -> Quote:
+        if quote_id not in self.quotes:
+            raise ValueError(f"Quote not found with ID '{quote_id}'.")
+        quote = self.quotes[quote_id]
+        for field_name, value in updates.items():
+            if not hasattr(quote, field_name):
+                raise ValueError(f"Quote has no field named '{field_name}'.")
+            if field_name == "status":
+                value = _validate_enum_value(value, QuoteStatus, "Quote status update")
+            elif field_name == "amount":
+                _validate_amount(value, "Quote amount")
+            elif isinstance(value, str):
+                _require_non_empty_string(value, f"Quote {field_name}")
+            setattr(quote, field_name, value)
+        self.quotes[quote_id] = quote
+        return quote
+
+    def modify_contact(self, contact_id: str, updates: Dict[str, Any]) -> Contact:
+        if contact_id not in self.contacts:
+            raise ValueError(f"Contact not found with ID '{contact_id}'.")
+        contact = self.contacts[contact_id]
+        for field_name, value in updates.items():
+            if not hasattr(contact, field_name):
+                raise ValueError(f"Contact has no field named '{field_name}'.")
+            if isinstance(value, str):
+                _require_non_empty_string(value, f"Contact {field_name}")
+            setattr(contact, field_name, value)
+        self.contacts[contact_id] = contact
+        return contact
+
+    def delete_opportunity(self, opportunity_id: str) -> bool:
+        if opportunity_id not in self.opportunities:
+            raise ValueError(f"Opportunity not found with ID '{opportunity_id}'.")
+        del self.opportunities[opportunity_id]
+        return True
+
+    def delete_quote(self, quote_id: str) -> bool:
+        if quote_id not in self.quotes:
+            raise ValueError(f"Quote not found with ID '{quote_id}'.")
+        del self.quotes[quote_id]
+        return True
+
+    def cancel_quote(self, quote_id: str) -> Quote:
+        if quote_id not in self.quotes:
+            raise ValueError(f"Quote not found with ID '{quote_id}'.")
+        quote = self.quotes[quote_id]
+        quote.status = QuoteStatus.CANCELED
+        self.quotes[quote_id] = quote
+        return quote
+
+    def clone_opportunity(self, opportunity_id: str) -> Opportunity:
+        if opportunity_id not in self.opportunities:
+            raise ValueError(f"Opportunity not found with ID '{opportunity_id}'.")
+        source = self.opportunities[opportunity_id]
+        cloned = Opportunity(
+            name=f"{source.name} (Clone)",
+            client_id=source.client_id,
+            stage=source.stage,
+            amount=source.amount,
+            close_date=source.close_date,
+            owner=source.owner,
+            probability=source.probability,
+            notes=source.notes,
+        )
+        self.opportunities[cloned.opportunity_id] = cloned
+        return cloned
+
+    def _search_entities(self, store: Dict[str, Any], **criteria: Any) -> List[Any]:
+        results = []
+        for entity in store.values():
+            match = True
+            for field, value in criteria.items():
+                if not hasattr(entity, field):
+                    match = False
+                    break
+                entity_value = getattr(entity, field)
+                if isinstance(entity_value, str) and isinstance(value, str):
+                    if value.lower() not in entity_value.lower():
+                        match = False
+                        break
+                elif entity_value != value:
+                    match = False
+                    break
+            if match:
+                results.append(entity)
+        return results
+
+    def client_search(self, **criteria: Any) -> List[Client]:
+        return self._search_entities(self.clients, **criteria)
+
+    def opportunity_search(self, **criteria: Any) -> List[Opportunity]:
+        return self._search_entities(self.opportunities, **criteria)
+
+    def contact_search(self, **criteria: Any) -> List[Contact]:
+        return self._search_entities(self.contacts, **criteria)
+
+    def quote_search(self, **criteria: Any) -> List[Quote]:
+        return self._search_entities(self.quotes, **criteria)
+
+    def contract_search(self, **criteria: Any) -> List[Contract]:
+        return self._search_entities(self.contracts, **criteria)
+
+    def company_search(self, **criteria: Any) -> List[Company]:
+        return self._search_entities(self.companies, **criteria)
+
+    def view_opportunity_details(self, opportunity_id: str) -> Opportunity:
+        if opportunity_id not in self.opportunities:
+            raise ValueError(f"Opportunity not found with ID '{opportunity_id}'.")
+        return self.opportunities[opportunity_id]
+
+    def opportunity_details(self, opportunity_id: str) -> Opportunity:
+        return self.view_opportunity_details(opportunity_id)
+
+    def quote_details(self, quote_id: str) -> Quote:
+        if quote_id not in self.quotes:
+            raise ValueError(f"Quote not found with ID '{quote_id}'.")
+        return self.quotes[quote_id]
+
+    def compare_quotes(self, quote_ids: List[str]) -> List[Quote]:
+        quotes = []
+        for quote_id in quote_ids:
+            if quote_id not in self.quotes:
+                raise ValueError(f"Quote not found with ID '{quote_id}'.")
+            quotes.append(self.quotes[quote_id])
+        return quotes
+
+    def compare_quote_details(self, quote_ids: List[str]) -> Dict[str, Any]:
+        quotes = self.compare_quotes(quote_ids)
+        comparison = {
+            "quotes": quotes,
+            "amounts": [q.amount for q in quotes],
+            "statuses": [q.status for q in quotes],
+            "total_amount": sum(q.amount for q in quotes if q.amount),
+        }
+        return comparison
+
+    def summarize_opportunities(self, **criteria: Any) -> Dict[str, Any]:
+        opportunities = self.opportunity_search(**criteria) if criteria else list(self.opportunities.values())
+        summary = {
+            "total_count": len(opportunities),
+            "total_amount": sum(o.amount for o in opportunities if o.amount),
+            "by_stage": {},
+            "by_owner": {},
+        }
+        for opp in opportunities:
+            if opp.stage:
+                summary["by_stage"][opp.stage] = summary["by_stage"].get(opp.stage, 0) + 1
+            if opp.owner:
+                summary["by_owner"][opp.owner] = summary["by_owner"].get(opp.owner, 0) + 1
+        return summary
+
+    def quote_prefixes(self) -> List[str]:
+        prefixes = {q.quote_prefix for q in self.quotes.values() if q.quote_prefix}
+        return sorted(prefixes)
+
     def _get_entity_store(self, entity_type: DocumentEntityType) -> Dict[str, CRMBaseModel]:
         """Return the backing store that matches a document's entity_type."""
         if entity_type is DocumentEntityType.OPPORTUNITY:
@@ -493,6 +704,19 @@ class MockCrmApi:
             return self.quotes
         if entity_type is DocumentEntityType.CLIENT:
             return self.clients
+        raise ValueError(f"Unsupported entity type '{entity_type}'.")
+
+    def _get_note_entity_store(self, entity_type: NoteEntityType) -> Dict[str, CRMBaseModel]:
+        if entity_type is NoteEntityType.OPPORTUNITY:
+            return self.opportunities
+        if entity_type is NoteEntityType.CLIENT:
+            return self.clients
+        if entity_type is NoteEntityType.CONTACT:
+            return self.contacts
+        if entity_type is NoteEntityType.QUOTE:
+            return self.quotes
+        if entity_type is NoteEntityType.CONTRACT:
+            return self.contracts
         raise ValueError(f"Unsupported entity type '{entity_type}'.")
 
     # ------------------------------------------------------------------
@@ -520,6 +744,9 @@ class MockCrmApi:
     def list_notes(self) -> Dict[str, Note]:
         return dict(self.notes)
 
+    def list_companies(self) -> Dict[str, Company]:
+        return dict(self.companies)
+
     def summarize_counts(self) -> Dict[str, int]:
         return {
             "clients": len(self.clients),
@@ -529,4 +756,5 @@ class MockCrmApi:
             "contracts": len(self.contracts),
             "documents": len(self.documents),
             "notes": len(self.notes),
+            "companies": len(self.companies),
         }
