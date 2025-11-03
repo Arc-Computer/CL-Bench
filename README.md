@@ -23,12 +23,14 @@ Prompt → tool → validator runner that executes the golden cases against an a
   - `crm_sandbox.py` – entity models and `MockCrmApi` implementation.
   - `golden_cases.py` – scenario definitions and seeding helpers.
   - `validators.py` – deterministic state checks used by tests and the harness.
+  - `failure_blueprints.py` – machine-readable failure taxonomy for synthetic case generation.
   - `harness.py` – baseline harness (Claude/GPT integrations, logging, result types).
   - `crm_env.py` – Gymnasium-compatible environment exposing the sandbox for RL loops.
 - `data/`
   - `fake_crm_tables_schema.json` – authoritative schema.
   - `Agent tasks.csv` – task-frequency signals used to prioritize scenarios.
 - `tests/` – pytest suite covering models, API tools, validators, golden cases, and the harness.
+- `docs/` – documentation including failure taxonomy workflow.
 - `artifacts/` (generated after runs) – JSONL baselines and judge feedback.
 
 ## Quickstart
@@ -132,6 +134,7 @@ All relationship and enum rules are enforced automatically; invalid calls raise 
 
 - Update `data/fake_crm_tables_schema.json` and `data/Agent tasks.csv` first when new schema fields or task priorities emerge.
 - Extend `golden_cases.py` with additional scenarios (mixed-case enums, alternate date formats, extreme numeric values) to cover new failure modes.
+- Add failure blueprints in `src/failure_blueprints.py` for new failure categories (see `docs/failure_taxonomy.md` for workflow).
 - Use the JSONL baselines as inputs to your own analytics or continual-learning pipelines.
 
 Issues and pull requests are welcome—especially if you spot missing edge cases or want to contribute additional evaluation tooling.
