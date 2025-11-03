@@ -13,6 +13,7 @@ def generate_scenarios(
     success_ratio: float = 0.6,
     output_dir: Optional[Path] = None,
     seed: Optional[int] = None,
+    method: str = "heuristic",
 ) -> None:
     if output_dir is None:
         output_dir = Path("artifacts/generated_scenarios")
@@ -26,11 +27,18 @@ def generate_scenarios(
     config = SamplerConfig(seed=seed)
     sampler = EntitySampler(api, config)
 
-    print(f"Creating scenario generator...")
-    generator = ScenarioGenerator(api, sampler)
+    if method == "curator":
+        print(f"Using Curator-based generation (GPT-5-mini)...")
+        from .curator_dataset_generator import CuratorDatasetGenerator
 
-    print(f"Generating {target_count} scenarios ({success_ratio:.0%} success, {1-success_ratio:.0%} failure)...")
-    scenarios = generator.generate_batch(target_count, success_ratio)
+        generator = CuratorDatasetGenerator(api=api, sampler=sampler, seed=seed)
+        print(f"Generating {target_count} scenarios ({success_ratio:.0%} success, {1-success_ratio:.0%} failure)...")
+        scenarios = generator.generate_scenarios(target_count, success_ratio)
+    else:
+        print(f"Using heuristic-based generation...")
+        generator = ScenarioGenerator(api, sampler)
+        print(f"Generating {target_count} scenarios ({success_ratio:.0%} success, {1-success_ratio:.0%} failure)...")
+        scenarios = generator.generate_batch(target_count, success_ratio)
 
     print(f"Validating scenarios...")
     validator = ScenarioValidator()
@@ -73,6 +81,8 @@ if __name__ == "__main__":
     parser.add_argument("--success-ratio", type=float, default=0.6, help="Ratio of success scenarios (0.0-1.0)")
     parser.add_argument("--output-dir", type=str, help="Output directory path")
     parser.add_argument("--seed", type=int, help="Random seed for reproducibility")
+    parser.add_argument("--method", type=str, default="heuristic", choices=["heuristic", "curator"],
+                        help="Generation method: 'heuristic' (template-based) or 'curator' (LLM-based)")
 
     args = parser.parse_args()
 
@@ -83,4 +93,5 @@ if __name__ == "__main__":
         success_ratio=args.success_ratio,
         output_dir=output_path,
         seed=args.seed,
+        method=args.method,
     )

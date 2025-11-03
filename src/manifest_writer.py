@@ -15,6 +15,7 @@ class ManifestWriter:
             "scenario_id": scenario.scenario_id,
             "task": scenario.task,
             "intent": scenario.intent,
+            "utterance": scenario.utterance,
             "expected_tool": scenario.expected_tool,
             "setup_entities": {
                 k: str(v) if not isinstance(v, (str, int, float, bool, type(None))) else v
