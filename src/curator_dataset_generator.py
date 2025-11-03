@@ -40,6 +40,7 @@ from .failure_blueprints import (
 from .intent_blueprints import get_all_intent_blueprints, IntentBlueprint
 from .validators import VerificationMode
 from .data_pools import COMPANY_NAMES
+from .crm_argument_schemas import TASK_SCHEMA_MAP
 
 logger = logging.getLogger(__name__)
 
@@ -146,9 +147,38 @@ class CuratorScenarioGenerator(curator.LLM):
         argument_template_text = ""
         if intent_blueprint and intent_blueprint.get('argument_template'):
             arg_template = intent_blueprint['argument_template']
-            argument_template_text = "Expected Arguments (use ONLY these fields):\n"
+            task_name = intent_blueprint.get('task', task)
+
+            # Determine if this is a create or modify operation
+            is_modify_op = "modify" in task_name.lower() or "updates" in arg_template
+
+            argument_template_text = f"Expected Arguments (use ONLY these fields at top level):\n"
+            argument_template_text += "REQUIRED fields:\n"
             for key, value in arg_template.items():
-                argument_template_text += f"  - {key}: {type(value).__name__}\n"
+                value_type = type(value).__name__
+                if value_type == "dict":
+                    value_type = "object"
+                argument_template_text += f"  - {key}: {value_type}\n"
+
+            # Add optional fields if present
+            optional_fields_list = intent_blueprint.get('optional_fields', [])
+            if optional_fields_list:
+                # Convert tuple to list if needed
+                if isinstance(optional_fields_list, str):
+                    optional_fields_list = [f.strip() for f in optional_fields_list.split(',')]
+
+                argument_template_text += "\nOPTIONAL fields (include at top level if mentioned in utterance):\n"
+                for field in optional_fields_list:
+                    argument_template_text += f"  - {field}: varies\n"
+
+                # Add critical instruction for create vs modify
+                if not is_modify_op:
+                    argument_template_text += "\n⚠️ IMPORTANT: For CREATE operations, all fields (required + optional) go at TOP LEVEL."
+                    argument_template_text += "\n❌ DO NOT wrap optional fields in 'updates' - that's only for MODIFY operations."
+                    argument_template_text += "\n\nExample CORRECT structure:"
+                    argument_template_text += '\n  {"name": "...", "client_id": "...", "amount": 330000, "stage": "Proposal", "probability": 70}'
+                    argument_template_text += "\n\nExample INCORRECT structure:"
+                    argument_template_text += '\n  {"name": "...", "client_id": "...", "amount": 330000, "stage": "Proposal", "updates": {"probability": 70}} ❌'
 
         prompt = f"""You are generating CRM scenarios for a sales automation system. Generate a realistic scenario based on:
 
@@ -169,12 +199,11 @@ Requirements:
 
 2. Setup Entities: Select entities from the available pool above. Use realistic company names (e.g., "Acme Corp", "TechVision Inc"), not generic names like "Client 214". Reference entities by their IDs.
 
-3. Expected Args: Generate ONLY the fields listed in "Expected Arguments" above. Match the utterance contextually:
+3. Expected Args: Schema enforced by Pydantic - only valid fields allowed. Generate ONLY the fields listed in "Expected Arguments" above at TOP LEVEL. Match the utterance contextually:
    - Amounts should be rounded to thousands (e.g., 330000 not 330801.38)
-   - For opportunity tasks, always include probability (0-100)
    - Match enum values exactly (case-sensitive)
-   - Do NOT include extra fields like "client", "opportunity", "client_name" etc. that are not in the template
-   - Replace empty string values with realistic data
+   - Replace empty string placeholders with realistic data
+   - For optional fields: Only include if mentioned in the utterance or logically implied
 
 4. Expected Tool: Use the exact tool name: {intent_blueprint.get('expected_tool', task) if intent_blueprint else task}
 
@@ -299,13 +328,14 @@ Output JSON matching this schema:
 
         return "\n".join(info)
 
-    def parse(self, input: Dict, response: ScenarioResponse) -> Dict:
-        """Convert LLM response (Pydantic ScenarioResponse) to scenario dict.
-
-        CRITICAL: Serializes nested dicts to JSON strings to avoid Arrow schema conflicts.
-        Arrow cannot mix scalar columns with nested dict columns in the same Dataset row.
+    def parse(self, input: Dict, response: Any) -> Dict:
+        """Convert LLM response to scenario dict with Pydantic validation of expected_args.
+        
+        Uses task-specific Pydantic schema to validate expected_args, eliminating hallucination.
         """
         import json
+        import re
+        from pydantic import ValidationError
 
         # Handle failure_blueprint extraction (now a dict)
         failure_blueprint_dict = input.get("failure_blueprint")
@@ -320,23 +350,53 @@ Output JSON matching this schema:
         if input.get("is_failure") and not expected_error_substring:
             expected_error_substring = "Validation error"
 
-        # Extract from Pydantic model
-        setup_entities = response.setup_entities if isinstance(response.setup_entities, dict) else dict(response.setup_entities)
-        expected_args = response.expected_args if isinstance(response.expected_args, dict) else dict(response.expected_args)
+        # Parse response - handle both Pydantic model (structured output) and string (manual parsing)
+        if isinstance(response, ScenarioResponse):
+            # Structured output from GPT-5-mini - convert to dict
+            response_json = {
+                "utterance": response.utterance,
+                "setup_entities": response.setup_entities if isinstance(response.setup_entities, dict) else dict(response.setup_entities),
+                "expected_args": response.expected_args if isinstance(response.expected_args, dict) else dict(response.expected_args),
+                "expected_tool": response.expected_tool,
+            }
+        elif isinstance(response, str):
+            # Manual JSON parsing (fallback for malformed responses)
+            try:
+                json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', response, re.DOTALL)
+                if json_match:
+                    response_json = json.loads(json_match.group(1))
+                else:
+                    json_match = re.search(r'\{.*\}', response, re.DOTALL)
+                    if json_match:
+                        response_json = json.loads(json_match.group(0))
+                    else:
+                        response_json = json.loads(response.strip())
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse JSON from response: {response[:200]}... Error: {e}")
+                response_json = {
+                    "utterance": response[:200] if response else "",
+                    "setup_entities": {},
+                    "expected_args": {},
+                    "expected_tool": input.get("task", "unknown"),
+                }
+        else:
+            # Try to convert dict-like response
+            response_json = dict(response) if hasattr(response, '__dict__') else response
 
-        # Filter expected_args to only include fields from argument_template
-        argument_template = input.get("intent_blueprint", {}).get("argument_template", {})
-        filtered_args = self._filter_expected_args(expected_args, argument_template)
+        # Validate expected_args against task-specific Pydantic schema
+        task = input["task"]
+        expected_args_raw = response_json.get("expected_args", {})
+        expected_args_validated = self._validate_and_filter_args(task, expected_args_raw)
 
         # Serialize nested dicts to JSON strings for Arrow compatibility
         scenario = {
             "scenario_id": input["scenario_id"],
             "task": input["task"],
             "intent": input["intent"],
-            "utterance": response.utterance,
-            "expected_tool": response.expected_tool,
-            "setup_entities_json": json.dumps(setup_entities),  # Serialize to JSON string
-            "expected_args_json": json.dumps(filtered_args),    # Serialize to JSON string
+            "utterance": response_json.get("utterance", ""),
+            "expected_tool": response_json.get("expected_tool", input.get("task", "unknown")),
+            "setup_entities_json": json.dumps(self._normalize_dict(response_json.get("setup_entities", {}))),
+            "expected_args_json": json.dumps(expected_args_validated),
             "expect_success": not input.get("is_failure", False),
             "expected_error_substring": expected_error_substring,
             "failure_category": failure_category,
@@ -344,22 +404,38 @@ Output JSON matching this schema:
         }
         return scenario
 
-    def _filter_expected_args(self, args: Dict[str, Any], template: Dict[str, Any]) -> Dict[str, Any]:
-        """Filter expected_args to only include fields from argument_template, removing nulls."""
-        if not template:
-            # If no template, remove nulls but keep all fields
+    def _validate_and_filter_args(self, task: str, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate expected_args against task-specific Pydantic schema and filter invalid fields.
+        
+        This eliminates hallucination by enforcing exact schema compliance.
+        """
+        from pydantic import ValidationError
+        
+        # Get Pydantic schema for this task
+        schema_class = TASK_SCHEMA_MAP.get(task)
+        if not schema_class:
+            # Fallback: filter based on intent blueprint if available
+            logger.warning(f"No Pydantic schema found for task: {task}")
             return {k: v for k, v in args.items() if v is not None}
         
-        # Only include fields that are in the template AND have non-null values
-        filtered = {}
-        for key in template.keys():
-            if key in args:
-                value = args[key]
-                # Skip None values and empty strings (unless they're explicitly empty string in template)
-                if value is not None and value != "":
-                    filtered[key] = value
-        
-        return filtered
+        try:
+            # Validate against schema - this will raise ValidationError for invalid fields
+            validated = schema_class(**args)
+            # Return validated args excluding None values
+            return validated.model_dump(exclude_none=True)
+        except ValidationError as e:
+            logger.warning(f"Validation failed for {task}, filtering invalid fields: {e}")
+            # Extract only valid fields from the schema
+            valid_fields = set(schema_class.model_fields.keys())
+            filtered = {k: v for k, v in args.items() if k in valid_fields and v is not None}
+            # Try validation again with filtered fields
+            try:
+                validated = schema_class(**filtered)
+                return validated.model_dump(exclude_none=True)
+            except ValidationError:
+                # If still invalid, return empty dict (will be caught by post-validation)
+                logger.error(f"Could not validate {task} args even after filtering")
+                return {}
 
     def _normalize_dict(self, d: Dict[str, Any]) -> Dict[str, Any]:
         """Normalize dictionary to ensure consistent types for Dataset serialization.
@@ -633,10 +709,38 @@ class CuratorDatasetGenerator:
         logger.info(f"Generated {len(all_scenarios)} scenarios successfully")
         return all_scenarios
 
+    def _validate_scenario(self, scenario_dict: Dict[str, Any]) -> bool:
+        """Validate generated args match API signature using Pydantic schema.
+        
+        This is a post-generation validation step to catch any edge cases.
+        """
+        from pydantic import ValidationError
+        
+        task = scenario_dict.get('task')
+        expected_args = scenario_dict.get('expected_args', {})
+        
+        if not task or not expected_args:
+            return False
+        
+        # Get Pydantic model for this task
+        schema_class = TASK_SCHEMA_MAP.get(task)
+        if not schema_class:
+            logger.warning(f"No Pydantic schema found for task: {task}")
+            return True  # Can't validate without schema
+        
+        try:
+            # This will raise ValidationError if args don't match
+            validated = schema_class(**expected_args)
+            return True
+        except ValidationError as e:
+            logger.error(f"Post-generation validation failed for {task}: {e}")
+            return False
+
     def _dict_to_scenario(self, row: Dict[str, Any]) -> Optional[Scenario]:
         """Convert dict to Scenario dataclass.
 
         Deserializes JSON strings back to dicts for setup_entities and expected_args.
+        Validates scenario before creating Scenario object.
         """
         from .failure_blueprints import FailureCategory
         import json
@@ -648,12 +752,23 @@ class CuratorDatasetGenerator:
                 setup_entities = json.loads(row["setup_entities_json"])
             elif "setup_entities" in row:
                 setup_entities = row["setup_entities"]
-
+            
             expected_args = {}
             if "expected_args_json" in row:
                 expected_args = json.loads(row["expected_args_json"])
             elif "expected_args" in row:
                 expected_args = row["expected_args"]
+            
+            # Build scenario dict for validation
+            scenario_dict = {
+                "task": row.get("task"),
+                "expected_args": expected_args,
+            }
+            
+            # Validate scenario before creating
+            if not self._validate_scenario(scenario_dict):
+                logger.warning(f"Skipping invalid scenario: {row.get('scenario_id')}")
+                return None
 
             # Convert failure_category string to enum if present
             failure_category = None

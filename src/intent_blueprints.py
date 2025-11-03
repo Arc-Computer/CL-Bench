@@ -116,7 +116,7 @@ register_intent_blueprint(IntentBlueprint(
     frequency=991,
     expected_tool="opportunity_search",
     required_entities=(),
-    argument_template={},
+    argument_template={"stage": None, "client_id": None, "owner": None, "amount": None},
     optional_fields=("stage", "client_id", "owner", "amount"),
     success_variants=(
         ArgumentVariation("By stage", {"stage": "Proposal"}),
@@ -133,7 +133,7 @@ register_intent_blueprint(IntentBlueprint(
     frequency=871,
     expected_tool="client_search",
     required_entities=(),
-    argument_template={},
+    argument_template={"status": None, "industry": None, "owner": None, "name": None},
     optional_fields=("status", "industry", "owner", "name"),
     success_variants=(
         ArgumentVariation("By status", {"status": "Active"}),
@@ -213,7 +213,7 @@ register_intent_blueprint(IntentBlueprint(
     frequency=460,
     expected_tool="contact_search",
     required_entities=(),
-    argument_template={},
+    argument_template={"client_id": None, "email": None, "first_name": None, "last_name": None},
     optional_fields=("client_id", "email", "first_name", "last_name"),
     success_variants=(
         ArgumentVariation("By client", {"client_id": "client-123"}),
@@ -352,7 +352,7 @@ register_intent_blueprint(IntentBlueprint(
     frequency=192,
     expected_tool="quote_search",
     required_entities=(),
-    argument_template={},
+    argument_template={"status": None, "opportunity_id": None, "amount": None},
     optional_fields=("status", "opportunity_id", "amount"),
     success_variants=(
         ArgumentVariation("By status", {"status": "Sent"}),
@@ -383,7 +383,7 @@ register_intent_blueprint(IntentBlueprint(
     frequency=154,
     expected_tool="contract_search",
     required_entities=(),
-    argument_template={},
+    argument_template={"status": None, "client_id": None},
     optional_fields=("status", "client_id"),
     success_variants=(
         ArgumentVariation("By status", {"status": "Active"}),
@@ -399,7 +399,7 @@ register_intent_blueprint(IntentBlueprint(
     frequency=138,
     expected_tool="summarize_opportunities",
     required_entities=(),
-    argument_template={},
+    argument_template={"stage": None, "owner": None},
     optional_fields=("stage", "owner"),
     success_variants=(
         ArgumentVariation("All opportunities", {}),
@@ -415,7 +415,7 @@ register_intent_blueprint(IntentBlueprint(
     frequency=103,
     expected_tool="company_search",
     required_entities=(),
-    argument_template={},
+    argument_template={"type": None, "industry": None, "name": None},
     optional_fields=("type", "industry", "name"),
     success_variants=(
         ArgumentVariation("By type", {"type": "Partner"}),
@@ -478,7 +478,7 @@ register_intent_blueprint(IntentBlueprint(
     frequency=1,
     expected_tool="quote_prefixes",
     required_entities=(),
-    argument_template={},
+    argument_template={},  # No arguments for this task
     optional_fields=(),
     success_variants=(
         ArgumentVariation("List prefixes", {}),
