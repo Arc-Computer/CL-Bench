@@ -92,10 +92,10 @@ Your task is to call the appropriate CRM tool with correct arguments.
 
 User request: {scenario.utterance}
 
-Available tools: create_new_client, modify_client, client_search, create_opportunity, modify_opportunity,
+Available tools: create_new_client, modify_client, client_search, create_new_opportunity, modify_opportunity,
 delete_opportunity, opportunity_search, clone_opportunity, view_opportunity_details, summarize_opportunities,
 create_new_contact, modify_contact, contact_search, create_quote, modify_quote, delete_quote, cancel_quote,
-quote_search, quote_details, compare_quotes, create_contract, contract_search, company_search, add_note, upload_document
+quote_search, quote_details, compare_quotes, compare_quote_details, create_contract, contract_search, company_search, add_note, upload_document
 
 Schema constraints:
 - OpportunityStage: Prospecting, Qualification, Proposal, Negotiation, Closed-Won, Closed-Lost
@@ -184,19 +184,40 @@ class ScenarioBaselineHarness:
         # Create opportunity if needed
         if "opportunity_id" in setup:
             if hasattr(backend, "opportunities") and setup["opportunity_id"] not in backend.opportunities:
-                backend.create_opportunity(
-                    opportunity_id=setup["opportunity_id"],
-                    name=setup.get("opportunity_name", f"Opportunity {setup['opportunity_id'][:8]}"),
-                    client_id=setup.get("client_id"),
-                    stage=setup.get("opportunity_stage", "Prospecting"),
-                    amount=setup.get("opportunity_amount", 100000.0),
-                    close_date=setup.get("close_date"),
-                    owner=setup.get("opportunity_owner", "sales@example.com"),
-                    probability=setup.get("probability", 50),
-                    notes=setup.get("opportunity_notes"),
+                # Build kwargs, filtering out None values
+                opp_kwargs = {
+                    "opportunity_id": setup["opportunity_id"],
+                    "name": setup.get("opportunity_name", f"Opportunity {setup['opportunity_id'][:8]}"),
+                    "client_id": setup.get("client_id"),
+                    "stage": setup.get("opportunity_stage", "Prospecting"),
+                    "amount": setup.get("opportunity_amount", 100000.0),
+                    "owner": setup.get("opportunity_owner", "sales@example.com"),
+                    "probability": setup.get("probability", 50),
+                }
+                # Only add optional fields if they're not None
+                if setup.get("close_date") is not None:
+                    opp_kwargs["close_date"] = setup.get("close_date")
+                if setup.get("opportunity_notes") is not None:
+                    opp_kwargs["notes"] = setup.get("opportunity_notes")
+                backend.create_new_opportunity(**opp_kwargs)
+
+        # Create quotes if referenced in expected_args (for scenarios like compare_quote_details)
+        quote_ids_from_args = []
+        if "quote_ids" in scenario.expected_args:
+            quote_ids_from_args = scenario.expected_args["quote_ids"]
+        elif "quote_id" in scenario.expected_args:
+            quote_ids_from_args = [scenario.expected_args["quote_id"]]
+
+        for quote_id in quote_ids_from_args:
+            if hasattr(backend, "quotes") and quote_id not in backend.quotes:
+                backend.create_quote(
+                    quote_id=quote_id,
+                    opportunity_id=setup.get("opportunity_id"),
+                    amount=setup.get("opportunity_amount", 100000.0) * 0.95,  # Quote typically ~95% of opportunity
+                    status="Sent",
                 )
 
-        # Create quote if needed
+        # Create quote if needed (from setup_entities)
         if "quote_id" in setup:
             if hasattr(backend, "quotes") and setup["quote_id"] not in backend.quotes:
                 backend.create_quote(
@@ -223,7 +244,23 @@ class ScenarioBaselineHarness:
                     notes=setup.get("contact_notes"),
                 )
 
-        # Create contract if needed
+        # Create contracts if referenced in expected_args
+        contract_ids_from_args = []
+        if "contract_ids" in scenario.expected_args:
+            contract_ids_from_args = scenario.expected_args["contract_ids"]
+        elif "contract_id" in scenario.expected_args:
+            contract_ids_from_args = [scenario.expected_args["contract_id"]]
+
+        for contract_id in contract_ids_from_args:
+            if hasattr(backend, "contracts") and contract_id not in backend.contracts:
+                backend.create_contract(
+                    contract_id=contract_id,
+                    client_id=setup.get("client_id"),
+                    opportunity_id=setup.get("opportunity_id"),
+                    status="Draft",
+                )
+
+        # Create contract if needed (from setup_entities)
         if "contract_id" in setup:
             if hasattr(backend, "contracts") and setup["contract_id"] not in backend.contracts:
                 backend.create_contract(
@@ -449,7 +486,7 @@ class ScenarioBaselineHarness:
                         validator_details=validation_result.details,
                         expected_tool=scenario.expected_tool,
                         expected_arguments=scenario.expected_args,
-                        verification_mode=scenario.verification_mode.value,
+                        verification_mode=scenario.verification_mode.value if hasattr(scenario.verification_mode, 'value') else scenario.verification_mode,
                         verifier_name=self._verifier_name if self._verifier_enabled else None,
                         verifier_score=verifier_result.score if verifier_result else None,
                         verifier_rationale=verifier_result.rationale if verifier_result else None,

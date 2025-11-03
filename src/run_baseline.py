@@ -15,10 +15,15 @@ import random
 from pathlib import Path
 from typing import List, Literal
 
+from dotenv import load_dotenv
+
 from .crm_backend import DatabaseConfig
 from .harness import ClaudeAgent, OpenAIAgent
 from .scenario_generator import Scenario
 from .scenario_harness import ScenarioBaselineHarness, ScenarioMockAgent, load_scenarios_from_jsonl
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 def sample_scenarios(
