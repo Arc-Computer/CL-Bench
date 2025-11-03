@@ -203,8 +203,8 @@ class EntitySampler:
             "Qualification": random.randint(25, 45),
             "Proposal": random.randint(40, 60),
             "Negotiation": random.randint(60, 85),
-            "Closed-Won": 100,
-            "Closed-Lost": 0,
+            "Closed-Won": 99,
+            "Closed-Lost": 1,
         }
         probability = probability_map.get(stage, 50)
 

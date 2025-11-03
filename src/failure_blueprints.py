@@ -203,6 +203,10 @@ def register_blueprint(blueprint: FailureBlueprint) -> None:
     FAILURE_BLUEPRINTS.append(blueprint)
 
 
+def get_all_blueprints() -> List[FailureBlueprint]:
+    return list(FAILURE_BLUEPRINTS)
+
+
 def get_blueprints_by_category(category: FailureCategory) -> List[FailureBlueprint]:
     return [bp for bp in FAILURE_BLUEPRINTS if bp.category == category]
 
@@ -1072,6 +1076,1134 @@ register_blueprint(FailureBlueprint(
     description="Reject modification of closed opportunity",
     tags=("business_rules", "state_validation"),
     related_golden_cases=("MOP-112",),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="MCL-BP-001",
+    category=FailureCategory.UNKNOWN_FOREIGN_KEY,
+    severity=FailureSeverity.HIGH,
+    task="modify_client",
+    intent="Client Management",
+    expected_tool="modify_client",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="client_id",
+            mutation_type="replace",
+            mutation_value="CLT-99999",
+            description="Reference non-existent client",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expected_error_substring="not found",
+        expect_state_unchanged=True,
+    ),
+    description="Reject modification of non-existent client",
+    tags=("foreign_key", "not_found"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="MCL-BP-002",
+    category=FailureCategory.ENUM_CASE_MISMATCH,
+    severity=FailureSeverity.MEDIUM,
+    task="modify_client",
+    intent="Client Management",
+    expected_tool="modify_client",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="updates",
+            mutation_type="replace",
+            mutation_value={"status": "active"},
+            description="Use lowercase enum value",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expected_error_substring="must be one of",
+        expect_state_unchanged=True,
+    ),
+    description="Reject lowercase status enum in update",
+    tags=("enum_validation", "case_sensitivity"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="MCL-BP-003",
+    category=FailureCategory.MALFORMED_EMAIL,
+    severity=FailureSeverity.MEDIUM,
+    task="modify_client",
+    intent="Client Management",
+    expected_tool="modify_client",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="updates",
+            mutation_type="replace",
+            mutation_value={"email": "invalid-email"},
+            description="Update with malformed email",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expect_state_unchanged=True,
+    ),
+    description="Reject malformed email in update",
+    tags=("email_validation", "string_validation"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="MCL-BP-004",
+    category=FailureCategory.BLANK_STRING,
+    severity=FailureSeverity.HIGH,
+    task="modify_client",
+    intent="Client Management",
+    expected_tool="modify_client",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="updates",
+            mutation_type="replace",
+            mutation_value={"name": ""},
+            description="Update with blank name",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expect_state_unchanged=True,
+    ),
+    description="Reject blank name in update",
+    tags=("string_validation", "required_fields"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="MQT-BP-001",
+    category=FailureCategory.UNKNOWN_FOREIGN_KEY,
+    severity=FailureSeverity.HIGH,
+    task="modify_quote",
+    intent="Quote Management",
+    expected_tool="modify_quote",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="quote_id",
+            mutation_type="replace",
+            mutation_value="QT-99999",
+            description="Reference non-existent quote",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expected_error_substring="not found",
+        expect_state_unchanged=True,
+    ),
+    description="Reject modification of non-existent quote",
+    tags=("foreign_key", "not_found"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="MQT-BP-002",
+    category=FailureCategory.ENUM_CASE_MISMATCH,
+    severity=FailureSeverity.MEDIUM,
+    task="modify_quote",
+    intent="Quote Management",
+    expected_tool="modify_quote",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="updates",
+            mutation_type="replace",
+            mutation_value={"status": "draft"},
+            description="Use lowercase enum value",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expected_error_substring="must be one of",
+        expect_state_unchanged=True,
+    ),
+    description="Reject lowercase status enum in update",
+    tags=("enum_validation", "case_sensitivity"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="MQT-BP-003",
+    category=FailureCategory.NEGATIVE_AMOUNT,
+    severity=FailureSeverity.HIGH,
+    task="modify_quote",
+    intent="Quote Management",
+    expected_tool="modify_quote",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="updates",
+            mutation_type="replace",
+            mutation_value={"amount": -5000.0},
+            description="Update with negative amount",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expected_error_substring="must be positive",
+        expect_state_unchanged=True,
+    ),
+    description="Reject negative amount in update",
+    tags=("amount_validation", "business_rules"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="MQT-BP-004",
+    category=FailureCategory.PAST_DATE,
+    severity=FailureSeverity.MEDIUM,
+    task="modify_quote",
+    intent="Quote Management",
+    expected_tool="modify_quote",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="updates",
+            mutation_type="replace",
+            mutation_value={"valid_until": "2020-01-01"},
+            description="Update with past date",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expected_error_substring="must be in the future",
+        expect_state_unchanged=True,
+    ),
+    description="Reject past valid_until date in update",
+    tags=("date_validation", "business_rules"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="MCN-BP-001",
+    category=FailureCategory.UNKNOWN_FOREIGN_KEY,
+    severity=FailureSeverity.HIGH,
+    task="modify_contact",
+    intent="Contact Management",
+    expected_tool="modify_contact",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="contact_id",
+            mutation_type="replace",
+            mutation_value="CON-99999",
+            description="Reference non-existent contact",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expected_error_substring="not found",
+        expect_state_unchanged=True,
+    ),
+    description="Reject modification of non-existent contact",
+    tags=("foreign_key", "not_found"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="MCN-BP-002",
+    category=FailureCategory.MALFORMED_EMAIL,
+    severity=FailureSeverity.MEDIUM,
+    task="modify_contact",
+    intent="Contact Management",
+    expected_tool="modify_contact",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="updates",
+            mutation_type="replace",
+            mutation_value={"email": "not_an_email"},
+            description="Update with malformed email",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expect_state_unchanged=True,
+    ),
+    description="Reject malformed email in update",
+    tags=("email_validation", "string_validation"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="MCN-BP-003",
+    category=FailureCategory.BLANK_STRING,
+    severity=FailureSeverity.HIGH,
+    task="modify_contact",
+    intent="Contact Management",
+    expected_tool="modify_contact",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="updates",
+            mutation_type="replace",
+            mutation_value={"first_name": ""},
+            description="Update with blank first name",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expect_state_unchanged=True,
+    ),
+    description="Reject blank first_name in update",
+    tags=("string_validation", "required_fields"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="CCON-BP-001",
+    category=FailureCategory.UNKNOWN_FOREIGN_KEY,
+    severity=FailureSeverity.HIGH,
+    task="create_new_contact",
+    intent="Contact Management",
+    expected_tool="create_new_contact",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="client_id",
+            mutation_type="replace",
+            mutation_value="CLT-99999",
+            description="Reference non-existent client",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expected_error_substring="not found",
+        expect_state_unchanged=True,
+    ),
+    description="Reject contact creation with invalid client_id",
+    tags=("foreign_key", "not_found"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="CCON-BP-002",
+    category=FailureCategory.MALFORMED_EMAIL,
+    severity=FailureSeverity.MEDIUM,
+    task="create_new_contact",
+    intent="Contact Management",
+    expected_tool="create_new_contact",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="email",
+            mutation_type="replace",
+            mutation_value="malformed_email",
+            description="Use malformed email",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expect_state_unchanged=True,
+    ),
+    description="Reject contact creation with malformed email",
+    tags=("email_validation", "string_validation"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="CCON-BP-003",
+    category=FailureCategory.MISSING_REQUIRED_FIELD,
+    severity=FailureSeverity.HIGH,
+    task="create_new_contact",
+    intent="Contact Management",
+    expected_tool="create_new_contact",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="first_name",
+            mutation_type="remove",
+            description="Remove required first_name field",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expect_state_unchanged=True,
+    ),
+    description="Reject contact creation without first_name",
+    tags=("required_fields", "schema_validation"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="DOP-BP-001",
+    category=FailureCategory.UNKNOWN_FOREIGN_KEY,
+    severity=FailureSeverity.HIGH,
+    task="delete_opportunity",
+    intent="Opportunity Management",
+    expected_tool="delete_opportunity",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="opportunity_id",
+            mutation_type="replace",
+            mutation_value="OPP-99999",
+            description="Reference non-existent opportunity",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expected_error_substring="not found",
+        expect_state_unchanged=True,
+    ),
+    description="Reject deletion of non-existent opportunity",
+    tags=("foreign_key", "not_found"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="DOP-BP-002",
+    category=FailureCategory.MISSING_REQUIRED_FIELD,
+    severity=FailureSeverity.HIGH,
+    task="delete_opportunity",
+    intent="Opportunity Management",
+    expected_tool="delete_opportunity",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="opportunity_id",
+            mutation_type="remove",
+            description="Remove required opportunity_id field",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expect_state_unchanged=True,
+    ),
+    description="Reject deletion without opportunity_id",
+    tags=("required_fields", "schema_validation"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="DQT-BP-001",
+    category=FailureCategory.UNKNOWN_FOREIGN_KEY,
+    severity=FailureSeverity.HIGH,
+    task="delete_quote",
+    intent="Quote Management",
+    expected_tool="delete_quote",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="quote_id",
+            mutation_type="replace",
+            mutation_value="QT-99999",
+            description="Reference non-existent quote",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expected_error_substring="not found",
+        expect_state_unchanged=True,
+    ),
+    description="Reject deletion of non-existent quote",
+    tags=("foreign_key", "not_found"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="CQT-BP-001",
+    category=FailureCategory.UNKNOWN_FOREIGN_KEY,
+    severity=FailureSeverity.HIGH,
+    task="cancel_quote",
+    intent="Quote Management",
+    expected_tool="cancel_quote",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="quote_id",
+            mutation_type="replace",
+            mutation_value="QT-99999",
+            description="Reference non-existent quote",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expected_error_substring="not found",
+        expect_state_unchanged=True,
+    ),
+    description="Reject cancellation of non-existent quote",
+    tags=("foreign_key", "not_found"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="SROP-BP-001",
+    category=FailureCategory.ENUM_CASE_MISMATCH,
+    severity=FailureSeverity.MEDIUM,
+    task="opportunity_search",
+    intent="Opportunity Management",
+    expected_tool="opportunity_search",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="stage",
+            mutation_type="replace",
+            mutation_value="prospecting",
+            description="Use lowercase enum value",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expected_error_substring="must be one of",
+        expect_state_unchanged=True,
+    ),
+    description="Reject search with lowercase stage enum",
+    tags=("enum_validation", "case_sensitivity"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="SROP-BP-002",
+    category=FailureCategory.TYPE_MISMATCH,
+    severity=FailureSeverity.MEDIUM,
+    task="opportunity_search",
+    intent="Opportunity Management",
+    expected_tool="opportunity_search",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="amount",
+            mutation_type="replace",
+            mutation_value="not_a_number",
+            description="Use string instead of number",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expect_state_unchanged=True,
+    ),
+    description="Reject search with wrong type for amount",
+    tags=("type_validation", "schema_validation"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="SRCL-BP-001",
+    category=FailureCategory.ENUM_CASE_MISMATCH,
+    severity=FailureSeverity.MEDIUM,
+    task="client_search",
+    intent="Client Management",
+    expected_tool="client_search",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="status",
+            mutation_type="replace",
+            mutation_value="active",
+            description="Use lowercase enum value",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expected_error_substring="must be one of",
+        expect_state_unchanged=True,
+    ),
+    description="Reject search with lowercase status enum",
+    tags=("enum_validation", "case_sensitivity"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="SRCL-BP-002",
+    category=FailureCategory.BLANK_STRING,
+    severity=FailureSeverity.MEDIUM,
+    task="client_search",
+    intent="Client Management",
+    expected_tool="client_search",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="name",
+            mutation_type="replace",
+            mutation_value="",
+            description="Use blank search string",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expect_state_unchanged=True,
+    ),
+    description="Reject search with blank name",
+    tags=("string_validation", "search_validation"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="SRCON-BP-001",
+    category=FailureCategory.UNKNOWN_FOREIGN_KEY,
+    severity=FailureSeverity.MEDIUM,
+    task="contact_search",
+    intent="Contact Management",
+    expected_tool="contact_search",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="client_id",
+            mutation_type="replace",
+            mutation_value="CLT-99999",
+            description="Search with non-existent client_id",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expected_error_substring="not found",
+        expect_state_unchanged=True,
+    ),
+    description="Reject search with invalid client_id",
+    tags=("foreign_key", "not_found"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="SRCON-BP-002",
+    category=FailureCategory.BLANK_STRING,
+    severity=FailureSeverity.MEDIUM,
+    task="contact_search",
+    intent="Contact Management",
+    expected_tool="contact_search",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="email",
+            mutation_type="replace",
+            mutation_value="",
+            description="Use blank email search",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expect_state_unchanged=True,
+    ),
+    description="Reject search with blank email",
+    tags=("string_validation", "search_validation"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="VOP-BP-001",
+    category=FailureCategory.UNKNOWN_FOREIGN_KEY,
+    severity=FailureSeverity.HIGH,
+    task="view_opportunity_details",
+    intent="Opportunity Management",
+    expected_tool="view_opportunity_details",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="opportunity_id",
+            mutation_type="replace",
+            mutation_value="OPP-99999",
+            description="Reference non-existent opportunity",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expected_error_substring="not found",
+        expect_state_unchanged=True,
+    ),
+    description="Reject viewing non-existent opportunity",
+    tags=("foreign_key", "not_found"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="VOP-BP-002",
+    category=FailureCategory.MISSING_REQUIRED_FIELD,
+    severity=FailureSeverity.HIGH,
+    task="view_opportunity_details",
+    intent="Opportunity Management",
+    expected_tool="view_opportunity_details",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="opportunity_id",
+            mutation_type="remove",
+            description="Remove required opportunity_id",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expect_state_unchanged=True,
+    ),
+    description="Reject viewing without opportunity_id",
+    tags=("required_fields", "schema_validation"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="VQTD-BP-001",
+    category=FailureCategory.UNKNOWN_FOREIGN_KEY,
+    severity=FailureSeverity.HIGH,
+    task="quote_details",
+    intent="Quote Management",
+    expected_tool="quote_details",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="quote_id",
+            mutation_type="replace",
+            mutation_value="QT-99999",
+            description="Reference non-existent quote",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expected_error_substring="not found",
+        expect_state_unchanged=True,
+    ),
+    description="Reject viewing non-existent quote",
+    tags=("foreign_key", "not_found"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="VQTD-BP-002",
+    category=FailureCategory.MISSING_REQUIRED_FIELD,
+    severity=FailureSeverity.HIGH,
+    task="quote_details",
+    intent="Quote Management",
+    expected_tool="quote_details",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="quote_id",
+            mutation_type="remove",
+            description="Remove required quote_id",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expect_state_unchanged=True,
+    ),
+    description="Reject viewing quote without quote_id",
+    tags=("required_fields", "schema_validation"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="VOPD-BP-001",
+    category=FailureCategory.UNKNOWN_FOREIGN_KEY,
+    severity=FailureSeverity.HIGH,
+    task="opportunity_details",
+    intent="Opportunity Management",
+    expected_tool="opportunity_details",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="opportunity_id",
+            mutation_type="replace",
+            mutation_value="OPP-99999",
+            description="Reference non-existent opportunity",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expected_error_substring="not found",
+        expect_state_unchanged=True,
+    ),
+    description="Reject viewing non-existent opportunity details",
+    tags=("foreign_key", "not_found"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="CQT-BP-002",
+    category=FailureCategory.UNKNOWN_FOREIGN_KEY,
+    severity=FailureSeverity.HIGH,
+    task="compare_quotes",
+    intent="Quote Management",
+    expected_tool="compare_quotes",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="quote_ids",
+            mutation_type="replace",
+            mutation_value=["QT-99999", "QT-99998"],
+            description="Reference non-existent quotes",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expected_error_substring="not found",
+        expect_state_unchanged=True,
+    ),
+    description="Reject comparing non-existent quotes",
+    tags=("foreign_key", "not_found"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="CQT-BP-003",
+    category=FailureCategory.MISSING_REQUIRED_FIELD,
+    severity=FailureSeverity.HIGH,
+    task="compare_quotes",
+    intent="Quote Management",
+    expected_tool="compare_quotes",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="quote_ids",
+            mutation_type="remove",
+            description="Remove required quote_ids",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expect_state_unchanged=True,
+    ),
+    description="Reject comparison without quote_ids",
+    tags=("required_fields", "schema_validation"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="CQTD-BP-001",
+    category=FailureCategory.UNKNOWN_FOREIGN_KEY,
+    severity=FailureSeverity.HIGH,
+    task="compare_quote_details",
+    intent="Quote Management",
+    expected_tool="compare_quote_details",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="quote_ids",
+            mutation_type="replace",
+            mutation_value=["QT-99999", "QT-99998"],
+            description="Reference non-existent quotes",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expected_error_substring="not found",
+        expect_state_unchanged=True,
+    ),
+    description="Reject comparing non-existent quote details",
+    tags=("foreign_key", "not_found"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="SRQT-BP-001",
+    category=FailureCategory.ENUM_CASE_MISMATCH,
+    severity=FailureSeverity.MEDIUM,
+    task="quote_search",
+    intent="Quote Management",
+    expected_tool="quote_search",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="status",
+            mutation_type="replace",
+            mutation_value="draft",
+            description="Use lowercase enum value",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expected_error_substring="must be one of",
+        expect_state_unchanged=True,
+    ),
+    description="Reject search with lowercase status enum",
+    tags=("enum_validation", "case_sensitivity"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="SRQT-BP-002",
+    category=FailureCategory.UNKNOWN_FOREIGN_KEY,
+    severity=FailureSeverity.MEDIUM,
+    task="quote_search",
+    intent="Quote Management",
+    expected_tool="quote_search",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="opportunity_id",
+            mutation_type="replace",
+            mutation_value="OPP-99999",
+            description="Search with non-existent opportunity_id",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expected_error_substring="not found",
+        expect_state_unchanged=True,
+    ),
+    description="Reject search with invalid opportunity_id",
+    tags=("foreign_key", "not_found"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="SRCT-BP-001",
+    category=FailureCategory.ENUM_CASE_MISMATCH,
+    severity=FailureSeverity.MEDIUM,
+    task="contract_search",
+    intent="Contract Management",
+    expected_tool="contract_search",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="status",
+            mutation_type="replace",
+            mutation_value="active",
+            description="Use lowercase enum value",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expected_error_substring="must be one of",
+        expect_state_unchanged=True,
+    ),
+    description="Reject search with lowercase status enum",
+    tags=("enum_validation", "case_sensitivity"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="SRCT-BP-002",
+    category=FailureCategory.UNKNOWN_FOREIGN_KEY,
+    severity=FailureSeverity.MEDIUM,
+    task="contract_search",
+    intent="Contract Management",
+    expected_tool="contract_search",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="client_id",
+            mutation_type="replace",
+            mutation_value="CLT-99999",
+            description="Search with non-existent client_id",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expected_error_substring="not found",
+        expect_state_unchanged=True,
+    ),
+    description="Reject search with invalid client_id",
+    tags=("foreign_key", "not_found"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="CCT-BP-001",
+    category=FailureCategory.UNKNOWN_FOREIGN_KEY,
+    severity=FailureSeverity.HIGH,
+    task="create_contract",
+    intent="Contract Management",
+    expected_tool="create_contract",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="client_id",
+            mutation_type="replace",
+            mutation_value="CLT-99999",
+            description="Reference non-existent client",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expected_error_substring="not found",
+        expect_state_unchanged=True,
+    ),
+    description="Reject contract creation with invalid client_id",
+    tags=("foreign_key", "not_found"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="CCT-BP-002",
+    category=FailureCategory.NEGATIVE_AMOUNT,
+    severity=FailureSeverity.HIGH,
+    task="create_contract",
+    intent="Contract Management",
+    expected_tool="create_contract",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="value",
+            mutation_type="replace",
+            mutation_value=-10000.0,
+            description="Use negative contract value",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expected_error_substring="must be positive",
+        expect_state_unchanged=True,
+    ),
+    description="Reject contract with negative value",
+    tags=("amount_validation", "business_rules"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="CLOP-BP-001",
+    category=FailureCategory.UNKNOWN_FOREIGN_KEY,
+    severity=FailureSeverity.HIGH,
+    task="clone_opportunity",
+    intent="Opportunity Management",
+    expected_tool="clone_opportunity",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="opportunity_id",
+            mutation_type="replace",
+            mutation_value="OPP-99999",
+            description="Reference non-existent opportunity",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expected_error_substring="not found",
+        expect_state_unchanged=True,
+    ),
+    description="Reject cloning non-existent opportunity",
+    tags=("foreign_key", "not_found"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="CLOP-BP-002",
+    category=FailureCategory.MISSING_REQUIRED_FIELD,
+    severity=FailureSeverity.HIGH,
+    task="clone_opportunity",
+    intent="Opportunity Management",
+    expected_tool="clone_opportunity",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="opportunity_id",
+            mutation_type="remove",
+            description="Remove required opportunity_id",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expect_state_unchanged=True,
+    ),
+    description="Reject cloning without opportunity_id",
+    tags=("required_fields", "schema_validation"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="SUMOP-BP-001",
+    category=FailureCategory.ENUM_CASE_MISMATCH,
+    severity=FailureSeverity.MEDIUM,
+    task="summarize_opportunities",
+    intent="Opportunity Management",
+    expected_tool="summarize_opportunities",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="stage",
+            mutation_type="replace",
+            mutation_value="prospecting",
+            description="Use lowercase enum value",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expected_error_substring="must be one of",
+        expect_state_unchanged=True,
+    ),
+    description="Reject summarization with lowercase stage enum",
+    tags=("enum_validation", "case_sensitivity"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="SUMOP-BP-002",
+    category=FailureCategory.UNKNOWN_FOREIGN_KEY,
+    severity=FailureSeverity.MEDIUM,
+    task="summarize_opportunities",
+    intent="Opportunity Management",
+    expected_tool="summarize_opportunities",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="client_id",
+            mutation_type="replace",
+            mutation_value="CLT-99999",
+            description="Summarize with non-existent client_id",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expected_error_substring="not found",
+        expect_state_unchanged=True,
+    ),
+    description="Reject summarization with invalid client_id",
+    tags=("foreign_key", "not_found"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="ANT-BP-001",
+    category=FailureCategory.UNKNOWN_FOREIGN_KEY,
+    severity=FailureSeverity.HIGH,
+    task="add_note",
+    intent="Notes & Collaboration",
+    expected_tool="add_note",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="entity_id",
+            mutation_type="replace",
+            mutation_value="OPP-99999",
+            description="Reference non-existent entity",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expected_error_substring="not found",
+        expect_state_unchanged=True,
+    ),
+    description="Reject adding note to non-existent entity",
+    tags=("foreign_key", "not_found"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="ANT-BP-002",
+    category=FailureCategory.BLANK_STRING,
+    severity=FailureSeverity.MEDIUM,
+    task="add_note",
+    intent="Notes & Collaboration",
+    expected_tool="add_note",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="content",
+            mutation_type="replace",
+            mutation_value="",
+            description="Use blank note content",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expect_state_unchanged=True,
+    ),
+    description="Reject adding note with blank content",
+    tags=("string_validation", "required_fields"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="SRCOM-BP-001",
+    category=FailureCategory.BLANK_STRING,
+    severity=FailureSeverity.MEDIUM,
+    task="company_search",
+    intent="Company/Account Management",
+    expected_tool="company_search",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="name",
+            mutation_type="replace",
+            mutation_value="",
+            description="Use blank search string",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expect_state_unchanged=True,
+    ),
+    description="Reject search with blank name",
+    tags=("string_validation", "search_validation"),
+    related_golden_cases=(),
+))
+
+register_blueprint(FailureBlueprint(
+    blueprint_id="SRCOM-BP-002",
+    category=FailureCategory.ENUM_CASE_MISMATCH,
+    severity=FailureSeverity.MEDIUM,
+    task="company_search",
+    intent="Company/Account Management",
+    expected_tool="company_search",
+    argument_mutations=(
+        ArgumentMutation(
+            field_name="type",
+            mutation_type="replace",
+            mutation_value="partner",
+            description="Use lowercase enum value",
+        ),
+    ),
+    validator_expectation=ValidatorExpectation(
+        expect_success=False,
+        expected_error_substring="must be one of",
+        expect_state_unchanged=True,
+    ),
+    description="Reject search with lowercase type enum",
+    tags=("enum_validation", "case_sensitivity"),
+    related_golden_cases=(),
 ))
 
 

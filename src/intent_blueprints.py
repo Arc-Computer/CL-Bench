@@ -123,7 +123,7 @@ register_intent_blueprint(IntentBlueprint(
         ArgumentVariation("By owner", {"owner": "stephanie.wong"}),
         ArgumentVariation("By client", {"client_id": "client-123"}),
     ),
-    failure_blueprint_ids=(),
+    failure_blueprint_ids=("SROP-BP-001", "SROP-BP-002"),
 ))
 
 register_intent_blueprint(IntentBlueprint(
@@ -140,7 +140,7 @@ register_intent_blueprint(IntentBlueprint(
         ArgumentVariation("By industry", {"industry": "Technology"}),
         ArgumentVariation("By name", {"name": "Acme"}),
     ),
-    failure_blueprint_ids=(),
+    failure_blueprint_ids=("SRCL-BP-001", "SRCL-BP-002"),
 ))
 
 register_intent_blueprint(IntentBlueprint(
@@ -155,7 +155,7 @@ register_intent_blueprint(IntentBlueprint(
     success_variants=(
         ArgumentVariation("View details", {}),
     ),
-    failure_blueprint_ids=(),
+    failure_blueprint_ids=("VOP-BP-001", "VOP-BP-002"),
 ))
 
 register_intent_blueprint(IntentBlueprint(
@@ -171,7 +171,7 @@ register_intent_blueprint(IntentBlueprint(
         ArgumentVariation("Update status", {"updates": {"status": "Approved"}}),
         ArgumentVariation("Update amount", {"updates": {"amount": 75000.0}}),
     ),
-    failure_blueprint_ids=(),
+    failure_blueprint_ids=("MQT-BP-001", "MQT-BP-002", "MQT-BP-003", "MQT-BP-004"),
 ))
 
 register_intent_blueprint(IntentBlueprint(
@@ -187,7 +187,7 @@ register_intent_blueprint(IntentBlueprint(
         ArgumentVariation("Update status", {"updates": {"status": "Inactive"}}),
         ArgumentVariation("Update phone", {"updates": {"phone": "+1-555-0200"}}),
     ),
-    failure_blueprint_ids=(),
+    failure_blueprint_ids=("MCL-BP-001", "MCL-BP-002", "MCL-BP-003", "MCL-BP-004"),
 ))
 
 register_intent_blueprint(IntentBlueprint(
@@ -203,7 +203,7 @@ register_intent_blueprint(IntentBlueprint(
         ArgumentVariation("Basic contact", {}),
         ArgumentVariation("With email and phone", {"email": "contact@example.com", "phone": "+1-555-0300"}),
     ),
-    failure_blueprint_ids=(),
+    failure_blueprint_ids=("CCON-BP-001", "CCON-BP-002", "CCON-BP-003"),
 ))
 
 register_intent_blueprint(IntentBlueprint(
@@ -219,7 +219,7 @@ register_intent_blueprint(IntentBlueprint(
         ArgumentVariation("By client", {"client_id": "client-123"}),
         ArgumentVariation("By name", {"first_name": "John"}),
     ),
-    failure_blueprint_ids=(),
+    failure_blueprint_ids=("SRCON-BP-001", "SRCON-BP-002"),
 ))
 
 register_intent_blueprint(IntentBlueprint(
@@ -234,7 +234,7 @@ register_intent_blueprint(IntentBlueprint(
     success_variants=(
         ArgumentVariation("View details", {}),
     ),
-    failure_blueprint_ids=(),
+    failure_blueprint_ids=("VQTD-BP-001", "VQTD-BP-002"),
 ))
 
 register_intent_blueprint(IntentBlueprint(
@@ -250,7 +250,7 @@ register_intent_blueprint(IntentBlueprint(
         ArgumentVariation("Compare two", {"quote_ids": ["q1", "q2"]}),
         ArgumentVariation("Compare three", {"quote_ids": ["q1", "q2", "q3"]}),
     ),
-    failure_blueprint_ids=(),
+    failure_blueprint_ids=("CQT-BP-002", "CQT-BP-003"),
 ))
 
 register_intent_blueprint(IntentBlueprint(
@@ -266,7 +266,7 @@ register_intent_blueprint(IntentBlueprint(
         ArgumentVariation("Update email", {"updates": {"email": "newemail@example.com"}}),
         ArgumentVariation("Update title", {"updates": {"title": "VP of Sales"}}),
     ),
-    failure_blueprint_ids=(),
+    failure_blueprint_ids=("MCN-BP-001", "MCN-BP-002", "MCN-BP-003"),
 ))
 
 register_intent_blueprint(IntentBlueprint(
@@ -281,7 +281,7 @@ register_intent_blueprint(IntentBlueprint(
     success_variants=(
         ArgumentVariation("Delete opportunity", {}),
     ),
-    failure_blueprint_ids=(),
+    failure_blueprint_ids=("DOP-BP-001", "DOP-BP-002"),
 ))
 
 register_intent_blueprint(IntentBlueprint(
@@ -296,7 +296,7 @@ register_intent_blueprint(IntentBlueprint(
     success_variants=(
         ArgumentVariation("Delete quote", {}),
     ),
-    failure_blueprint_ids=(),
+    failure_blueprint_ids=("DQT-BP-001",),
 ))
 
 register_intent_blueprint(IntentBlueprint(
@@ -311,7 +311,7 @@ register_intent_blueprint(IntentBlueprint(
     success_variants=(
         ArgumentVariation("Compare two", {"quote_ids": ["q1", "q2"]}),
     ),
-    failure_blueprint_ids=(),
+    failure_blueprint_ids=("CQTD-BP-001",),
 ))
 
 register_intent_blueprint(IntentBlueprint(
@@ -327,7 +327,7 @@ register_intent_blueprint(IntentBlueprint(
         ArgumentVariation("Basic contract", {"status": "Pending"}),
         ArgumentVariation("With opportunity", {"status": "Active", "opportunity_id": "opp-123"}),
     ),
-    failure_blueprint_ids=(),
+    failure_blueprint_ids=("CCT-BP-001", "CCT-BP-002"),
 ))
 
 register_intent_blueprint(IntentBlueprint(
@@ -342,7 +342,7 @@ register_intent_blueprint(IntentBlueprint(
     success_variants=(
         ArgumentVariation("Cancel quote", {}),
     ),
-    failure_blueprint_ids=(),
+    failure_blueprint_ids=("CQT-BP-001",),
 ))
 
 register_intent_blueprint(IntentBlueprint(
@@ -358,7 +358,7 @@ register_intent_blueprint(IntentBlueprint(
         ArgumentVariation("By status", {"status": "Sent"}),
         ArgumentVariation("By opportunity", {"opportunity_id": "opp-123"}),
     ),
-    failure_blueprint_ids=(),
+    failure_blueprint_ids=("SRQT-BP-001", "SRQT-BP-002"),
 ))
 
 register_intent_blueprint(IntentBlueprint(
@@ -373,7 +373,7 @@ register_intent_blueprint(IntentBlueprint(
     success_variants=(
         ArgumentVariation("Clone opportunity", {}),
     ),
-    failure_blueprint_ids=(),
+    failure_blueprint_ids=("CLOP-BP-001", "CLOP-BP-002"),
 ))
 
 register_intent_blueprint(IntentBlueprint(
@@ -389,7 +389,7 @@ register_intent_blueprint(IntentBlueprint(
         ArgumentVariation("By status", {"status": "Active"}),
         ArgumentVariation("By client", {"client_id": "client-123"}),
     ),
-    failure_blueprint_ids=(),
+    failure_blueprint_ids=("SRCT-BP-001", "SRCT-BP-002"),
 ))
 
 register_intent_blueprint(IntentBlueprint(
@@ -405,7 +405,7 @@ register_intent_blueprint(IntentBlueprint(
         ArgumentVariation("All opportunities", {}),
         ArgumentVariation("By stage", {"stage": "Proposal"}),
     ),
-    failure_blueprint_ids=(),
+    failure_blueprint_ids=("SUMOP-BP-001", "SUMOP-BP-002"),
 ))
 
 register_intent_blueprint(IntentBlueprint(
@@ -421,7 +421,7 @@ register_intent_blueprint(IntentBlueprint(
         ArgumentVariation("By type", {"type": "Partner"}),
         ArgumentVariation("By industry", {"industry": "Technology"}),
     ),
-    failure_blueprint_ids=(),
+    failure_blueprint_ids=("SRCOM-BP-001", "SRCOM-BP-002"),
 ))
 
 register_intent_blueprint(IntentBlueprint(
@@ -437,7 +437,7 @@ register_intent_blueprint(IntentBlueprint(
         ArgumentVariation("Client note", {"entity_type": "Client"}),
         ArgumentVariation("Opportunity note", {"entity_type": "Opportunity"}),
     ),
-    failure_blueprint_ids=(),
+    failure_blueprint_ids=("ANT-BP-001", "ANT-BP-002"),
 ))
 
 register_intent_blueprint(IntentBlueprint(
@@ -468,7 +468,7 @@ register_intent_blueprint(IntentBlueprint(
     success_variants=(
         ArgumentVariation("View details", {}),
     ),
-    failure_blueprint_ids=(),
+    failure_blueprint_ids=("VOPD-BP-001",),
 ))
 
 register_intent_blueprint(IntentBlueprint(
