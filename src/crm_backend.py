@@ -238,8 +238,27 @@ class PostgresCrmBackend:
             raise RuntimeError("Failed to insert opportunity.")
         return Opportunity(**record)
 
-    def modify_opportunity(self, opportunity_id: str, updates: Dict[str, Any]) -> Opportunity:
-        """Apply validated updates to an existing opportunity."""
+    def modify_opportunity(
+        self,
+        opportunity_id: str,
+        updates: Optional[Dict[str, Any]] = None,
+        **kwargs: Any
+    ) -> Opportunity:
+        """Apply validated updates to an existing opportunity.
+        
+        Supports both patterns:
+        - modify_opportunity(id, updates={"stage": "X", "amount": Y})
+        - modify_opportunity(id, stage="X", amount=Y)
+        """
+        # Combine updates dict and kwargs
+        if updates is None and kwargs:
+            updates = kwargs
+        elif updates is None:
+            raise ValueError("Must provide either updates dict or keyword args")
+        elif kwargs:
+            # Merge kwargs into updates dict
+            updates = {**updates, **kwargs}
+        
         record = self._fetchone("SELECT * FROM opportunities WHERE opportunity_id = %(id)s;", {"id": opportunity_id})
         if not record:
             raise ValueError(f"Opportunity not found with ID '{opportunity_id}'.")
@@ -555,8 +574,26 @@ class PostgresCrmBackend:
             raise RuntimeError("Failed to insert contact.")
         return Contact(**record)
 
-    def modify_client(self, client_id: str, updates: Dict[str, Any]) -> Client:
-        """Apply validated updates to an existing client."""
+    def modify_client(
+        self,
+        client_id: str,
+        updates: Optional[Dict[str, Any]] = None,
+        **kwargs: Any
+    ) -> Client:
+        """Apply validated updates to an existing client.
+        
+        Supports both patterns:
+        - modify_client(id, updates={"name": "X", "status": "Y"})
+        - modify_client(id, name="X", status="Y")
+        """
+        # Combine updates dict and kwargs
+        if updates is None and kwargs:
+            updates = kwargs
+        elif updates is None:
+            raise ValueError("Must provide either updates dict or keyword args")
+        elif kwargs:
+            # Merge kwargs into updates dict
+            updates = {**updates, **kwargs}
         record = self._fetchone("SELECT * FROM clients WHERE client_id = %(id)s;", {"id": client_id})
         if not record:
             raise ValueError(f"Client not found with ID '{client_id}'.")
@@ -588,8 +625,26 @@ class PostgresCrmBackend:
             raise RuntimeError("Client disappeared after update.")
         return Client(**updated)
 
-    def modify_contact(self, contact_id: str, updates: Dict[str, Any]) -> Contact:
-        """Apply validated updates to an existing contact."""
+    def modify_contact(
+        self,
+        contact_id: str,
+        updates: Optional[Dict[str, Any]] = None,
+        **kwargs: Any
+    ) -> Contact:
+        """Apply validated updates to an existing contact.
+        
+        Supports both patterns:
+        - modify_contact(id, updates={"first_name": "X", "email": "Y"})
+        - modify_contact(id, first_name="X", email="Y")
+        """
+        # Combine updates dict and kwargs
+        if updates is None and kwargs:
+            updates = kwargs
+        elif updates is None:
+            raise ValueError("Must provide either updates dict or keyword args")
+        elif kwargs:
+            # Merge kwargs into updates dict
+            updates = {**updates, **kwargs}
         record = self._fetchone("SELECT * FROM contacts WHERE contact_id = %(id)s;", {"id": contact_id})
         if not record:
             raise ValueError(f"Contact not found with ID '{contact_id}'.")
@@ -619,8 +674,26 @@ class PostgresCrmBackend:
             raise RuntimeError("Contact disappeared after update.")
         return Contact(**updated)
 
-    def modify_quote(self, quote_id: str, updates: Dict[str, Any]) -> Quote:
-        """Apply validated updates to an existing quote."""
+    def modify_quote(
+        self,
+        quote_id: str,
+        updates: Optional[Dict[str, Any]] = None,
+        **kwargs: Any
+    ) -> Quote:
+        """Apply validated updates to an existing quote.
+        
+        Supports both patterns:
+        - modify_quote(id, updates={"amount": X, "status": "Y"})
+        - modify_quote(id, amount=X, status="Y")
+        """
+        # Combine updates dict and kwargs
+        if updates is None and kwargs:
+            updates = kwargs
+        elif updates is None:
+            raise ValueError("Must provide either updates dict or keyword args")
+        elif kwargs:
+            # Merge kwargs into updates dict
+            updates = {**updates, **kwargs}
         record = self._fetchone("SELECT * FROM quotes WHERE quote_id = %(id)s;", {"id": quote_id})
         if not record:
             raise ValueError(f"Quote not found with ID '{quote_id}'.")

@@ -92,6 +92,84 @@ def test_crm_env_with_postgres_backend(pg_backend: PostgresCrmBackend) -> None:
 
 
 # ------------------------------------------------------------------------------
+# Phase 2: Signature Standardization Tests
+# ------------------------------------------------------------------------------
+
+
+def test_modify_opportunity_both_patterns(pg_backend: PostgresCrmBackend, mock_backend: MockCrmApi) -> None:
+    """Test modify_opportunity accepts both updates dict and kwargs patterns."""
+    pg_client = pg_backend.create_new_client(name="Test Client", email="test@example.com", status="Active")
+    mock_client = mock_backend.create_new_client(name="Test Client", email="test@example.com", status="Active")
+    
+    pg_opp = pg_backend.create_new_opportunity(name="Deal", client_id=pg_client.client_id, amount=100000, stage="Prospecting")
+    mock_opp = mock_backend.create_new_opportunity(name="Deal", client_id=mock_client.client_id, amount=100000, stage="Prospecting")
+    
+    # Test pattern 1: updates dict (original pattern)
+    pg_updated = pg_backend.modify_opportunity(pg_opp.opportunity_id, {"stage": "Qualification", "probability": 50})
+    mock_updated = mock_backend.modify_opportunity(mock_opp.opportunity_id, {"stage": "Qualification", "probability": 50})
+    
+    assert pg_updated.stage == mock_updated.stage == "Qualification"
+    assert pg_updated.probability == mock_updated.probability == 50
+    
+    # Test pattern 2: kwargs (new pattern)
+    pg_updated2 = pg_backend.modify_opportunity(pg_opp.opportunity_id, stage="Negotiation", amount=150000)
+    mock_updated2 = mock_backend.modify_opportunity(mock_opp.opportunity_id, stage="Negotiation", amount=150000)
+    
+    assert pg_updated2.stage == mock_updated2.stage == "Negotiation"
+    assert pg_updated2.amount == mock_updated2.amount == 150000
+    
+    # Verify both patterns produce identical results between backends
+    assert pg_updated.stage == mock_updated.stage
+    assert pg_updated2.stage == mock_updated2.stage
+
+
+def test_modify_methods_signature_flexibility(pg_backend: PostgresCrmBackend, mock_backend: MockCrmApi) -> None:
+    """Test that all modify_* methods accept both signature patterns consistently."""
+    pg_client = pg_backend.create_new_client(name="Test", email="test@example.com", status="Active")
+    mock_client = mock_backend.create_new_client(name="Test", email="test@example.com", status="Active")
+    
+    pg_opp = pg_backend.create_new_opportunity(name="Deal", client_id=pg_client.client_id, amount=100000, stage="Prospecting")
+    mock_opp = mock_backend.create_new_opportunity(name="Deal", client_id=mock_client.client_id, amount=100000, stage="Prospecting")
+    
+    pg_quote = pg_backend.create_quote(opportunity_id=pg_opp.opportunity_id, amount=100000, status="Draft")
+    mock_quote = mock_backend.create_quote(opportunity_id=mock_opp.opportunity_id, amount=100000, status="Draft")
+    
+    pg_contact = pg_backend.create_new_contact(first_name="John", last_name="Doe", client_id=pg_client.client_id)
+    mock_contact = mock_backend.create_new_contact(first_name="John", last_name="Doe", client_id=mock_client.client_id)
+    
+    # Test all modify methods with kwargs pattern
+    pg_backend.modify_opportunity(pg_opp.opportunity_id, stage="Qualification")
+    mock_backend.modify_opportunity(mock_opp.opportunity_id, stage="Qualification")
+    
+    pg_backend.modify_client(pg_client.client_id, name="Updated")
+    mock_backend.modify_client(mock_client.client_id, name="Updated")
+    
+    pg_backend.modify_quote(pg_quote.quote_id, status="Sent")
+    mock_backend.modify_quote(mock_quote.quote_id, status="Sent")
+    
+    pg_backend.modify_contact(pg_contact.contact_id, email="new@example.com")
+    mock_backend.modify_contact(mock_contact.contact_id, email="new@example.com")
+    
+    # Verify no errors with kwargs pattern
+    assert True  # If we get here, all methods accepted kwargs pattern
+
+
+def test_modify_methods_error_on_no_args(pg_backend: PostgresCrmBackend, mock_backend: MockCrmApi) -> None:
+    """Test that modify_* methods raise error when no updates provided."""
+    pg_client = pg_backend.create_new_client(name="Test", email="test@example.com", status="Active")
+    mock_client = mock_backend.create_new_client(name="Test", email="test@example.com", status="Active")
+    
+    pg_opp = pg_backend.create_new_opportunity(name="Deal", client_id=pg_client.client_id, amount=100000, stage="Prospecting")
+    mock_opp = mock_backend.create_new_opportunity(name="Deal", client_id=mock_client.client_id, amount=100000, stage="Prospecting")
+    
+    # Test error when no updates provided
+    with pytest.raises(ValueError, match="Must provide either updates dict or keyword args"):
+        pg_backend.modify_opportunity(pg_opp.opportunity_id)
+    with pytest.raises(ValueError, match="Must provide either updates dict or keyword args"):
+        mock_backend.modify_opportunity(mock_opp.opportunity_id)
+
+
+# ------------------------------------------------------------------------------
 # Phase 1: Search Methods - Parity Tests
 # ------------------------------------------------------------------------------
 
@@ -234,11 +312,19 @@ def test_modify_client_parity(pg_backend: PostgresCrmBackend, mock_backend: Mock
     pg_client = pg_backend.create_new_client(name="Original", email="orig@example.com", status="Active")
     mock_client = mock_backend.create_new_client(name="Original", email="orig@example.com", status="Active")
     
+    # Test pattern 1: updates dict
     pg_updated = pg_backend.modify_client(pg_client.client_id, {"name": "Updated", "status": "Inactive"})
     mock_updated = mock_backend.modify_client(mock_client.client_id, {"name": "Updated", "status": "Inactive"})
     
     assert pg_updated.name == mock_updated.name == "Updated"
     assert pg_updated.status == mock_updated.status == "Inactive"
+    
+    # Test pattern 2: kwargs
+    pg_updated2 = pg_backend.modify_client(pg_client.client_id, name="Updated2", industry="Tech")
+    mock_updated2 = mock_backend.modify_client(mock_client.client_id, name="Updated2", industry="Tech")
+    
+    assert pg_updated2.name == mock_updated2.name == "Updated2"
+    assert pg_updated2.industry == mock_updated2.industry == "Tech"
     
     # Verify error handling
     with pytest.raises(ValueError, match="Client not found"):
@@ -255,11 +341,19 @@ def test_modify_contact_parity(pg_backend: PostgresCrmBackend, mock_backend: Moc
     pg_contact = pg_backend.create_new_contact(first_name="John", last_name="Doe", client_id=pg_client.client_id)
     mock_contact = mock_backend.create_new_contact(first_name="John", last_name="Doe", client_id=mock_client.client_id)
     
+    # Test pattern 1: updates dict
     pg_updated = pg_backend.modify_contact(pg_contact.contact_id, {"first_name": "Jane", "email": "jane@example.com"})
     mock_updated = mock_backend.modify_contact(mock_contact.contact_id, {"first_name": "Jane", "email": "jane@example.com"})
     
     assert pg_updated.first_name == mock_updated.first_name == "Jane"
     assert pg_updated.email == mock_updated.email == "jane@example.com"
+    
+    # Test pattern 2: kwargs
+    pg_updated2 = pg_backend.modify_contact(pg_contact.contact_id, first_name="Bob", phone="555-1234")
+    mock_updated2 = mock_backend.modify_contact(mock_contact.contact_id, first_name="Bob", phone="555-1234")
+    
+    assert pg_updated2.first_name == mock_updated2.first_name == "Bob"
+    assert pg_updated2.phone == mock_updated2.phone == "555-1234"
 
 
 def test_modify_quote_parity(pg_backend: PostgresCrmBackend, mock_backend: MockCrmApi) -> None:
@@ -273,11 +367,19 @@ def test_modify_quote_parity(pg_backend: PostgresCrmBackend, mock_backend: MockC
     pg_quote = pg_backend.create_quote(opportunity_id=pg_opp.opportunity_id, amount=100000, status="Draft")
     mock_quote = mock_backend.create_quote(opportunity_id=mock_opp.opportunity_id, amount=100000, status="Draft")
     
+    # Test pattern 1: updates dict
     pg_updated = pg_backend.modify_quote(pg_quote.quote_id, {"amount": 150000, "status": "Sent"})
     mock_updated = mock_backend.modify_quote(mock_quote.quote_id, {"amount": 150000, "status": "Sent"})
     
     assert pg_updated.amount == mock_updated.amount == 150000
     assert pg_updated.status == mock_updated.status == "Sent"
+    
+    # Test pattern 2: kwargs
+    pg_updated2 = pg_backend.modify_quote(pg_quote.quote_id, amount=200000, quote_prefix="Q-2024")
+    mock_updated2 = mock_backend.modify_quote(mock_quote.quote_id, amount=200000, quote_prefix="Q-2024")
+    
+    assert pg_updated2.amount == mock_updated2.amount == 200000
+    assert pg_updated2.quote_prefix == mock_updated2.quote_prefix == "Q-2024"
 
 
 def test_delete_opportunity_parity(pg_backend: PostgresCrmBackend, mock_backend: MockCrmApi) -> None:

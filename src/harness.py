@@ -603,10 +603,8 @@ class BaselineHarness:
             return ValidationResult.fail(f"Unknown tool '{tool_call.tool_name}'.")
 
         try:
-            if tool_call.tool_name == "modify_opportunity":
-                tool(tool_call.arguments["opportunity_id"], tool_call.arguments["updates"])
-            else:
-                tool(**tool_call.arguments)
+            # All methods now support uniform calling via **kwargs
+            tool(**tool_call.arguments)
         except Exception as exc:
             return ValidationResult.fail(str(exc))
 

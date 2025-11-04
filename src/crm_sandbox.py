@@ -473,8 +473,27 @@ class MockCrmApi:
         self.documents[document.document_id] = document
         return document
 
-    def modify_opportunity(self, opportunity_id: str, updates: Dict[str, Any]) -> Opportunity:
-        """Apply validated updates to an opportunity record."""
+    def modify_opportunity(
+        self,
+        opportunity_id: str,
+        updates: Optional[Dict[str, Any]] = None,
+        **kwargs: Any
+    ) -> Opportunity:
+        """Apply validated updates to an opportunity record.
+        
+        Supports both patterns:
+        - modify_opportunity(id, updates={"stage": "X", "amount": Y})
+        - modify_opportunity(id, stage="X", amount=Y)
+        """
+        # Combine updates dict and kwargs
+        if updates is None and kwargs:
+            updates = kwargs
+        elif updates is None:
+            raise ValueError("Must provide either updates dict or keyword args")
+        elif kwargs:
+            # Merge kwargs into updates dict
+            updates = {**updates, **kwargs}
+        
         # Ensure the opportunity exists before attempting to mutate fields.
         if opportunity_id not in self.opportunities:
             raise ValueError(f"Opportunity not found with ID '{opportunity_id}'.")
@@ -524,7 +543,27 @@ class MockCrmApi:
         self.notes[note.note_id] = note
         return note
 
-    def modify_client(self, client_id: str, updates: Dict[str, Any]) -> Client:
+    def modify_client(
+        self,
+        client_id: str,
+        updates: Optional[Dict[str, Any]] = None,
+        **kwargs: Any
+    ) -> Client:
+        """Apply validated updates to an existing client.
+        
+        Supports both patterns:
+        - modify_client(id, updates={"name": "X", "status": "Y"})
+        - modify_client(id, name="X", status="Y")
+        """
+        # Combine updates dict and kwargs
+        if updates is None and kwargs:
+            updates = kwargs
+        elif updates is None:
+            raise ValueError("Must provide either updates dict or keyword args")
+        elif kwargs:
+            # Merge kwargs into updates dict
+            updates = {**updates, **kwargs}
+        
         if client_id not in self.clients:
             raise ValueError(f"Client not found with ID '{client_id}'.")
         client = self.clients[client_id]
@@ -539,7 +578,27 @@ class MockCrmApi:
         self.clients[client_id] = client
         return client
 
-    def modify_quote(self, quote_id: str, updates: Dict[str, Any]) -> Quote:
+    def modify_quote(
+        self,
+        quote_id: str,
+        updates: Optional[Dict[str, Any]] = None,
+        **kwargs: Any
+    ) -> Quote:
+        """Apply validated updates to an existing quote.
+        
+        Supports both patterns:
+        - modify_quote(id, updates={"amount": X, "status": "Y"})
+        - modify_quote(id, amount=X, status="Y")
+        """
+        # Combine updates dict and kwargs
+        if updates is None and kwargs:
+            updates = kwargs
+        elif updates is None:
+            raise ValueError("Must provide either updates dict or keyword args")
+        elif kwargs:
+            # Merge kwargs into updates dict
+            updates = {**updates, **kwargs}
+        
         if quote_id not in self.quotes:
             raise ValueError(f"Quote not found with ID '{quote_id}'.")
         quote = self.quotes[quote_id]
@@ -556,7 +615,27 @@ class MockCrmApi:
         self.quotes[quote_id] = quote
         return quote
 
-    def modify_contact(self, contact_id: str, updates: Dict[str, Any]) -> Contact:
+    def modify_contact(
+        self,
+        contact_id: str,
+        updates: Optional[Dict[str, Any]] = None,
+        **kwargs: Any
+    ) -> Contact:
+        """Apply validated updates to an existing contact.
+        
+        Supports both patterns:
+        - modify_contact(id, updates={"first_name": "X", "email": "Y"})
+        - modify_contact(id, first_name="X", email="Y")
+        """
+        # Combine updates dict and kwargs
+        if updates is None and kwargs:
+            updates = kwargs
+        elif updates is None:
+            raise ValueError("Must provide either updates dict or keyword args")
+        elif kwargs:
+            # Merge kwargs into updates dict
+            updates = {**updates, **kwargs}
+        
         if contact_id not in self.contacts:
             raise ValueError(f"Contact not found with ID '{contact_id}'.")
         contact = self.contacts[contact_id]
