@@ -93,6 +93,7 @@ class CuratorConversationGenerator(curator.LLM):
         turn_template = input["turn_template"]
         conversation_history = input.get("conversation_history", [])
         current_crm_state = input.get("current_crm_state", {})
+        conversation_id = input.get("conversation_id", "")  # For logging/debugging
 
         if turn_number == 1:
             return self._build_first_turn_prompt(
@@ -306,6 +307,7 @@ Output JSON matching this schema:
         """Convert LLM response to turn dict."""
         if isinstance(response, ConversationTurnResponse):
             return {
+                "conversation_id": input.get("conversation_id", ""),
                 "turn_number": input["turn_number"],
                 "user_utterance": response.user_utterance,
                 "expected_args": response.expected_args,
@@ -322,6 +324,7 @@ Output JSON matching this schema:
                     response_json = json.loads(response.strip())
                 
                 return {
+                    "conversation_id": input.get("conversation_id", ""),
                     "turn_number": input["turn_number"],
                     "user_utterance": response_json.get("user_utterance", ""),
                     "expected_args": response_json.get("expected_args", {}),
@@ -330,6 +333,7 @@ Output JSON matching this schema:
             except json.JSONDecodeError as e:
                 logger.error(f"Failed to parse JSON from response: {response[:200]}... Error: {e}")
                 return {
+                    "conversation_id": input.get("conversation_id", ""),
                     "turn_number": input["turn_number"],
                     "user_utterance": "",
                     "expected_args": {},
@@ -339,6 +343,7 @@ Output JSON matching this schema:
             # Try to convert dict-like response
             response_dict = dict(response) if hasattr(response, '__dict__') else response
             return {
+                "conversation_id": input.get("conversation_id", ""),
                 "turn_number": input["turn_number"],
                 "user_utterance": response_dict.get("user_utterance", ""),
                 "expected_args": response_dict.get("expected_args", {}),
@@ -824,22 +829,193 @@ class CuratorConversationDatasetGenerator:
         
         logger.info(f"Generating {len(tasks)} conversations using Curator...")
         
-        # Generate conversations (one at a time for iterative turn generation)
+        # Initialize conversation states
+        conversation_states = {}
+        for task in tasks:
+            conversation_states[task["conversation_id"]] = {
+                "template": task["template"],
+                "turns": [],
+                "history": [],
+                "crm_state": {},
+                "initial_entities": {},
+            }
+        
+        # Build initial entities for all conversations
+        for conv_id, state in conversation_states.items():
+            template = state["template"]
+            for entity_type in template.required_initial_entities:
+                if entity_type == "client" and self.entity_pool.get("clients"):
+                    client = random.choice(self.entity_pool["clients"])
+                    state["initial_entities"]["client_id"] = client["client_id"]
+                    state["crm_state"]["clients"] = [client]
+                elif entity_type == "opportunity" and self.entity_pool.get("opportunities"):
+                    opp = random.choice(self.entity_pool["opportunities"])
+                    state["initial_entities"]["opportunity_id"] = opp["opportunity_id"]
+                    state["crm_state"]["opportunities"] = [opp]
+        
+        # Find maximum number of turns across all templates
+        max_turns = max(len(t["template"].turn_templates) for t in tasks)
+        
+        # Generate turn-by-turn, batching across conversations
+        for turn_number in range(1, max_turns + 1):
+            # Prepare batch for this turn across all conversations that need it
+            batch_inputs = []
+            batch_conversation_ids = []
+            
+            for conv_id, state in conversation_states.items():
+                template = state["template"]
+                if turn_number <= len(template.turn_templates):
+                    turn_template = template.turn_templates[turn_number - 1]
+                    
+                    batch_inputs.append({
+                        "conversation_id": conv_id,
+                        "turn_number": turn_number,
+                        "workflow_category": template.workflow_category,
+                        "turn_template": {
+                            "tool_name": turn_template.tool_name,
+                            "argument_template": turn_template.argument_template,
+                            "user_utterance_pattern": turn_template.user_utterance_pattern,
+                            "references_previous_turns": turn_template.references_previous_turns,
+                        },
+                        "conversation_history": state["history"],
+                        "current_crm_state": state["crm_state"],
+                    })
+                    batch_conversation_ids.append(conv_id)
+            
+            if not batch_inputs:
+                continue  # No conversations need this turn
+            
+            logger.info(f"Generating Turn {turn_number} for {len(batch_inputs)} conversations...")
+            
+            # Generate via Curator in batch
+            try:
+                dataset = Dataset.from_list(batch_inputs)
+                result = generator(dataset)
+                
+                # Process results
+                for row in result.dataset:
+                    conv_id = row["conversation_id"]
+                    state = conversation_states[conv_id]
+                    template = state["template"]
+                    turn_template = template.turn_templates[turn_number - 1]
+                    
+                    if not row.get("user_utterance"):
+                        logger.warning(f"Failed to generate turn {turn_number} for {conv_id}")
+                        continue
+                    
+                    # Create ConversationTurn
+                    turn = ConversationTurn(
+                        turn_id=turn_number,
+                        user_utterance=row["user_utterance"],
+                        expected_tool=row["tool_name"],
+                        expected_args=row["expected_args"],
+                        references_previous_turns=turn_template.references_previous_turns,
+                    )
+                    state["turns"].append(turn)
+                    
+                    # Simulate execution
+                    execution_result = simulate_turn_execution(
+                        row["tool_name"],
+                        row["expected_args"],
+                        self.api,
+                        self.entity_pool,
+                    )
+                    
+                    # Update history
+                    state["history"].append({
+                        "turn_id": turn_number,
+                        "user_utterance": row["user_utterance"],
+                        "tool_name": row["tool_name"],
+                        "result": execution_result,
+                    })
+                    
+                    # Update CRM state
+                    for key, value in execution_result.items():
+                        if key.endswith("_id") and value:
+                            if key == "client_id":
+                                for client in self.entity_pool.get("clients", []):
+                                    if client["client_id"] == value:
+                                        if "clients" not in state["crm_state"]:
+                                            state["crm_state"]["clients"] = []
+                                        if client not in state["crm_state"]["clients"]:
+                                            state["crm_state"]["clients"].append(client)
+                                        break
+                            elif key == "opportunity_id":
+                                for opp in self.entity_pool.get("opportunities", []):
+                                    if opp["opportunity_id"] == value:
+                                        if "opportunities" not in state["crm_state"]:
+                                            state["crm_state"]["opportunities"] = []
+                                        if opp not in state["crm_state"]["opportunities"]:
+                                            state["crm_state"]["opportunities"].append(opp)
+                                        break
+                            elif key == "quote_id":
+                                for quote in self.entity_pool.get("quotes", []):
+                                    if quote["quote_id"] == value:
+                                        if "quotes" not in state["crm_state"]:
+                                            state["crm_state"]["quotes"] = []
+                                        if quote not in state["crm_state"]["quotes"]:
+                                            state["crm_state"]["quotes"].append(quote)
+                                        break
+                
+            except Exception as e:
+                logger.error(f"Error generating Turn {turn_number}: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+                continue
+        
+        # Build Conversation objects and validate templates
         all_conversations = []
-        for i, task in enumerate(tasks):
-            if (i + 1) % batch_size == 0:
-                logger.info(f"Progress: {i + 1}/{len(tasks)} conversations...")
+        for conv_id, state in conversation_states.items():
+            if not state["turns"]:
+                logger.warning(f"No turns generated for {conv_id}")
+                continue
             
-            conversation = self.generate_conversation(
-                task["template"],
-                task["conversation_id"],
-                generator,
+            # Validate template resolution
+            previous_turns_dict = {}
+            for hist_entry in state["history"]:
+                turn_id = hist_entry["turn_id"]
+                previous_turns_dict[turn_id] = hist_entry.get("result", {})
+            
+            # Validate all templates resolve
+            all_valid = True
+            for turn in state["turns"]:
+                if turn.expected_args:
+                    errors = validate_template_references(
+                        turn.expected_args,
+                        previous_turns_dict,
+                        turn.turn_id,
+                    )
+                    if errors:
+                        logger.warning(
+                            f"Template validation errors for {conv_id} turn {turn.turn_id}: {errors}"
+                        )
+                        try:
+                            resolved = resolve_template(
+                                turn.expected_args,
+                                previous_turns_dict,
+                                turn.turn_id,
+                                strict=False,
+                            )
+                            turn.expected_args = resolved
+                        except Exception as e:
+                            logger.error(f"Failed to resolve templates for {conv_id} turn {turn.turn_id}: {e}")
+                            all_valid = False
+                            break
+            
+            if not all_valid:
+                continue
+            
+            # Create Conversation object
+            template = state["template"]
+            conversation = Conversation(
+                conversation_id=conv_id,
+                workflow_category=template.workflow_category,
+                complexity_level=template.complexity_level,
+                turns=state["turns"],
+                initial_entities=state["initial_entities"],
+                verification_mode=VerificationMode.DATABASE,
             )
-            
-            if conversation:
-                all_conversations.append(conversation)
-            else:
-                logger.warning(f"Failed to generate conversation {task['conversation_id']}")
+            all_conversations.append(conversation)
         
         logger.info(f"Generated {len(all_conversations)} conversations successfully")
         return all_conversations
