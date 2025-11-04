@@ -650,11 +650,10 @@ class ConversationHarness:
                                     if turn.expected_tool.startswith("create_"):
                                         if k in ["opportunity_id", "quote_id", "contract_id", "contact_id", "client_id"]:
                                             continue  # Skip None IDs for create operations
-                                    # Keep None for operations that might use it (e.g., updates dict)
-                                    if k in ["updates"]:
-                                        cleaned_args[k] = v
-                                        continue
                                     # Skip other None values
+                                    continue
+                                # Remove 'updates' field from create operations (only for modify operations)
+                                if k == "updates" and turn.expected_tool.startswith("create_"):
                                     continue
                                 cleaned_args[k] = v
                             
