@@ -167,6 +167,18 @@ class PostgresCrmBackend:
         """Create a new client record with validation."""
         _require_non_empty_string(name, "Client name")
         status_value = _validate_enum_value(status, ClientStatus, "Client status")
+        
+        # Validate email format using Pydantic's EmailStr validation
+        # This ensures consistency with MockCrmApi behavior and prevents
+        # invalid emails from being inserted into the database
+        if email:
+            try:
+                from pydantic import validate_email
+                validate_email(email)
+            except Exception as exc:
+                # Re-raise as ValueError to match MockCrmApi behavior
+                raise ValueError(f"Invalid email format: {email}") from exc
+        
         normalized_email = email.lower() if email else None
         duplicate = self._fetchone(
             "SELECT 1 FROM clients WHERE lower(email) = lower(%(email)s);",
@@ -555,12 +567,24 @@ class PostgresCrmBackend:
             raise ValueError(f"Client not found with ID '{client_id}'.")
         _require_non_empty_string(first_name, "Contact first name")
         _require_non_empty_string(last_name, "Contact last name")
+        
+        # Validate email format using Pydantic's EmailStr validation
+        # This ensures consistency with MockCrmApi behavior and schema compliance
+        email = kwargs.get("email")
+        if email:
+            try:
+                from pydantic import validate_email
+                validate_email(email)
+            except Exception as exc:
+                # Re-raise as ValueError to match MockCrmApi behavior
+                raise ValueError(f"Invalid email format: {email}") from exc
+        
         payload = {
             "first_name": first_name,
             "last_name": last_name,
             "client_id": client_id,
             "title": kwargs.get("title"),
-            "email": kwargs.get("email"),
+            "email": email,
             "phone": kwargs.get("phone"),
             "notes": kwargs.get("notes"),
         }
@@ -605,6 +629,15 @@ class PostgresCrmBackend:
                 raise ValueError(f"Client has no field named '{field_name}'.")
             if field_name == "status":
                 value = _validate_enum_value(value, ClientStatus, "Client status update")
+            elif field_name == "email":
+                # Validate email format using Pydantic's EmailStr validation
+                # This ensures consistency with MockCrmApi behavior and schema compliance
+                if value:
+                    try:
+                        from pydantic import validate_email
+                        validate_email(value)
+                    except Exception as exc:
+                        raise ValueError(f"Invalid email format: {value}") from exc
             elif isinstance(value, str):
                 _require_non_empty_string(value, f"Client {field_name}")
             assignments[field_name] = value
@@ -654,7 +687,16 @@ class PostgresCrmBackend:
         for field_name, value in updates.items():
             if field_name not in contact.model_fields:
                 raise ValueError(f"Contact has no field named '{field_name}'.")
-            if isinstance(value, str):
+            if field_name == "email":
+                # Validate email format using Pydantic's EmailStr validation
+                # This ensures consistency with MockCrmApi behavior and schema compliance
+                if value:
+                    try:
+                        from pydantic import validate_email
+                        validate_email(value)
+                    except Exception as exc:
+                        raise ValueError(f"Invalid email format: {value}") from exc
+            elif isinstance(value, str):
                 _require_non_empty_string(value, f"Contact {field_name}")
             assignments[field_name] = value
 

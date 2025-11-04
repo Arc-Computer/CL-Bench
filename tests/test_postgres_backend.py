@@ -16,6 +16,10 @@ from src.validators import CrmStateSnapshot
 
 @pytest.fixture
 def pg_backend() -> Generator[PostgresCrmBackend, None, None]:
+    import os
+    if os.getenv("SKIP_DB_TESTS", "").lower() in ("1", "true", "yes"):
+        pytest.skip("Database tests skipped via SKIP_DB_TESTS environment variable")
+    
     config = DatabaseConfig.from_env()
     try:
         backend = PostgresCrmBackend(config)

@@ -250,7 +250,7 @@ register_intent_blueprint(IntentBlueprint(
         ArgumentVariation("Compare two", {"quote_ids": ["q1", "q2"]}),
         ArgumentVariation("Compare three", {"quote_ids": ["q1", "q2", "q3"]}),
     ),
-    failure_blueprint_ids=("CQT-BP-002", "CQT-BP-003"),
+    failure_blueprint_ids=("CMPQ-BP-001", "CMPQ-BP-002"),
 ))
 
 register_intent_blueprint(IntentBlueprint(
@@ -342,7 +342,7 @@ register_intent_blueprint(IntentBlueprint(
     success_variants=(
         ArgumentVariation("Cancel quote", {}),
     ),
-    failure_blueprint_ids=("CQT-BP-001",),
+    failure_blueprint_ids=("CNQ-BP-001",),
 ))
 
 register_intent_blueprint(IntentBlueprint(

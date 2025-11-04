@@ -1495,7 +1495,7 @@ register_blueprint(FailureBlueprint(
 ))
 
 register_blueprint(FailureBlueprint(
-    blueprint_id="CQT-BP-001",
+    blueprint_id="CNQ-BP-001",
     category=FailureCategory.UNKNOWN_FOREIGN_KEY,
     severity=FailureSeverity.HIGH,
     task="cancel_quote",
@@ -1788,7 +1788,7 @@ register_blueprint(FailureBlueprint(
 ))
 
 register_blueprint(FailureBlueprint(
-    blueprint_id="CQT-BP-002",
+    blueprint_id="CMPQ-BP-001",
     category=FailureCategory.UNKNOWN_FOREIGN_KEY,
     severity=FailureSeverity.HIGH,
     task="compare_quotes",
@@ -1813,7 +1813,7 @@ register_blueprint(FailureBlueprint(
 ))
 
 register_blueprint(FailureBlueprint(
-    blueprint_id="CQT-BP-003",
+    blueprint_id="CMPQ-BP-002",
     category=FailureCategory.MISSING_REQUIRED_FIELD,
     severity=FailureSeverity.HIGH,
     task="compare_quotes",
