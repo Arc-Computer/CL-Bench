@@ -998,10 +998,8 @@ class CrmEnv(gym.Env):
             return ValidationResult.fail(f"Unknown tool '{tool_name}'.")
 
         try:
-            if tool_name == "modify_opportunity":
-                tool(arguments["opportunity_id"], arguments["updates"])
-            else:
-                tool(**arguments)
+            # All methods now support uniform calling via **kwargs
+            tool(**arguments)
         except Exception as exc:  # pragma: no cover - behaviour covered via validators.
             return ValidationResult.fail(str(exc))
 
