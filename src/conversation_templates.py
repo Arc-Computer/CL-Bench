@@ -8,7 +8,7 @@ realistic multi-turn interactions. Each template specifies:
 - Cross-turn references (how turns reference previous entities)
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
 
 
@@ -22,12 +22,14 @@ class TurnTemplate:
         argument_template: Template for expected arguments (may contain {{turn_N.field}})
         user_utterance_pattern: Pattern for generating natural language utterance
         references_previous_turns: List of turn numbers this turn references
+        generation_params: Optional generation parameters for Curator (temperature, etc.)
     """
     turn_number: int
     tool_name: str
     argument_template: Dict[str, Any]
     user_utterance_pattern: str
-    references_previous_turns: List[int] = None
+    references_previous_turns: List[int] = field(default_factory=list)
+    generation_params: Optional[Dict[str, Any]] = None
     
     def __post_init__(self):
         if self.references_previous_turns is None:
@@ -223,7 +225,7 @@ QUOTE_GENERATION = WorkflowTemplate(
         TurnTemplate(
             turn_number=4,
             tool_name="compare_quotes",
-            argument_template={"opportunity_id": "{{turn_1.opportunity_id}}"},
+            argument_template={"quote_ids": ["{{turn_2.quote_id}}"]},
             user_utterance_pattern="Show me all quotes for that opp",
             references_previous_turns=[1],
         ),
@@ -476,3 +478,115 @@ def get_all_templates() -> List[WorkflowTemplate]:
     """Get all workflow templates."""
     return list(WORKFLOW_TEMPLATES.values())
 
+
+@dataclass
+class WorkflowChain:
+    """Defines a sequence of workflow templates that form a multi-segment conversation.
+    
+    Attributes:
+        chain_id: Unique identifier for this chain
+        workflow_sequence: List of workflow template IDs (keys from WORKFLOW_TEMPLATES)
+        success_pattern: List of booleans indicating per-segment success/failure expectations
+        entity_handoff_rules: Dictionary mapping entity types to handoff rules
+            (e.g., {"client_id": "propagate", "opportunity_id": "create_in_segment_2"})
+        description: Human-readable description of the chain
+    """
+    chain_id: str
+    workflow_sequence: List[str]
+    success_pattern: List[bool]
+    entity_handoff_rules: Dict[str, str] = field(default_factory=dict)
+    description: str = ""
+    
+    def __post_init__(self):
+        if len(self.workflow_sequence) != len(self.success_pattern):
+            raise ValueError(
+                f"workflow_sequence length ({len(self.workflow_sequence)}) must match "
+                f"success_pattern length ({len(self.success_pattern)})"
+            )
+        
+        # Validate all workflow IDs exist
+        for workflow_id in self.workflow_sequence:
+            if workflow_id not in WORKFLOW_TEMPLATES:
+                raise ValueError(f"Workflow template '{workflow_id}' not found in WORKFLOW_TEMPLATES")
+
+
+# Define 5 realistic workflow chains
+
+# Chain 1: Client Onboarding → Deal Pipeline → Contract Review
+CHAIN_ONBOARDING_PIPELINE_CONTRACT = WorkflowChain(
+    chain_id="CHAIN-001",
+    workflow_sequence=["client_onboarding", "deal_pipeline", "quote_generation"],
+    success_pattern=[True, True, True],
+    entity_handoff_rules={
+        "client_id": "propagate",  # Client from onboarding used in pipeline
+        "opportunity_id": "propagate",  # Opportunity from onboarding used in pipeline
+        "quote_id": "propagate",  # Quote from pipeline used in contract review
+    },
+    description="Full client lifecycle: onboard new client, manage deal pipeline, generate contract",
+)
+
+# Chain 2: Client Management → Opportunity Management → Quote Generation
+CHAIN_CLIENT_OPP_QUOTE = WorkflowChain(
+    chain_id="CHAIN-002",
+    workflow_sequence=["client_management", "opportunity_management", "quote_generation"],
+    success_pattern=[True, True, True],
+    entity_handoff_rules={
+        "client_id": "propagate",
+        "opportunity_id": "propagate",
+    },
+    description="Manage existing client, create/modify opportunity, generate quote",
+)
+
+# Chain 3: Contact Management → Document Workflow → Notes
+# Note: We'll need to create an add_note workflow template or use existing one
+CHAIN_CONTACT_DOCUMENT_NOTE = WorkflowChain(
+    chain_id="CHAIN-003",
+    workflow_sequence=["contact_management", "document_workflow", "client_management"],
+    success_pattern=[True, True, True],
+    entity_handoff_rules={
+        "client_id": "propagate",
+        "contact_id": "propagate",
+        "document_id": "propagate",
+    },
+    description="Manage contact, upload documents, add notes",
+)
+
+# Chain 4: Opportunity Search → Quote Generation → Multi-Entity Search
+CHAIN_SEARCH_QUOTE_REVIEW = WorkflowChain(
+    chain_id="CHAIN-004",
+    workflow_sequence=["multi_entity_search", "quote_generation", "multi_entity_search"],
+    success_pattern=[True, True, True],
+    entity_handoff_rules={
+        "client_id": "propagate",
+        "opportunity_id": "propagate",
+        "quote_id": "propagate",
+    },
+    description="Search opportunities, generate quote, review all related entities",
+)
+
+# Chain 5: Client Onboarding → Opportunity Management → Deal Pipeline
+CHAIN_ONBOARDING_OPP_DEAL = WorkflowChain(
+    chain_id="CHAIN-005",
+    workflow_sequence=["client_onboarding", "opportunity_management", "deal_pipeline"],
+    success_pattern=[True, True, True],
+    entity_handoff_rules={
+        "client_id": "propagate",
+        "opportunity_id": "propagate",
+        "contact_id": "propagate",
+    },
+    description="Onboard client, manage opportunities, track deal pipeline",
+)
+
+# Registry of all workflow chains
+WORKFLOW_CHAINS: Dict[str, WorkflowChain] = {
+    "onboarding_pipeline_contract": CHAIN_ONBOARDING_PIPELINE_CONTRACT,
+    "client_opp_quote": CHAIN_CLIENT_OPP_QUOTE,
+    "contact_document_note": CHAIN_CONTACT_DOCUMENT_NOTE,
+    "search_quote_review": CHAIN_SEARCH_QUOTE_REVIEW,
+    "onboarding_opp_deal": CHAIN_ONBOARDING_OPP_DEAL,
+}
+
+
+def get_workflow_chain(chain_id: str) -> Optional[WorkflowChain]:
+    """Get workflow chain by ID."""
+    return WORKFLOW_CHAINS.get(chain_id)

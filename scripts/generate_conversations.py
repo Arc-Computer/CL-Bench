@@ -1,194 +1,138 @@
-"""CLI script for generating multi-turn conversations using Curator."""
+#!/usr/bin/env python
+"""Generate multi-turn CRM conversations using the lean pipeline."""
 
+from __future__ import annotations
+
+import argparse
 import json
-import logging
-import sys
+import math
+import random
+from collections import Counter
+from dataclasses import asdict
 from pathlib import Path
-from typing import Optional
+from typing import Dict, List, Mapping, Sequence
 
-# Add parent directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from src.crm_sandbox import MockCrmApi
-from src.entity_sampler import EntitySampler, SamplerConfig
-from src.curator_conversation_generator import CuratorConversationDatasetGenerator, simulate_turn_execution
-from src.conversation_schema import Conversation
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from src.generation.conversation_generator import instantiate_conversation
+from src.evaluation.conversation_harness import ConversationHarness
+from src.conversation_templates import WORKFLOW_TEMPLATES, WorkflowTemplate
+from src.generation.curator_utterances import CuratorUtteranceGenerator
+from src.pipeline.scenario_repository import ScenarioRepository
 
 
-def generate_conversations(
-    target_count: int = 1500,
-    simple_count: int = 900,
-    medium_count: int = 450,
-    complex_count: int = 150,
-    output_dir: Optional[Path] = None,
-    seed: Optional[int] = None,
-    smoke_test: bool = False,
-) -> None:
-    """Generate multi-turn conversations using Curator.
-    
-    Args:
-        target_count: Total number of conversations (ignored if smoke_test=True)
-        simple_count: Number of simple conversations (ignored if smoke_test=True)
-        medium_count: Number of medium conversations (ignored if smoke_test=True)
-        complex_count: Number of complex conversations (ignored if smoke_test=True)
-        output_dir: Output directory for conversations.jsonl
-        seed: Random seed for reproducibility
-        smoke_test: If True, generate only 10 conversations (3 simple, 5 medium, 2 complex)
-    """
-    if output_dir is None:
-        output_dir = Path("artifacts/conversations")
-    
-    output_dir.mkdir(parents=True, exist_ok=True)
-    
-    print(f"Initializing CRM API...")
-    api = MockCrmApi()
-    
-    print(f"Configuring entity sampler...")
-    config = SamplerConfig(seed=seed)
-    sampler = EntitySampler(api, config)
-    
-    print(f"Initializing Curator conversation generator...")
-    generator = CuratorConversationDatasetGenerator(api=api, sampler=sampler, seed=seed)
-    
+DEFAULT_OUTPUT_DIR = Path("artifacts/conversations_multiturn")
+DEFAULT_COUNT = 1000
+SMOKE_TEST_COUNT = 10
+
+WORKFLOW_WEIGHTS: Mapping[str, float] = {
+    "client_management": 0.12,
+    "contact_management": 0.1,
+    "opportunity_management": 0.23,
+    "quote_generation": 0.18,
+    "client_onboarding": 0.12,
+    "deal_pipeline": 0.15,
+    "document_workflow": 0.05,
+    "multi_entity_search": 0.05,
+}
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--single-turn-scenarios", type=Path, default=Path("artifacts/scenarios_500/scenarios_clean.jsonl"), help="Path to validated single-turn scenarios")
+    parser.add_argument("--count", type=int, default=DEFAULT_COUNT, help="Number of multi-turn conversations to generate")
+    parser.add_argument("--seed", type=int, default=17, help="Random seed for deterministic sampling")
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=DEFAULT_OUTPUT_DIR,
+        help="Directory where the conversations.jsonl file will be written",
+    )
+    parser.add_argument("--model-name", default="gpt-4.1-mini", help="Curator-backed model name")
+    parser.add_argument("--smoke-test", action="store_true", help="Generate a small deterministic sample (10 conversations)")
+    return parser.parse_args()
+
+
+def compute_plan(total_count: int, smoke_test: bool) -> Dict[str, int]:
     if smoke_test:
-        print(f"Running SMOKE TEST: Generating 10 conversations (3 simple, 5 medium, 2 complex)...")
-        conversations = generator.generate_conversations(
-            simple_count=3,
-            medium_count=5,
-            complex_count=2,
-            batch_size=5,
-        )
-    else:
-        print(f"Generating {target_count} conversations ({simple_count} simple, {medium_count} medium, {complex_count} complex)...")
-        conversations = generator.generate_conversations(
-            simple_count=simple_count,
-            medium_count=medium_count,
-            complex_count=complex_count,
-            batch_size=10,
-        )
-    
-    print(f"✓ Generated {len(conversations)} conversations")
-    
-    # Validate conversations
-    print(f"Validating conversations...")
-    valid_conversations = []
-    validation_errors = []
-    
-    for conv in conversations:
-        try:
-            # Basic validation
-            if not conv.turns:
-                validation_errors.append(f"{conv.conversation_id}: No turns")
-                continue
-            
-            # Check template resolution
-            from src.reference_resolver import resolve_template, validate_template_references
-            
-            previous_turns_dict = {}
-            for turn in conv.turns:
-                if turn.turn_id > 1:
-                    # Resolve templates for this turn
-                    errors = validate_template_references(
-                        turn.expected_args,
-                        previous_turns_dict,
-                        turn.turn_id,
-                    )
-                    if errors:
-                        validation_errors.append(
-                            f"{conv.conversation_id} turn {turn.turn_id}: {errors[0]}"
-                        )
+        plan = {key: 1 for key in WORKFLOW_TEMPLATES}
+        remainder = max(0, total_count - len(plan))
+        keys = list(WORKFLOW_TEMPLATES.keys())
+        idx = 0
+        while remainder > 0:
+            plan[keys[idx % len(keys)]] += 1
+            remainder -= 1
+            idx += 1
+        return plan
 
-                # Simulate execution to get proper entity IDs for next turn
-                execution_result = simulate_turn_execution(
-                    turn.expected_tool,
-                    turn.expected_args,
-                    api,
-                    generator.entity_pool,
+    weights = WORKFLOW_WEIGHTS
+    if not math.isclose(sum(weights.values()), 1.0, rel_tol=1e-3):
+        raise ValueError("Workflow weights must sum to 1.0")
+
+    plan: Dict[str, int] = {}
+    remaining = total_count
+    for template_key, weight in weights.items():
+        count = int(total_count * weight)
+        plan[template_key] = count
+        remaining -= count
+
+    # Distribute leftovers starting from highest weight templates.
+    for template_key in sorted(weights, key=weights.get, reverse=True):
+        if remaining <= 0:
+            break
+        plan[template_key] += 1
+        remaining -= 1
+
+    return plan
+
+
+def conversation_to_dict(conversation) -> Dict:
+    data = asdict(conversation)
+    data["verification_mode"] = conversation.verification_mode.value
+    for turn in data["turns"]:
+        turn.pop("failure_category", None)
+    return data
+
+
+def main() -> None:
+    args = parse_args()
+    total_count = SMOKE_TEST_COUNT if args.smoke_test else args.count
+    plan = compute_plan(total_count, args.smoke_test)
+
+    repo = ScenarioRepository(
+        scenario_path=args.single_turn_scenarios,
+        schema_path=Path("data/fake_crm_tables_schema.json"),
+        task_weights_path=Path("data/Agent_tasks.csv"),
+    )
+    curator = CuratorUtteranceGenerator(model_name=args.model_name)
+    rng = random.Random(args.seed)
+
+    conversations = []
+    for template_key, desired_count in plan.items():
+        template: WorkflowTemplate = WORKFLOW_TEMPLATES[template_key]
+        for index in range(desired_count):
+            conversation_id = f"{template.workflow_id}-{index:04d}"
+            conversation = instantiate_conversation(template, repo, curator, rng, conversation_id=conversation_id)
+
+            harness = ConversationHarness([conversation])
+            result = harness.run()[0]
+            if not result.overall_success:
+                raise RuntimeError(
+                    f"Conversation {conversation_id} failed validation at turn {result.failed_at_turn}: {result.error_message}"
                 )
 
-                previous_turns_dict[turn.turn_id] = execution_result
-            
-            valid_conversations.append(conv)
-        except Exception as e:
-            validation_errors.append(f"{conv.conversation_id}: {e}")
-    
-    if validation_errors:
-        print(f"⚠️  Found {len(validation_errors)} validation errors:")
-        for error in validation_errors[:10]:
-            print(f"  - {error}")
-        if len(validation_errors) > 10:
-            print(f"  ... and {len(validation_errors) - 10} more")
-    
-    print(f"✓ {len(valid_conversations)} valid conversations")
-    
-    # Write conversations to JSONL
-    print(f"Writing conversations to {output_dir}...")
-    conversations_path = output_dir / "conversations.jsonl"
-    
-    with conversations_path.open("w", encoding="utf-8") as f:
-        for conv in valid_conversations:
-            # Convert Conversation to dict for JSON serialization
-            conv_dict = {
-                "conversation_id": conv.conversation_id,
-                "workflow_category": conv.workflow_category,
-                "complexity_level": conv.complexity_level,
-                "turns": [
-                    {
-                        "turn_id": turn.turn_id,
-                        "user_utterance": turn.user_utterance,
-                        "expected_tool": turn.expected_tool,
-                        "expected_args": turn.expected_args,
-                        "references_previous_turns": turn.references_previous_turns,
-                        "expect_success": turn.expect_success,
-                    }
-                    for turn in conv.turns
-                ],
-                "initial_entities": conv.initial_entities,
-                "verification_mode": conv.verification_mode.value,
-            }
-            f.write(json.dumps(conv_dict) + "\n")
-    
-    print(f"  - Conversations: {conversations_path}")
-    
-    # Print statistics
-    simple_count = sum(1 for c in valid_conversations if c.complexity_level == "simple")
-    medium_count = sum(1 for c in valid_conversations if c.complexity_level == "medium")
-    complex_count = sum(1 for c in valid_conversations if c.complexity_level == "complex")
-    
-    print(f"\n✓ Generation complete!")
-    print(f"  Total: {len(valid_conversations)}")
-    print(f"  Simple: {simple_count}")
-    print(f"  Medium: {medium_count}")
-    print(f"  Complex: {complex_count}")
-    print(f"  Average turns: {sum(len(c.turns) for c in valid_conversations) / len(valid_conversations):.1f}")
+            conversations.append(conversation)
+
+    output_dir = args.output_dir
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / "conversations.jsonl"
+    with output_path.open("w", encoding="utf-8") as handle:
+        for conversation in conversations:
+            handle.write(json.dumps(conversation_to_dict(conversation)) + "\n")
+
+    counts = Counter(conv.workflow_category for conv in conversations)
+    print(f"Wrote {len(conversations)} conversations to {output_path}")
+    for category, count in counts.items():
+        print(f"  {category}: {count}")
 
 
 if __name__ == "__main__":
-    import argparse
-    
-    parser = argparse.ArgumentParser(description="Generate multi-turn CRM conversations")
-    parser.add_argument("--count", type=int, default=1500, help="Total number of conversations")
-    parser.add_argument("--simple", type=int, default=900, help="Number of simple conversations")
-    parser.add_argument("--medium", type=int, default=450, help="Number of medium conversations")
-    parser.add_argument("--complex", type=int, default=150, help="Number of complex conversations")
-    parser.add_argument("--output-dir", type=str, help="Output directory path")
-    parser.add_argument("--seed", type=int, help="Random seed for reproducibility")
-    parser.add_argument("--smoke-test", action="store_true", help="Generate only 10 conversations for smoke test")
-    
-    args = parser.parse_args()
-    
-    output_path = Path(args.output_dir) if args.output_dir else None
-    
-    generate_conversations(
-        target_count=args.count,
-        simple_count=args.simple,
-        medium_count=args.medium,
-        complex_count=args.complex,
-        output_dir=output_path,
-        seed=args.seed,
-        smoke_test=args.smoke_test,
-    )
-
+    main()

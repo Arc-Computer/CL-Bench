@@ -15,8 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Union
 from enum import Enum
 
-from .validators import VerificationMode
-from .failure_blueprints import FailureCategory
+from src.evaluation.verification import VerificationMode
 
 
 class ComplexityLevel(str, Enum):
@@ -54,7 +53,7 @@ class ConversationTurn:
     references_previous_turns: List[int] = field(default_factory=list)
     expect_success: bool = True
     expected_error_substring: Optional[str] = None
-    failure_category: Optional[FailureCategory] = None
+    failure_category: Optional[str] = None
 
 
 @dataclass
@@ -72,6 +71,11 @@ class Conversation:
         contains_failure: Whether this conversation contains a failure scenario
         failure_turn: Turn number where failure is expected (if contains_failure=True)
         verification_mode: How to verify conversation success
+        chain_id: Optional chain identifier if this conversation is part of a workflow chain
+        segment_number: Optional segment number within a chain (1-indexed)
+        segment_boundaries: Optional list of turn numbers where segments end (for chained conversations)
+        expected_outcome: Optional expected outcome description for the conversation
+        cumulative_context: Optional dictionary of context accumulated from previous segments (for chains)
     """
     conversation_id: str
     workflow_category: str
@@ -83,6 +87,11 @@ class Conversation:
     contains_failure: bool = False
     failure_turn: Optional[int] = None
     verification_mode: VerificationMode = VerificationMode.DATABASE
+    chain_id: Optional[str] = None
+    segment_number: Optional[int] = None
+    segment_boundaries: Optional[List[int]] = None
+    expected_outcome: Optional[str] = None
+    cumulative_context: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
         """Validate conversation structure."""
@@ -134,6 +143,8 @@ class ConversationResult:
         reward_signal: Reward signal for Atlas (0.0-1.0)
         error_message: Error message if conversation failed
         metadata: Additional metadata about the execution
+        per_segment_results: Optional list of results for each segment (for chained conversations)
+        chain_success: Optional overall chain success status (for chained conversations)
     """
     conversation_id: str
     overall_success: bool
@@ -143,6 +154,8 @@ class ConversationResult:
     reward_signal: float = 0.0
     error_message: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
+    per_segment_results: List[Dict[str, Any]] = field(default_factory=list)
+    chain_success: Optional[bool] = None
 
     def __post_init__(self):
         """Validate result structure."""
@@ -163,4 +176,3 @@ class ConversationResult:
             raise ValueError(
                 f"turns_executed ({self.turns_executed}) must be < failed_at_turn ({self.failed_at_turn})"
             )
-
