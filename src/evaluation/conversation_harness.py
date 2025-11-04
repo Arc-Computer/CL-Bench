@@ -98,9 +98,45 @@ class ConversationHarness:
             try:
                 result = tool(**resolved_args)
             except Exception as exc:  # pragma: no cover - error propagation
+                if turn.expect_success:
+                    raise RuntimeError(
+                        f"Tool '{turn.expected_tool}' failed on turn {turn.turn_id} "
+                        f"of {conversation.conversation_id}: {exc}"
+                    ) from exc
+                error_message = str(exc)
+                expected_substring = turn.expected_error_substring
+                if expected_substring and expected_substring not in error_message:
+                    raise RuntimeError(
+                        f"Expected error containing '{expected_substring}' but got '{error_message}'."
+                    ) from exc
+
+                per_turn.append(
+                    {
+                        "turn_id": turn.turn_id,
+                        "tool_name": turn.expected_tool,
+                        "arguments": resolved_args,
+                        "error": error_message,
+                    }
+                )
+                return ConversationResult(
+                    conversation_id=conversation.conversation_id,
+                    overall_success=False,
+                    turns_executed=turn.turn_id - 1,
+                    failed_at_turn=turn.turn_id,
+                    per_turn_results=per_turn,
+                    reward_signal=0.0,
+                    error_message=error_message,
+                    metadata={
+                        "verification_mode": conversation.verification_mode.value,
+                        "expected_failure": True,
+                    },
+                )
+
+            if not turn.expect_success:
                 raise RuntimeError(
-                    f"Tool '{turn.expected_tool}' failed on turn {turn.turn_id} of {conversation.conversation_id}: {exc}"
-                ) from exc
+                    f"Tool '{turn.expected_tool}' succeeded on turn {turn.turn_id} "
+                    f"of {conversation.conversation_id}, but failure was expected."
+                )
 
             previous_turn_outputs[turn.turn_id] = _extract_reference_payload(result)
             per_turn.append(
@@ -160,7 +196,18 @@ class ConversationHarness:
             try:
                 result = tool(**resolved_args)
             except Exception as exc:
-                # Record failure
+                error_message = str(exc)
+                expected_substring = turn.expected_error_substring
+                if turn.expect_success:
+                    raise RuntimeError(
+                        f"Tool '{turn.expected_tool}' failed on turn {turn.turn_id} "
+                        f"of segment {current_segment + 1} in {conversation.conversation_id}: {exc}"
+                    ) from exc
+                if expected_substring and expected_substring not in error_message:
+                    raise RuntimeError(
+                        f"Expected error containing '{expected_substring}' but got '{error_message}'."
+                    ) from exc
+
                 segment_turns = [
                     pt for pt in per_turn
                     if segment_start_turn <= pt["turn_id"] < turn.turn_id
@@ -172,11 +219,39 @@ class ConversationHarness:
                     "turns_executed": len(segment_turns),
                     "success": False,
                     "failed_at_turn": turn.turn_id,
+                    "expected_failure": True,
                 })
+                per_turn.append(
+                    {
+                        "turn_id": turn.turn_id,
+                        "tool_name": turn.expected_tool,
+                        "arguments": resolved_args,
+                        "error": error_message,
+                    }
+                )
+                return ConversationResult(
+                    conversation_id=conversation.conversation_id,
+                    overall_success=False,
+                    turns_executed=turn.turn_id - 1,
+                    failed_at_turn=turn.turn_id,
+                    per_turn_results=per_turn,
+                    reward_signal=0.0,
+                    error_message=error_message,
+                    metadata={
+                        "verification_mode": conversation.verification_mode.value,
+                        "chain_id": conversation.chain_id,
+                        "expected_failure": True,
+                    },
+                    per_segment_results=per_segment,
+                    chain_success=False,
+                )
+
+            if not turn.expect_success:
                 raise RuntimeError(
-                    f"Tool '{turn.expected_tool}' failed on turn {turn.turn_id} "
-                    f"of segment {current_segment + 1} in {conversation.conversation_id}: {exc}"
-                ) from exc
+                    f"Tool '{turn.expected_tool}' succeeded on turn {turn.turn_id} "
+                    f"of segment {current_segment + 1} in {conversation.conversation_id}, "
+                    "but failure was expected."
+                )
 
             previous_turn_outputs[turn.turn_id] = _extract_reference_payload(result)
             per_turn.append(

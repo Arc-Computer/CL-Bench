@@ -33,7 +33,7 @@ if "bespokelabs.curator" not in sys.modules:
     sys.modules["bespokelabs.curator"] = curator_module
 
 from src.conversation_schema import Conversation
-from src.conversation_templates import WORKFLOW_TEMPLATES
+from src.conversation_templates import WORKFLOW_TEMPLATES, TurnTemplate, WorkflowTemplate
 from src.evaluation.conversation_harness import ConversationHarness
 from src.generation.conversation_generator import instantiate_conversation
 from src.pipeline.scenario_repository import ScenarioRepository
@@ -118,3 +118,50 @@ def test_deal_pipeline_smoke(repo, curator, rng):
     conversation = _generate_success_conversation("deal_pipeline", repo, curator, rng)
     assert isinstance(conversation, Conversation)
     _assert_harness_success(conversation, "deal_pipeline")
+
+
+def test_document_workflow_smoke(repo, curator, rng):
+    """Smoke test for the document workflow pipeline."""
+    conversation = _generate_success_conversation("document_workflow", repo, curator, rng)
+    assert isinstance(conversation, Conversation)
+    _assert_harness_success(conversation, "document_workflow")
+
+
+def test_failure_conversation_expected(repo, curator, rng):
+    """Ensure failure scenarios are tolerated and validated."""
+    template = WorkflowTemplate(
+        workflow_id="WF-TEST-UPLOAD",
+        workflow_category="Document Management",
+        complexity_level="simple",
+        turn_templates=[
+            TurnTemplate(
+                turn_number=1,
+                tool_name="upload_document",
+                argument_template={
+                    "entity_type": "",
+                    "entity_id": "",
+                    "file_name": "",
+                },
+                user_utterance_pattern="Upload a document",
+                references_previous_turns=[],
+            )
+        ],
+        required_initial_entities=[],
+        entities_created=[],
+    )
+
+    failure_conversation = instantiate_conversation(
+        template,
+        repo,
+        curator,
+        rng,
+        conversation_id="TEST-FAIL-UPLOAD",
+        success_ratio=0.0,
+    )
+
+    assert failure_conversation.contains_failure
+    harness = ConversationHarness([failure_conversation])
+    result = harness.run()[0]
+    assert not result.overall_success
+    assert result.metadata.get("expected_failure") is True
+    assert result.failed_at_turn == 1

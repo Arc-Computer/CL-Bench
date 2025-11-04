@@ -135,9 +135,33 @@ def instantiate_conversation(
         if not user_utterance:
             raise RuntimeError(f"Curator returned empty utterance for {conversation_id} turn {turn_index}.")
 
-        tool_result = _simulate_tool_execution(context.turn_template.tool_name, resolved_args, api)
-        reference_payload = _extract_reference_payload(tool_result)
-        previous_turn_outputs[turn_index] = reference_payload
+        expected_error = context.scenario.raw.get("expected_error_substring")
+        if context.scenario.expect_success:
+            tool_result = _simulate_tool_execution(context.turn_template.tool_name, resolved_args, api)
+            reference_payload = _extract_reference_payload(tool_result)
+            previous_turn_outputs[turn_index] = reference_payload
+            assistant_summary = _summarize_tool_execution(context.turn_template.tool_name, resolved_args)
+        else:
+            try:
+                _simulate_tool_execution(context.turn_template.tool_name, resolved_args, api)
+            except Exception as exc:
+                message = str(exc)
+                if expected_error and expected_error not in message:
+                    raise RuntimeError(
+                        f"Failure scenario {context.scenario.scenario_id} expected error containing "
+                        f"'{expected_error}' but got '{message}'."
+                    ) from exc
+                reference_payload = {}
+                previous_turn_outputs[turn_index] = reference_payload
+                assistant_summary = (
+                    _summarize_tool_execution(context.turn_template.tool_name, resolved_args)
+                    + " (expected failure)"
+                )
+            else:
+                raise RuntimeError(
+                    f"Failure scenario {context.scenario.scenario_id} for tool "
+                    f"'{context.turn_template.tool_name}' did not fail as expected."
+                )
 
         conversation_history.extend(
             [
@@ -145,7 +169,7 @@ def instantiate_conversation(
                 {
                     "turn": turn_index,
                     "speaker": "Assistant",
-                    "content": _summarize_tool_execution(context.turn_template.tool_name, resolved_args),
+                    "content": assistant_summary,
                 },
             ]
         )
@@ -655,4 +679,3 @@ def _has_future_probability_turn(workflow_template: WorkflowTemplate, current_tu
         if isinstance(updates, dict) and "probability" in updates:
             return True
     return False
-
