@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -333,74 +332,6 @@ class ConversationHarness:
             if exec_result:
                 result.update(self._extract_ids_from_result(exec_result))
 
-        # For search operations, if no results found yet, try to get from backend state
-        if tool_call.tool_name.endswith("_search") and not result:
-            # If search returned empty, try to find matching entity in backend
-            if tool_call.tool_name == "client_search" and hasattr(backend, "clients"):
-                # Try to find client by name or ID from search criteria
-                search_name = tool_call.arguments.get("name")
-                search_client_id = tool_call.arguments.get("client_id")
-                
-                if backend.clients:
-                    # First, try exact ID match if provided
-                    if search_client_id:
-                        clients_dict = backend.clients if isinstance(backend.clients, dict) else {c.client_id: c for c in backend.clients}
-                        if search_client_id in clients_dict:
-                            result["client_id"] = search_client_id
-                    
-                    # If no ID match, try name match
-                    if "client_id" not in result and search_name:
-                        for client in (backend.clients.values() if isinstance(backend.clients, dict) else backend.clients):
-                            if hasattr(client, "name") and search_name.lower() in client.name.lower():
-                                result["client_id"] = client.client_id
-                                break
-                    
-                    # If still no match, use first available client
-                    if "client_id" not in result:
-                        first_client = next(iter(backend.clients.values() if isinstance(backend.clients, dict) else backend.clients), None)
-                        if first_client:
-                            result["client_id"] = first_client.client_id
-                            
-            elif tool_call.tool_name == "opportunity_search" and hasattr(backend, "opportunities"):
-                client_id_filter = tool_call.arguments.get("client_id")
-                search_name = tool_call.arguments.get("name")
-                
-                if backend.opportunities:
-                    # Try to find by client_id filter
-                    if client_id_filter:
-                        for opp in (backend.opportunities.values() if isinstance(backend.opportunities, dict) else backend.opportunities):
-                            if hasattr(opp, "client_id") and opp.client_id == client_id_filter:
-                                result["opportunity_id"] = opp.opportunity_id
-                                break
-                    
-                    # Try name match
-                    if "opportunity_id" not in result and search_name:
-                        for opp in (backend.opportunities.values() if isinstance(backend.opportunities, dict) else backend.opportunities):
-                            if hasattr(opp, "name") and search_name.lower() in opp.name.lower():
-                                result["opportunity_id"] = opp.opportunity_id
-                                break
-                    
-                    # Fallback to first opportunity
-                    if "opportunity_id" not in result:
-                        first_opp = next(iter(backend.opportunities.values() if isinstance(backend.opportunities, dict) else backend.opportunities), None)
-                        if first_opp:
-                            result["opportunity_id"] = first_opp.opportunity_id
-                            
-            elif tool_call.tool_name == "quote_search" and hasattr(backend, "quotes"):
-                opportunity_id_filter = tool_call.arguments.get("opportunity_id")
-                
-                if backend.quotes:
-                    if opportunity_id_filter:
-                        for quote in (backend.quotes.values() if isinstance(backend.quotes, dict) else backend.quotes):
-                            if hasattr(quote, "opportunity_id") and quote.opportunity_id == opportunity_id_filter:
-                                result["quote_id"] = quote.quote_id
-                                break
-                    
-                    if "quote_id" not in result:
-                        first_quote = next(iter(backend.quotes.values() if isinstance(backend.quotes, dict) else backend.quotes), None)
-                        if first_quote:
-                            result["quote_id"] = first_quote.quote_id
-
         return result
 
     def _extract_ids_from_result(self, exec_result: Any) -> Dict[str, Any]:
@@ -617,29 +548,6 @@ class ConversationHarness:
                                 turn.turn_id,
                                 strict=True
                             )
-                            
-                            # Validate resolved args don't have invalid placeholder values
-                            # This catches data generation issues where placeholders weren't populated
-                            if "amount" in resolved_args and resolved_args["amount"] == 0.0:
-                                # Check if this is a create operation that requires amount
-                                if turn.expected_tool in ["create_new_opportunity", "create_quote", "create_contract"]:
-                                    logger.warning(
-                                        f"Invalid amount 0.0 in {conversation.conversation_id} turn {turn.turn_id} "
-                                        f"for {turn.expected_tool}. This is a data generation issue. "
-                                        f"Using fallback amount from user utterance or default."
-                                    )
-                                    # Try to extract amount from user utterance (basic heuristic)
-                                    # If utterance contains "$XXXk" or "$XXX,XXX", extract it
-                                    amount_match = re.search(r'\$(\d+(?:\.\d+)?)[kK]', turn.user_utterance)
-                                    if amount_match:
-                                        resolved_args["amount"] = float(amount_match.group(1)) * 1000
-                                    else:
-                                        amount_match = re.search(r'\$(\d{1,3}(?:,\d{3})+)', turn.user_utterance.replace(',', ''))
-                                        if amount_match:
-                                            resolved_args["amount"] = float(amount_match.group(1).replace(',', ''))
-                                        else:
-                                            # Default fallback
-                                            resolved_args["amount"] = 100000.0
                             
                             # Clean up resolved_args: remove None values for optional fields
                             # Create methods auto-generate IDs, so None IDs should be removed

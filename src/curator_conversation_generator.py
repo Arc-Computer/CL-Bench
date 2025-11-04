@@ -386,6 +386,7 @@ Output JSON with user_utterance field:
 def populate_argument_placeholders(
     argument_template: Dict[str, Any],
     current_crm_state: Dict[str, Any],
+    user_utterance: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Fill placeholder values in argument_template with actual entity data.
 
@@ -395,13 +396,36 @@ def populate_argument_placeholders(
     Args:
         argument_template: Template with placeholders (e.g., {"name": "", "status": null})
         current_crm_state: Current CRM entities available for this turn
+        user_utterance: Optional user utterance to extract amounts from (for amount=0.0 placeholders)
 
     Returns:
         Populated arguments with actual values
     """
+    import re
     populated_args = {}
 
     for key, value in argument_template.items():
+        # Handle amount placeholder specially - extract from user utterance if 0.0
+        if key == "amount" and value == 0.0:
+            if user_utterance:
+                # Try to extract amount from user utterance (e.g., "$250k", "$330,000")
+                amount_match = re.search(r'\$(\d+(?:\.\d+)?)[kK]', user_utterance)
+                if amount_match:
+                    populated_args[key] = float(amount_match.group(1)) * 1000
+                    continue
+                else:
+                    # Try comma-separated format
+                    amount_match = re.search(r'\$(\d{1,3}(?:,\d{3})+)', user_utterance.replace(',', ''))
+                    if amount_match:
+                        populated_args[key] = float(amount_match.group(1).replace(',', ''))
+                        continue
+            
+            # If we can't extract from utterance, use a default based on context
+            # Default to 100k for opportunities/quotes, but this should ideally be fixed at generation
+            logger.warning(f"Amount placeholder 0.0 not resolved from utterance, using default 100000.0")
+            populated_args[key] = 100000.0
+            continue
+        
         # Keep non-placeholder values as-is
         if value not in ("", None) and value != 0.0:
             populated_args[key] = value
@@ -686,15 +710,22 @@ class CuratorConversationDatasetGenerator:
         current_crm_state = {}
         
         # Build initial CRM state from required entities
+        # For first turn searches, we need to generate the turn first to know what to search for
+        # Then create matching initial entities. For now, we'll create entities and ensure
+        # the first turn search criteria matches them.
         initial_entities = {}
         for entity_type in workflow_template.required_initial_entities:
             if entity_type == "client" and self.entity_pool.get("clients"):
                 client = random.choice(self.entity_pool["clients"])
                 initial_entities["client_id"] = client["client_id"]
+                initial_entities["client_name"] = client["name"]
+                initial_entities["client_email"] = client.get("email")
+                initial_entities["client_status"] = client.get("status")
                 current_crm_state["clients"] = [client]
             elif entity_type == "opportunity" and self.entity_pool.get("opportunities"):
                 opp = random.choice(self.entity_pool["opportunities"])
                 initial_entities["opportunity_id"] = opp["opportunity_id"]
+                initial_entities["opportunity_name"] = opp.get("name")
                 current_crm_state["opportunities"] = [opp]
         
         # Generate each turn iteratively
@@ -730,12 +761,29 @@ class CuratorConversationDatasetGenerator:
                     logger.warning(f"Failed to generate turn {turn_number} for {conversation_id}")
                     return None
                 
+                # Populate argument placeholders with actual entity data
+                populated_args = populate_argument_placeholders(
+                    turn_result["expected_args"],
+                    current_crm_state,
+                    user_utterance=turn_result.get("user_utterance")
+                )
+                
+                # For first turn searches, ensure search criteria matches initial entities
+                if turn_number == 1 and turn_result["tool_name"].endswith("_search"):
+                    if turn_result["tool_name"] == "client_search" and initial_entities.get("client_name"):
+                        # Ensure search criteria matches the initial client
+                        search_name = populated_args.get("name")
+                        if not search_name or search_name.lower() not in initial_entities["client_name"].lower():
+                            # Update search to match initial entity
+                            populated_args["name"] = initial_entities["client_name"]
+                            logger.debug(f"{conversation_id}: Updated turn 1 client_search to match initial entity: {initial_entities['client_name']}")
+                
                 # Create ConversationTurn
                 turn = ConversationTurn(
                     turn_id=turn_number,
                     user_utterance=turn_result["user_utterance"],
                     expected_tool=turn_result["tool_name"],
-                    expected_args=turn_result["expected_args"],
+                    expected_args=populated_args,
                     references_previous_turns=turn_template.references_previous_turns,
                 )
                 turns.append(turn)
@@ -743,7 +791,7 @@ class CuratorConversationDatasetGenerator:
                 # Simulate execution to update state
                 execution_result = simulate_turn_execution(
                     turn_result["tool_name"],
-                    turn_result["expected_args"],
+                    populated_args,
                     self.api,
                     self.entity_pool,
                 )
@@ -984,7 +1032,8 @@ class CuratorConversationDatasetGenerator:
                     # Populate argument placeholders with actual entity data
                     populated_args = populate_argument_placeholders(
                         row["expected_args"],
-                        state["crm_state"]
+                        state["crm_state"],
+                        user_utterance=row.get("user_utterance")
                     )
 
                     # Create ConversationTurn
