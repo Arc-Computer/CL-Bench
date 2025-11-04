@@ -90,7 +90,7 @@ def test_taxonomy_sub_actions_parsed_correctly():
 
 def test_failure_blueprints_registry_not_empty():
     assert len(FAILURE_BLUEPRINTS) > 0
-    assert len(FAILURE_BLUEPRINTS) == 34
+    assert len(FAILURE_BLUEPRINTS) == 80
 
 
 def test_all_blueprints_are_valid():
@@ -148,7 +148,7 @@ def test_get_blueprint_coverage_stats_structure():
 
 def test_coverage_stats_total_blueprints():
     stats = get_blueprint_coverage_stats()
-    assert stats["total_blueprints"] == 34
+    assert stats["total_blueprints"] == 80
 
 
 def test_coverage_stats_by_category_counts():
