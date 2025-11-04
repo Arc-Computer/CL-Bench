@@ -95,7 +95,7 @@ def test_taxonomy_sub_actions_parsed_correctly():
 def test_failure_blueprints_registry_not_empty():
     """Verify that the failure blueprints registry is populated."""
     assert len(FAILURE_BLUEPRINTS) > 0
-    # Don't hardcode the count - it may change as blueprints are added
+    assert len(FAILURE_BLUEPRINTS) == 80
 
 
 def test_all_blueprints_are_valid():
@@ -162,7 +162,7 @@ def test_get_blueprint_coverage_stats_structure():
 def test_coverage_stats_total_blueprints():
     """Verify that coverage stats total_blueprints matches actual blueprint count."""
     stats = get_blueprint_coverage_stats()
-    assert stats["total_blueprints"] == len(FAILURE_BLUEPRINTS)
+    assert stats["total_blueprints"] == 80
 
 
 def test_coverage_stats_by_category_counts():

@@ -1495,7 +1495,7 @@ register_blueprint(FailureBlueprint(
 ))
 
 register_blueprint(FailureBlueprint(
-    blueprint_id="CNQ-BP-001",
+    blueprint_id="CANQ-BP-001",
     category=FailureCategory.UNKNOWN_FOREIGN_KEY,
     severity=FailureSeverity.HIGH,
     task="cancel_quote",
