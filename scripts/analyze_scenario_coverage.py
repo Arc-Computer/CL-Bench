@@ -75,12 +75,6 @@ def load_task_weights(path: Path) -> Dict[str, int]:
     return task_weights
 
 
-def load_schema(path: Path) -> Dict[str, Any]:
-    """Load CRM schema."""
-    with path.open("r", encoding="utf-8") as handle:
-        return json.load(handle)
-
-
 def analyze_scenarios(scenarios: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Analyze scenario corpus."""
     total = len(scenarios)
@@ -404,12 +398,6 @@ def main() -> None:
         help="Path to Agent_tasks.csv",
     )
     parser.add_argument(
-        "--schema",
-        type=Path,
-        default=Path("data/fake_crm_tables_schema.json"),
-        help="Path to CRM schema JSON",
-    )
-    parser.add_argument(
         "--output",
         type=Path,
         default=Path("docs/scenario_coverage_report.md"),
@@ -425,9 +413,6 @@ def main() -> None:
 
     print(f"Loading task weights from {args.csv}...")
     task_weights = load_task_weights(args.csv)
-
-    print(f"Loading schema from {args.schema}...")
-    schema = load_schema(args.schema)
 
     print("Analyzing scenarios...")
     analysis = analyze_scenarios(scenarios)
@@ -447,4 +432,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -196,8 +196,6 @@ def main() -> None:
 
     generator = ScenarioGenerator(model_name=args.model_name)
 
-    all_scenarios = []
-
     # Generate success scenarios
     print(f"Generating {args.success_count} success scenarios for {args.tool}...")
     success_dataset = Dataset.from_list([
@@ -249,4 +247,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
