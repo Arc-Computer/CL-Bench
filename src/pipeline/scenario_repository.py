@@ -64,6 +64,7 @@ class ScenarioRepository:
         self._success_scenarios_by_tool, self._failure_scenarios_by_tool = self._index_scenarios_by_tool(
             self._scenarios
         )
+        self._scenarios_by_id = {record.scenario_id: record for record in self._scenarios}
         self._entity_metadata = self._build_entity_metadata(self._scenarios)
         self._task_weights = self._load_task_weights(task_weights_path)
         self._task_tool_set = set(self._task_weights)
@@ -88,6 +89,12 @@ class ScenarioRepository:
     @property
     def entity_metadata(self) -> Mapping[str, Mapping[str, Mapping[str, Any]]]:
         return self._entity_metadata
+
+    def get_scenario(self, scenario_id: str) -> ScenarioRecord:
+        try:
+            return self._scenarios_by_id[scenario_id]
+        except KeyError as exc:
+            raise KeyError(f"Scenario '{scenario_id}' not found in repository.") from exc
 
     def get_entity_pool(self, entity_type: str) -> Mapping[str, Mapping[str, Any]]:
         """Return metadata for a specific entity type (e.g., 'Client')."""

@@ -70,9 +70,11 @@ class ScenarioSelector(curator.LLM):
         turn_info = []
         for i, turn_template in enumerate(turn_templates, start=1):
             tool_name = turn_template.get("tool_name", "")
-            scenarios_for_tool = available_scenarios.get(tool_name, [])
+            desired = turn_template.get("desired_outcome", "")
+            key = f"turn_{i}:{tool_name}"
+            scenarios_for_tool = available_scenarios.get(key, [])
             turn_info.append(
-                f"Turn {i}: tool={tool_name}, available_scenarios={len(scenarios_for_tool)}"
+                f"Turn {i}: tool={tool_name}, desired={desired}, available_scenarios={len(scenarios_for_tool)}"
             )
 
         return f"""Select scenarios for each turn in a {workflow_category} workflow segment.
@@ -198,4 +200,3 @@ Return utterances as JSON following the TurnUtteranceResponse schema."""
                 "user_utterance": utterance.user_utterance,
             })
         return results
-
