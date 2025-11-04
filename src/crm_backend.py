@@ -13,6 +13,7 @@ from psycopg.rows import dict_row
 from .crm_sandbox import (
     Client,
     ClientStatus,
+    Company,
     Contact,
     Contract,
     ContractStatus,
