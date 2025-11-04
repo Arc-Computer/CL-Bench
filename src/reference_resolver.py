@@ -226,7 +226,6 @@ def get_required_fields_from_templates(
     for turn_idx, template in enumerate(templates):
         turn_num = turn_idx + 1
         references = extract_template_references(template)
-        required_fields[turn_num] = {(turn_num, field_name) for turn_num, field_name in references}
+        required_fields[turn_num] = {field_name for _, field_name in references}
     
     return required_fields
-
