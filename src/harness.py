@@ -215,20 +215,201 @@ TASK_TOOL_BLURBS = {
 }
 
 
+def _generate_tool_catalog() -> str:
+    """Generate complete CRM API reference with signatures, types, and constraints.
+    
+    Returns:
+        str: Formatted tool catalog with all available CRM operations.
+    """
+    catalog = """
+## Available CRM Tools
+
+### Client Management
+- create_new_client(name: str, email: str, status: str, **kwargs) -> Client
+  Required: name, email, status
+  Optional: industry (str), phone (str), address (str), owner (str)
+  status MUST be: 'Active', 'Prospect', or 'Inactive'
+  email MUST be valid email format
+  
+- modify_client(client_id: str, updates: Optional[Dict[str, Any]] = None, **kwargs) -> Client
+  Required: client_id
+  Provide updates as dict OR as keyword arguments (both supported)
+  Allowed update fields: name, email, phone, address, industry, status, owner
+  status MUST be: 'Active', 'Prospect', or 'Inactive'
+  email MUST be valid email format if provided
+  
+- client_search(**criteria) -> List[Client]
+  Optional filters: name (str, partial match), email (str, partial match), status (str, exact), industry (str, partial match), owner (str, partial match)
+  All filters combined with AND logic
+
+### Contact Management
+- create_new_contact(first_name: str, last_name: str, client_id: str, **kwargs) -> Contact
+  Required: first_name, last_name, client_id
+  Optional: email (str, must be valid format), phone (str), title (str), notes (str)
+  
+- modify_contact(contact_id: str, updates: Optional[Dict[str, Any]] = None, **kwargs) -> Contact
+  Required: contact_id
+  Provide updates as dict OR as keyword arguments (both supported)
+  Allowed update fields: first_name, last_name, email, phone, title, notes
+  email MUST be valid email format if provided
+  
+- contact_search(**criteria) -> List[Contact]
+  Optional filters: client_id (str, exact), email (str, partial match), first_name (str, partial match), last_name (str, partial match)
+  All filters combined with AND logic
+
+### Opportunity Management
+- create_new_opportunity(name: str, client_id: str, amount: float, stage: str, **kwargs) -> Opportunity
+  Required: name, client_id, amount, stage
+  Optional: probability (int, 0-100), close_date (str, ISO format), owner (str), notes (str)
+  stage MUST be: 'Prospecting', 'Qualification', 'Proposal', 'Negotiation', 'Closed-Won', or 'Closed-Lost'
+  amount MUST be positive float
+  
+- modify_opportunity(opportunity_id: str, updates: Optional[Dict[str, Any]] = None, **kwargs) -> Opportunity
+  Required: opportunity_id
+  Provide updates as dict OR as keyword arguments (both supported)
+  Allowed update fields: name, stage, amount, probability, close_date, owner, notes
+  stage MUST be: 'Prospecting', 'Qualification', 'Proposal', 'Negotiation', 'Closed-Won', or 'Closed-Lost'
+  probability MUST be: int between 0-100
+  amount MUST be positive float
+  
+- opportunity_search(**criteria) -> List[Opportunity]
+  Optional filters: stage (str, exact), client_id (str, exact), owner (str, partial match), amount (float, exact)
+  All filters combined with AND logic
+  
+- view_opportunity_details(opportunity_id: str) -> Opportunity
+  Required: opportunity_id
+  Returns full opportunity record
+  
+- opportunity_details(opportunity_id: str) -> Opportunity
+  Required: opportunity_id
+  Alias for view_opportunity_details
+  
+- clone_opportunity(opportunity_id: str) -> Opportunity
+  Required: opportunity_id
+  Creates a copy of the opportunity with same details but new ID
+  Source opportunity must have a valid amount
+  
+- delete_opportunity(opportunity_id: str) -> bool
+  Required: opportunity_id
+  Returns True if deleted successfully
+
+### Quote Management
+- create_quote(opportunity_id: str, amount: float, status: str, **kwargs) -> Quote
+  Required: opportunity_id, amount, status
+  Optional: version (str), valid_until (str, ISO format), quote_prefix (str)
+  status MUST be: 'Draft', 'Sent', 'Approved', 'Rejected', or 'Canceled'
+  amount MUST be positive float
+  
+- modify_quote(quote_id: str, updates: Optional[Dict[str, Any]] = None, **kwargs) -> Quote
+  Required: quote_id
+  Provide updates as dict OR as keyword arguments (both supported)
+  Allowed update fields: amount, status, version, valid_until, quote_prefix
+  status MUST be: 'Draft', 'Sent', 'Approved', 'Rejected', or 'Canceled'
+  amount MUST be positive float if provided
+  
+- quote_search(**criteria) -> List[Quote]
+  Optional filters: status (str, exact), opportunity_id (str, exact), amount (float, exact)
+  All filters combined with AND logic
+  
+- quote_details(quote_id: str) -> Quote
+  Required: quote_id
+  Returns full quote record
+  
+- compare_quotes(quote_ids: List[str]) -> List[Quote]
+  Required: quote_ids (list of quote IDs)
+  Returns list of quote records for comparison
+  
+- compare_quote_details(quote_ids: List[str]) -> Dict[str, Any]
+  Required: quote_ids (list of quote IDs)
+  Returns detailed comparison dictionary
+  
+- cancel_quote(quote_id: str) -> Quote
+  Required: quote_id
+  Updates quote status to 'Canceled'
+  
+- delete_quote(quote_id: str) -> bool
+  Required: quote_id
+  Returns True if deleted successfully
+  
+- quote_prefixes() -> List[str]
+  No arguments required
+  Returns sorted list of all unique quote prefixes
+
+### Contract Management
+- create_contract(client_id: str, opportunity_id: Optional[str] = None, **kwargs) -> Contract
+  Required: client_id
+  Optional: opportunity_id (str), status (str), value (float), start_date (str, ISO format), end_date (str, ISO format), document_url (str)
+  status MUST be: 'Active', 'Pending', or 'Expired' (defaults to 'Pending')
+  
+- contract_search(**criteria) -> List[Contract]
+  Optional filters: status (str, exact), client_id (str, exact)
+  All filters combined with AND logic
+
+### Document Management
+- upload_document(entity_type: str, entity_id: str, file_name: str, **kwargs) -> Document
+  Required: entity_type, entity_id, file_name
+  Optional: uploaded_by (str), uploaded_at (str, ISO format)
+  entity_type MUST be: 'Client', 'Opportunity', 'Quote', or 'Contract'
+  file_name MUST include valid extension (pdf, doc, docx, ppt, pptx, xlsx, csv, txt, key)
+  file_name MUST match pattern: alphanumeric, dots, dashes, underscores only
+
+### Notes & Annotations
+- add_note(entity_type: str, entity_id: str, content: str, **kwargs) -> Note
+  Required: entity_type, entity_id, content
+  Optional: created_by (str), created_at (str, ISO format)
+  entity_type MUST be: 'Client', 'Opportunity', 'Contact', 'Quote', or 'Contract'
+  content MUST be non-empty string
+
+### Company Management
+- company_search(**criteria) -> List[Company]
+  Optional filters: type (str, exact), industry (str, partial match), name (str, partial match)
+  type MUST be: 'Partner', 'Vendor', or 'Competitor'
+  All filters combined with AND logic
+
+### Analytics & Summaries
+- summarize_opportunities(**criteria) -> Dict[str, Any]
+  Optional filters: stage (str, exact), owner (str, partial match)
+  Returns summary dict with: total_count, total_amount, by_stage, by_owner
+
+### Enum Reference
+- ClientStatus: 'Active', 'Prospect', 'Inactive'
+- OpportunityStage: 'Prospecting', 'Qualification', 'Proposal', 'Negotiation', 'Closed-Won', 'Closed-Lost'
+- QuoteStatus: 'Draft', 'Sent', 'Approved', 'Rejected', 'Canceled'
+- ContractStatus: 'Active', 'Pending', 'Expired'
+- DocumentEntityType: 'Client', 'Opportunity', 'Quote', 'Contract'
+- NoteEntityType: 'Client', 'Opportunity', 'Contact', 'Quote', 'Contract'
+- CompanyType: 'Partner', 'Vendor', 'Competitor'
+
+### Important Notes
+- All modify_* methods support both patterns: modify_X(id, updates={...}) OR modify_X(id, field1=value1, field2=value2)
+- All search methods use case-insensitive partial matching for string fields
+- All date fields accept ISO format strings (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SSZ)
+- Email fields are validated for proper format
+- Amount fields must be positive floats
+- Probability must be integer between 0-100
+- All IDs are UUID strings
+"""
+    return catalog.strip()
+
+
 def build_prompt(case: GoldenCase, context: Dict[str, Any]) -> str:
     """Create an instruction prompt for the agent."""
     header = (
-        "You are Arc's CRM automation agent. Produce exactly one JSON object with keys "
-        "`tool_name` and `arguments`. Do not call any tool other than the one specified. "
+        "You are Arc's CRM automation agent. For single-step tasks, produce one JSON object. "
+        "For multi-step tasks, produce a JSON array of tool calls. "
         "If data is missing, make reasonable business assumptions based on the utterance."
     )
     tool_instructions = TASK_TOOL_BLURBS.get(case.task, "")
     context_lines = _format_context(context)
+    
+    # Generate complete tool catalog
+    catalog = _generate_tool_catalog()
+    
     json_spec = (
         "Output format:\n"
-        "```json\n"
-        '{"tool_name": "<tool_name>", "arguments": {...}}\n'
-        "```\n"
+        "Single-step: ```json\n{'tool_name': '<tool>', 'arguments': {...}}\n```\n"
+        "Multi-step: ```json\n[{'tool_name': '<tool1>', 'arguments': {...}}, "
+        "{'tool_name': '<tool2>', 'arguments': {...}}]\n```\n"
         "Ensure arguments strictly follow the tool signature."
     )
     prompt_parts = [
@@ -240,6 +421,9 @@ def build_prompt(case: GoldenCase, context: Dict[str, Any]) -> str:
         context_lines or "None; you may need to create or reference entities per the task.",
         "",
         f"Tool directive:\n{tool_instructions}",
+        "",
+        "Complete API Reference:",
+        catalog,
         "",
         json_spec,
     ]
@@ -274,22 +458,70 @@ def _format_context(context: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _parse_tool_call(text: str) -> ToolCall:
-    """Parse a JSON tool call from LLM output."""
+def _parse_single_tool_call(data: Dict[str, Any], raw_response: str) -> ToolCall:
+    """Parse a single tool call from a dictionary."""
+    if not isinstance(data, dict) or "tool_name" not in data or "arguments" not in data:
+        raise ValueError(f"Tool call missing required keys: {data}")
+    if not isinstance(data["arguments"], dict):
+        raise ValueError("Tool arguments must be a JSON object.")
+    return ToolCall(tool_name=data["tool_name"], arguments=data["arguments"], raw_response=raw_response)
+
+
+def _parse_tool_calls(text: str) -> List[ToolCall]:
+    """Parse one or more JSON tool calls from LLM output.
+    
+    Supported formats:
+    1. Single object: {"tool_name": "...", "arguments": {...}}
+    2. JSON array: [{"tool_name": "...", ...}, {"tool_name": "...", ...}]
+    3. Newline-separated: One JSON object per line
+    
+    Returns:
+        List[ToolCall]: Parsed tool calls (single or multiple)
+    
+    Raises:
+        ValueError: If text cannot be parsed as any supported format
+    """
     cleaned = text.strip()
     if cleaned.startswith("```"):
         cleaned = cleaned.strip("`")
         if cleaned.startswith("json"):
             cleaned = cleaned[4:].strip()
+    
+    # Try single JSON object
     try:
         data = json.loads(cleaned)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"Agent response is not valid JSON: {cleaned}") from exc
-    if not isinstance(data, dict) or "tool_name" not in data or "arguments" not in data:
-        raise ValueError(f"Agent response missing required keys: {data}")
-    if not isinstance(data["arguments"], dict):
-        raise ValueError("Agent arguments must be a JSON object.")
-    return ToolCall(tool_name=data["tool_name"], arguments=data["arguments"], raw_response=text)
+        if isinstance(data, dict) and "tool_name" in data:
+            return [_parse_single_tool_call(data, text)]
+        elif isinstance(data, list):
+            return [_parse_single_tool_call(item, text) for item in data]
+    except json.JSONDecodeError:
+        pass
+    
+    # Try newline-separated objects
+    tool_calls = []
+    for line in cleaned.split('\n'):
+        line = line.strip()
+        if not line or line.startswith(('#', '//')):
+            continue
+        try:
+            data = json.loads(line)
+            if isinstance(data, dict) and "tool_name" in data:
+                tool_calls.append(_parse_single_tool_call(data, line))
+        except json.JSONDecodeError:
+            continue
+    
+    if tool_calls:
+        return tool_calls
+    
+    raise ValueError(f"Could not parse tool call(s): {text[:200]}...")
+
+
+def _parse_tool_call(text: str) -> ToolCall:
+    """Parse a single tool call (backwards compatibility wrapper)."""
+    tool_calls = _parse_tool_calls(text)
+    if len(tool_calls) != 1:
+        raise ValueError(f"Expected single tool call but got {len(tool_calls)} calls")
+    return tool_calls[0]
 
 
 # ---------------------------------------------------------------------------
@@ -367,11 +599,19 @@ class BaselineHarness:
 
                     if mode == "mock":
                         tool_call = ToolCall(case.expected_tool, expected_args, raw_response=json.dumps(expected_args))
+                        tool_calls = [tool_call]
+                        raw_response = json.dumps(expected_args)
                     else:
-                        tool_call = self.agent.tool_call(case, prompt)
+                        # Get tool call(s) from agent - parse raw response to support multi-tool
+                        agent_tool_call = self.agent.tool_call(case, prompt)
+                        raw_response = agent_tool_call.raw_response
+                        # Parse potentially multiple tool calls from raw response
+                        tool_calls = _parse_tool_calls(raw_response)
+                        tool_call = tool_calls[0]  # Use first for backward compatibility with validation
 
                     pre = CrmStateSnapshot.from_backend(backend)
-                    execution_result = self._execute_tool(backend, tool_call)
+                    # Execute all tool calls sequentially (fail-fast on first error)
+                    execution_result = self._execute_tools(backend, tool_calls)
                     post = CrmStateSnapshot.from_backend(backend)
 
                     tool_correct = tool_call.tool_name == case.expected_tool
@@ -426,14 +666,19 @@ class BaselineHarness:
                         validator_result_for_verifier = ValidationResult.fail("Validator result unavailable.")
                     validator_details = validator_result_for_verifier.details
 
-                    tool_trace = VerifierToolTrace(
-                        step=1,
-                        tool_name=tool_call.tool_name,
-                        arguments=dict(tool_call.arguments),
-                        execution_success=execution_result.success,
-                        validator_success=validator_result_for_verifier.success,
-                        message=validator_result_for_verifier.message,
+                    # Build tool traces for verifier (one per tool call)
+                    tool_traces = tuple(
+                        VerifierToolTrace(
+                            step=idx + 1,
+                            tool_name=tc.tool_name,
+                            arguments=dict(tc.arguments),
+                            execution_success=execution_result.success if idx == 0 else True,  # Only first can fail in fail-fast
+                            validator_success=validator_result_for_verifier.success if idx == 0 else True,
+                            message=validator_result_for_verifier.message if idx == 0 else "Tool executed successfully",
+                        )
+                        for idx, tc in enumerate(tool_calls)
                     )
+                    tool_trace = tool_traces[0]  # Primary trace for backward compatibility
                     verifier_result: Optional[VerifierResult] = None
                     verifier_name_used: Optional[str] = None
                     if self._verifier_enabled:
@@ -456,8 +701,8 @@ class BaselineHarness:
                                 expected_error_substring=case.expected_error_substring,
                                 expected_tool=case.expected_tool,
                                 expected_arguments=expected_args,
-                                tool_traces=(tool_trace,),
-                                final_response=tool_call.raw_response,
+                                tool_traces=tool_traces,
+                                final_response=raw_response,
                                 validator_result=validator_result_for_verifier,
                                 pre_state=pre,
                                 post_state=post,
@@ -503,7 +748,7 @@ class BaselineHarness:
                         expected_success=case.expect_success,
                         message=outcome_message,
                         tool_call={"tool_name": tool_call.tool_name, "arguments": tool_call.arguments},
-                        agent_response=tool_call.raw_response,
+                        agent_response=raw_response,
                         validator_details=validator_details,
                         expected_tool=case.expected_tool,
                         expected_arguments=expected_args,
@@ -596,21 +841,44 @@ class BaselineHarness:
 
     @staticmethod
     def _execute_tool(api: Any, tool_call: ToolCall) -> ValidationResult:
-        """Run the tool call against the MockCrmApi and capture immediate errors."""
+        """Run a single tool call against the backend and capture immediate errors."""
         try:
             tool = getattr(api, tool_call.tool_name)
         except AttributeError:
             return ValidationResult.fail(f"Unknown tool '{tool_call.tool_name}'.")
 
         try:
-            if tool_call.tool_name == "modify_opportunity":
-                tool(tool_call.arguments["opportunity_id"], tool_call.arguments["updates"])
-            else:
-                tool(**tool_call.arguments)
+            # All methods now support uniform calling via **kwargs
+            tool(**tool_call.arguments)
         except Exception as exc:
             return ValidationResult.fail(str(exc))
 
         return ValidationResult.ok()
 
+    @staticmethod
+    def _execute_tools(
+        backend: Union[MockCrmApi, PostgresCrmBackend],
+        tool_calls: List[ToolCall]
+    ) -> ValidationResult:
+        """Execute multiple tool calls sequentially with fail-fast error handling.
+        
+        Stops on first failure and returns failure result. For research baseline data,
+        we need clean pass/fail signals - continuing would mask partial failures.
+        """
+        if not tool_calls:
+            return ValidationResult.fail("No tool calls provided")
+        
+        for idx, tool_call in enumerate(tool_calls):
+            result = BaselineHarness._execute_tool(backend, tool_call)
+            if not result.success:
+                # Fail-fast: stop on first failure
+                return ValidationResult.fail(
+                    f"Tool '{tool_call.tool_name}' failed: {result.message}",
+                    {"failed_tool": tool_call.tool_name, "tool_index": idx}
+                )
+        
+        # All tools executed successfully
+        return ValidationResult.ok("All tools executed successfully", {"tool_count": len(tool_calls)})
 
-__all__ = ["BaselineHarness", "HarnessResult", "MockAgent", "ClaudeAgent", "OpenAIAgent", "build_prompt", "ToolCall"]
+
+__all__ = ["BaselineHarness", "HarnessResult", "MockAgent", "ClaudeAgent", "OpenAIAgent", "build_prompt", "ToolCall", "_parse_tool_calls", "_generate_tool_catalog"]

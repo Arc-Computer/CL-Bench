@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Literal, Optional, Sequence, Union
 
 from .crm_backend import DatabaseConfig, PostgresCrmBackend
 from .crm_sandbox import MockCrmApi, ClientStatus, OpportunityStage, QuoteStatus, ContractStatus
-from .harness import Agent, ClaudeAgent, OpenAIAgent, MockAgent, ToolCall, EpisodeLog
+from .harness import Agent, ClaudeAgent, OpenAIAgent, MockAgent, ToolCall, EpisodeLog, _parse_tool_calls, _generate_tool_catalog
 from .scenario_generator import Scenario
 from .validators import CrmStateSnapshot, ValidationResult, VerificationMode
 from .verifier import VerifierRequest, VerifierResult, get_registered_verifier, ToolTrace as VerifierToolTrace
@@ -36,9 +36,10 @@ def build_scenario_prompt(scenario: Scenario, backend: Union[MockCrmApi, Postgre
 
     Includes:
     - Task description
-    - Available tools
+    - Available tools (complete catalog)
     - Entity context (created clients, opportunities, etc.)
     - Schema constraints (enums, required fields)
+    - Multi-tool support instructions
     """
     # Build entity context
     context_parts = []
@@ -84,30 +85,39 @@ def build_scenario_prompt(scenario: Scenario, backend: Union[MockCrmApi, Postgre
 
     context_str = "\n".join(context_parts) if context_parts else "No context entities."
 
-    # Tool directive
-    tool_directive = f"""You are a CRM assistant agent. The user will provide a request in natural language.
-Your task is to call the appropriate CRM tool with correct arguments.
+    # Generate complete tool catalog
+    catalog = _generate_tool_catalog()
 
-{context_str}
-
-User request: {scenario.utterance}
-
-Available tools: create_new_client, modify_client, client_search, create_opportunity, modify_opportunity,
-delete_opportunity, opportunity_search, clone_opportunity, view_opportunity_details, summarize_opportunities,
-create_new_contact, modify_contact, contact_search, create_quote, modify_quote, delete_quote, cancel_quote,
-quote_search, quote_details, compare_quotes, create_contract, contract_search, company_search, add_note, upload_document
-
-Schema constraints:
-- OpportunityStage: Prospecting, Qualification, Proposal, Negotiation, Closed-Won, Closed-Lost
-- ClientStatus: Active, Prospect, Inactive
-- QuoteStatus: Draft, Sent, Approved, Rejected, Canceled
-- ContractStatus: Active, Pending, Expired
-- CompanyType: Partner, Vendor, Competitor
-
-Respond with a JSON object containing:
-{{"tool_name": "...", "arguments": {{...}}}}"""
-
-    return tool_directive
+    # Build prompt with multi-tool support
+    header = (
+        "You are Arc's CRM automation agent. For single-step tasks, produce one JSON object. "
+        "For multi-step tasks, produce a JSON array of tool calls. "
+        "If data is missing, make reasonable business assumptions based on the utterance."
+    )
+    
+    json_spec = (
+        "Output format:\n"
+        "Single-step: ```json\n{'tool_name': '<tool>', 'arguments': {...}}\n```\n"
+        "Multi-step: ```json\n[{'tool_name': '<tool1>', 'arguments': {...}}, "
+        "{'tool_name': '<tool2>', 'arguments': {...}}]\n```\n"
+        "Ensure arguments strictly follow the tool signature."
+    )
+    
+    prompt_parts = [
+        header,
+        "",
+        f"User request:\n{scenario.utterance}",
+        "",
+        "Relevant CRM entities:",
+        context_str,
+        "",
+        "Complete API Reference:",
+        catalog,
+        "",
+        json_spec,
+    ]
+    
+    return "\n".join(prompt_parts)
 
 
 class ScenarioMockAgent:
@@ -117,11 +127,23 @@ class ScenarioMockAgent:
     model_name = "ground_truth"
 
     def tool_call(self, scenario: Scenario, prompt: str) -> ToolCall:
-        """Return ground-truth tool call from scenario."""
+        """Return ground-truth tool call from scenario.
+        
+        For multi-tool scenarios, returns the first tool call.
+        The full sequence is handled by run() method.
+        """
+        # Handle both single tool and multi-tool scenarios
+        if isinstance(scenario.expected_tool, list):
+            expected_tool = scenario.expected_tool[0]
+            expected_args = scenario.expected_args[0] if isinstance(scenario.expected_args, list) else scenario.expected_args
+        else:
+            expected_tool = scenario.expected_tool
+            expected_args = scenario.expected_args
+        
         return ToolCall(
-            tool_name=scenario.expected_tool,
-            arguments=scenario.expected_args,
-            raw_response=json.dumps({"tool_name": scenario.expected_tool, "arguments": scenario.expected_args})
+            tool_name=expected_tool,
+            arguments=expected_args,
+            raw_response=json.dumps({"tool_name": expected_tool, "arguments": expected_args})
         )
 
 
@@ -184,19 +206,40 @@ class ScenarioBaselineHarness:
         # Create opportunity if needed
         if "opportunity_id" in setup:
             if hasattr(backend, "opportunities") and setup["opportunity_id"] not in backend.opportunities:
-                backend.create_opportunity(
-                    opportunity_id=setup["opportunity_id"],
-                    name=setup.get("opportunity_name", f"Opportunity {setup['opportunity_id'][:8]}"),
-                    client_id=setup.get("client_id"),
-                    stage=setup.get("opportunity_stage", "Prospecting"),
-                    amount=setup.get("opportunity_amount", 100000.0),
-                    close_date=setup.get("close_date"),
-                    owner=setup.get("opportunity_owner", "sales@example.com"),
-                    probability=setup.get("probability", 50),
-                    notes=setup.get("opportunity_notes"),
+                # Build kwargs, filtering out None values
+                opp_kwargs = {
+                    "opportunity_id": setup["opportunity_id"],
+                    "name": setup.get("opportunity_name", f"Opportunity {setup['opportunity_id'][:8]}"),
+                    "client_id": setup.get("client_id"),
+                    "stage": setup.get("opportunity_stage", "Prospecting"),
+                    "amount": setup.get("opportunity_amount", 100000.0),
+                    "owner": setup.get("opportunity_owner", "sales@example.com"),
+                    "probability": setup.get("probability", 50),
+                }
+                # Only add optional fields if they're not None
+                if setup.get("close_date") is not None:
+                    opp_kwargs["close_date"] = setup.get("close_date")
+                if setup.get("opportunity_notes") is not None:
+                    opp_kwargs["notes"] = setup.get("opportunity_notes")
+                backend.create_new_opportunity(**opp_kwargs)
+
+        # Create quotes if referenced in expected_args (for scenarios like compare_quote_details)
+        quote_ids_from_args = []
+        if "quote_ids" in scenario.expected_args:
+            quote_ids_from_args = scenario.expected_args["quote_ids"]
+        elif "quote_id" in scenario.expected_args:
+            quote_ids_from_args = [scenario.expected_args["quote_id"]]
+
+        for quote_id in quote_ids_from_args:
+            if hasattr(backend, "quotes") and quote_id not in backend.quotes:
+                backend.create_quote(
+                    quote_id=quote_id,
+                    opportunity_id=setup.get("opportunity_id"),
+                    amount=setup.get("opportunity_amount", 100000.0) * 0.95,  # Quote typically ~95% of opportunity
+                    status="Sent",
                 )
 
-        # Create quote if needed
+        # Create quote if needed (from setup_entities)
         if "quote_id" in setup:
             if hasattr(backend, "quotes") and setup["quote_id"] not in backend.quotes:
                 backend.create_quote(
@@ -223,7 +266,23 @@ class ScenarioBaselineHarness:
                     notes=setup.get("contact_notes"),
                 )
 
-        # Create contract if needed
+        # Create contracts if referenced in expected_args
+        contract_ids_from_args = []
+        if "contract_ids" in scenario.expected_args:
+            contract_ids_from_args = scenario.expected_args["contract_ids"]
+        elif "contract_id" in scenario.expected_args:
+            contract_ids_from_args = [scenario.expected_args["contract_id"]]
+
+        for contract_id in contract_ids_from_args:
+            if hasattr(backend, "contracts") and contract_id not in backend.contracts:
+                backend.create_contract(
+                    contract_id=contract_id,
+                    client_id=setup.get("client_id"),
+                    opportunity_id=setup.get("opportunity_id"),
+                    status="Draft",
+                )
+
+        # Create contract if needed (from setup_entities)
         if "contract_id" in setup:
             if hasattr(backend, "contracts") and setup["contract_id"] not in backend.contracts:
                 backend.create_contract(
@@ -242,16 +301,42 @@ class ScenarioBaselineHarness:
         backend: Union[MockCrmApi, PostgresCrmBackend],
         tool_call: ToolCall
     ) -> ValidationResult:
-        """Execute tool call against backend and return result."""
+        """Execute a single tool call against backend and return result."""
         try:
-            method = getattr(backend, tool_call.tool_name, None)
-            if not method:
+            # Use hasattr instead of getattr with None default for better error detection
+            if not hasattr(backend, tool_call.tool_name):
                 return ValidationResult.fail(f"Tool '{tool_call.tool_name}' not found in backend")
-
+            
+            method = getattr(backend, tool_call.tool_name)
             result = method(**tool_call.arguments)
             return ValidationResult.ok("Tool executed successfully", {"result": result})
         except Exception as e:
             return ValidationResult.fail(str(e), {"exception": repr(e)})
+
+    def _execute_tools(
+        self,
+        backend: Union[MockCrmApi, PostgresCrmBackend],
+        tool_calls: List[ToolCall]
+    ) -> ValidationResult:
+        """Execute multiple tool calls sequentially with fail-fast error handling.
+        
+        Stops on first failure and returns failure result. For research baseline data,
+        we need clean pass/fail signals - continuing would mask partial failures.
+        """
+        if not tool_calls:
+            return ValidationResult.fail("No tool calls provided")
+        
+        for idx, tool_call in enumerate(tool_calls):
+            result = self._execute_tool(backend, tool_call)
+            if not result.success:
+                # Fail-fast: stop on first failure
+                return ValidationResult.fail(
+                    f"Tool '{tool_call.tool_name}' failed: {result.message}",
+                    {"failed_tool": tool_call.tool_name, "tool_index": idx}
+                )
+        
+        # All tools executed successfully
+        return ValidationResult.ok("All tools executed successfully", {"tool_count": len(tool_calls)})
 
     def _validate_scenario_result(
         self,
@@ -262,12 +347,21 @@ class ScenarioBaselineHarness:
         post: CrmStateSnapshot,
     ) -> ValidationResult:
         """Validate scenario result based on expected success/failure."""
-        tool_correct = tool_call.tool_name == scenario.expected_tool
+        # Handle both single tool and multi-tool scenarios
+        if isinstance(scenario.expected_tool, list):
+            expected_tool_sequence = scenario.expected_tool
+            # For multi-tool validation, we check the first tool matches first expected
+            # Full sequence validation happens in run() method
+            tool_correct = tool_call.tool_name == expected_tool_sequence[0]
+        else:
+            expected_tool_sequence = [scenario.expected_tool]
+            tool_correct = tool_call.tool_name == scenario.expected_tool
 
         if scenario.expect_success:
             if not tool_correct:
+                expected_str = scenario.expected_tool if isinstance(scenario.expected_tool, str) else scenario.expected_tool[0]
                 return ValidationResult.fail(
-                    f"Expected tool '{scenario.expected_tool}' but agent called '{tool_call.tool_name}'"
+                    f"Expected tool '{expected_str}' but agent called '{tool_call.tool_name}'"
                 )
             if not execution_result.success:
                 return ValidationResult.fail(f"Tool execution failed: {execution_result.message}")
@@ -278,8 +372,9 @@ class ScenarioBaselineHarness:
         else:
             # Expect failure
             if not tool_correct:
+                expected_str = scenario.expected_tool if isinstance(scenario.expected_tool, str) else scenario.expected_tool[0]
                 return ValidationResult.fail(
-                    f"Expected tool '{scenario.expected_tool}' but agent called '{tool_call.tool_name}'"
+                    f"Expected tool '{expected_str}' but agent called '{tool_call.tool_name}'"
                 )
             if execution_result.success:
                 return ValidationResult.fail("Expected failure but tool executed successfully")
@@ -328,47 +423,91 @@ class ScenarioBaselineHarness:
                     # Build prompt
                     prompt = build_scenario_prompt(scenario, backend)
 
-                    # Get tool call from agent
+                    # Get tool call(s) from agent
                     if mode == "mock":
                         mock_agent = ScenarioMockAgent()
-                        tool_call = mock_agent.tool_call(scenario, prompt)
+                        # Handle both single tool and multi-tool scenarios
+                        if isinstance(scenario.expected_tool, list):
+                            expected_tools = scenario.expected_tool
+                            expected_args_list = scenario.expected_args if isinstance(scenario.expected_args, list) else [scenario.expected_args]
+                            tool_calls = [
+                                ToolCall(
+                                    tool_name=tool,
+                                    arguments=args,
+                                    raw_response=json.dumps({"tool_name": tool, "arguments": args})
+                                )
+                                for tool, args in zip(expected_tools, expected_args_list)
+                            ]
+                            raw_response = json.dumps([{"tool_name": tool, "arguments": args} for tool, args in zip(expected_tools, expected_args_list)])
+                            tool_call = tool_calls[0]  # Use first for backward compatibility
+                        else:
+                            tool_call = mock_agent.tool_call(scenario, prompt)
+                            tool_calls = [tool_call]
+                            raw_response = tool_call.raw_response
                     else:
                         # Adapt agent interface
                         if hasattr(self.agent, "tool_call"):
                             # Check if agent expects GoldenCase or can handle generic call
                             if isinstance(self.agent, (ClaudeAgent, OpenAIAgent)):
                                 # These agents parse prompt directly
-                                tool_call = self.agent.tool_call(scenario, prompt)
+                                agent_tool_call = self.agent.tool_call(scenario, prompt)
+                                raw_response = agent_tool_call.raw_response
+                                # Parse potentially multiple tool calls from raw response
+                                tool_calls = _parse_tool_calls(raw_response)
                             else:
                                 # Try generic call
-                                tool_call = self.agent.tool_call(scenario, prompt)
+                                agent_tool_call = self.agent.tool_call(scenario, prompt)
+                                raw_response = agent_tool_call.raw_response
+                                tool_calls = _parse_tool_calls(raw_response)
                         else:
                             raise RuntimeError(f"Agent {type(self.agent)} does not support tool_call interface")
+                        
+                        tool_call = tool_calls[0]  # Use first for backward compatibility with validation
 
-                    # Execute tool
+                    # Execute tool(s)
                     pre = CrmStateSnapshot.from_backend(backend)
-                    execution_result = self._execute_tool(backend, tool_call)
+                    execution_result = self._execute_tools(backend, tool_calls)
                     post = CrmStateSnapshot.from_backend(backend)
 
-                    # Validate result
-                    validation_result = self._validate_scenario_result(
-                        scenario, tool_call, execution_result, pre, post
-                    )
-
-                    case_passed = validation_result.success
-                    outcome_message = validation_result.message
+                    # Validate tool sequence matches expected (for multi-tool scenarios)
+                    if isinstance(scenario.expected_tool, list):
+                        expected_tool_sequence = scenario.expected_tool
+                        actual_tool_sequence = [tc.tool_name for tc in tool_calls]
+                        if actual_tool_sequence != expected_tool_sequence:
+                            case_passed = False
+                            outcome_message = f"Tool sequence mismatch: expected {expected_tool_sequence}, got {actual_tool_sequence}"
+                            validation_result = ValidationResult.fail(outcome_message)
+                        else:
+                            # Validate result using first tool call (backward compatibility)
+                            validation_result = self._validate_scenario_result(
+                                scenario, tool_call, execution_result, pre, post
+                            )
+                            case_passed = validation_result.success
+                            outcome_message = validation_result.message
+                    else:
+                        # Single tool scenario - use existing validation
+                        validation_result = self._validate_scenario_result(
+                            scenario, tool_call, execution_result, pre, post
+                        )
+                        case_passed = validation_result.success
+                        outcome_message = validation_result.message
 
                     # Teacher/Student verification (if enabled)
                     verifier_result: Optional[VerifierResult] = None
                     if self._verifier_enabled and self._verifier_name:
-                        tool_trace = VerifierToolTrace(
-                            step=1,
-                            tool_name=tool_call.tool_name,
-                            arguments=dict(tool_call.arguments),
-                            execution_success=execution_result.success,
-                            validator_success=validation_result.success,
-                            message=validation_result.message,
+                        # Build tool traces for verifier (one per tool call)
+                        tool_traces = tuple(
+                            VerifierToolTrace(
+                                step=idx + 1,
+                                tool_name=tc.tool_name,
+                                arguments=dict(tc.arguments),
+                                execution_success=execution_result.success if idx == 0 else True,  # Only first can fail in fail-fast
+                                validator_success=validation_result.success if idx == 0 else True,
+                                message=validation_result.message if idx == 0 else "Tool executed successfully",
+                            )
+                            for idx, tc in enumerate(tool_calls)
                         )
+                        tool_trace = tool_traces[0]  # Primary trace for backward compatibility
 
                         verifier = get_registered_verifier(self._verifier_name)
                         request = VerifierRequest(
@@ -379,8 +518,8 @@ class ScenarioBaselineHarness:
                             expected_error_substring=scenario.expected_error_substring,
                             expected_tool=scenario.expected_tool,
                             expected_arguments=scenario.expected_args,
-                            tool_traces=(tool_trace,),
-                            final_response=tool_call.raw_response,
+                            tool_traces=tool_traces,
+                            final_response=raw_response,
                             validator_result=validation_result,
                             pre_state=pre,
                             post_state=post,
@@ -445,11 +584,11 @@ class ScenarioBaselineHarness:
                         expected_success=scenario.expect_success,
                         message=outcome_message,
                         tool_call={"tool_name": tool_call.tool_name, "arguments": tool_call.arguments},
-                        agent_response=tool_call.raw_response,
+                        agent_response=raw_response,
                         validator_details=validation_result.details,
                         expected_tool=scenario.expected_tool,
                         expected_arguments=scenario.expected_args,
-                        verification_mode=scenario.verification_mode.value,
+                        verification_mode=scenario.verification_mode.value if hasattr(scenario.verification_mode, 'value') else scenario.verification_mode,
                         verifier_name=self._verifier_name if self._verifier_enabled else None,
                         verifier_score=verifier_result.score if verifier_result else None,
                         verifier_rationale=verifier_result.rationale if verifier_result else None,

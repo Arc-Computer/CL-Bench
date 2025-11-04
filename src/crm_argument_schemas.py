@@ -5,7 +5,19 @@ eliminating LLM hallucination of invalid fields via Curator structured outputs.
 """
 
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
+
+# ============================================================================
+# Enum Type Definitions (matching crm_sandbox.py enums)
+# ============================================================================
+
+OpportunityStageType = Literal["Prospecting", "Qualification", "Proposal", "Negotiation", "Closed-Won", "Closed-Lost"]
+ClientStatusType = Literal["Active", "Prospect", "Inactive"]
+QuoteStatusType = Literal["Draft", "Sent", "Approved", "Rejected", "Canceled"]
+ContractStatusType = Literal["Active", "Pending", "Expired"]
+DocumentEntityType = Literal["Opportunity", "Contract", "Quote", "Client"]
+NoteEntityType = Literal["Opportunity", "Client", "Contact", "Quote", "Contract"]
+CompanyType = Literal["Partner", "Vendor", "Competitor"]
 
 
 # ============================================================================
@@ -17,8 +29,8 @@ class CreateOpportunityArgs(BaseModel):
     name: str
     client_id: str
     amount: float
-    stage: str
-    probability: Optional[int] = None
+    stage: OpportunityStageType
+    probability: Optional[int] = Field(None, ge=0, le=100)
     close_date: Optional[str] = None
     owner: Optional[str] = None
     notes: Optional[str] = None
@@ -28,7 +40,7 @@ class CreateClientArgs(BaseModel):
     """Arguments for create_new_client."""
     name: str
     email: str
-    status: str
+    status: ClientStatusType
     industry: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None
@@ -39,7 +51,7 @@ class CreateQuoteArgs(BaseModel):
     """Arguments for create_quote."""
     opportunity_id: str
     amount: float
-    status: str
+    status: QuoteStatusType
     version: Optional[str] = None
     valid_until: Optional[str] = None
     quote_prefix: Optional[str] = None
@@ -60,7 +72,7 @@ class CreateContractArgs(BaseModel):
     """Arguments for create_contract."""
     client_id: str
     opportunity_id: Optional[str] = None
-    status: Optional[str] = None
+    status: Optional[ContractStatusType] = None
     value: Optional[float] = None
     start_date: Optional[str] = None
     end_date: Optional[str] = None
@@ -68,7 +80,7 @@ class CreateContractArgs(BaseModel):
 
 class AddNoteArgs(BaseModel):
     """Arguments for add_note."""
-    entity_type: str
+    entity_type: NoteEntityType
     entity_id: str
     content: str
     created_by: Optional[str] = None
@@ -77,7 +89,7 @@ class AddNoteArgs(BaseModel):
 
 class UploadDocumentArgs(BaseModel):
     """Arguments for upload_document."""
-    entity_type: str
+    entity_type: DocumentEntityType
     entity_id: str
     file_name: str
     uploaded_by: Optional[str] = None
@@ -118,7 +130,7 @@ class ModifyContactArgs(BaseModel):
 
 class OpportunitySearchArgs(BaseModel):
     """Arguments for opportunity_search."""
-    stage: Optional[str] = None
+    stage: Optional[OpportunityStageType] = None
     client_id: Optional[str] = None
     owner: Optional[str] = None
     amount: Optional[float] = None
@@ -126,7 +138,7 @@ class OpportunitySearchArgs(BaseModel):
 
 class ClientSearchArgs(BaseModel):
     """Arguments for client_search."""
-    status: Optional[str] = None
+    status: Optional[ClientStatusType] = None
     industry: Optional[str] = None
     owner: Optional[str] = None
     name: Optional[str] = None
@@ -142,27 +154,27 @@ class ContactSearchArgs(BaseModel):
 
 class QuoteSearchArgs(BaseModel):
     """Arguments for quote_search."""
-    status: Optional[str] = None
+    status: Optional[QuoteStatusType] = None
     opportunity_id: Optional[str] = None
     amount: Optional[float] = None
 
 
 class ContractSearchArgs(BaseModel):
     """Arguments for contract_search."""
-    status: Optional[str] = None
+    status: Optional[ContractStatusType] = None
     client_id: Optional[str] = None
 
 
 class CompanySearchArgs(BaseModel):
     """Arguments for company_search."""
-    type: Optional[str] = None
+    type: Optional[CompanyType] = None
     industry: Optional[str] = None
     name: Optional[str] = None
 
 
 class SummarizeOpportunitiesArgs(BaseModel):
     """Arguments for summarize_opportunities."""
-    stage: Optional[str] = None
+    stage: Optional[OpportunityStageType] = None
     owner: Optional[str] = None
 
 

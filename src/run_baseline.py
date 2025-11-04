@@ -15,10 +15,15 @@ import random
 from pathlib import Path
 from typing import List, Literal
 
+from dotenv import load_dotenv
+
 from .crm_backend import DatabaseConfig
 from .harness import ClaudeAgent, OpenAIAgent
 from .scenario_generator import Scenario
 from .scenario_harness import ScenarioBaselineHarness, ScenarioMockAgent, load_scenarios_from_jsonl
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 def sample_scenarios(
@@ -143,9 +148,9 @@ def main():
     if args.agent == "claude":
         agent = ClaudeAgent(model_name="claude-sonnet-4-5-20250929")
     elif args.agent == "gpt4.1":
-        agent = OpenAIAgent(model_name="gpt-4.1-turbo")
+        agent = OpenAIAgent(model_name="gpt-4.1")
     elif args.agent == "gpt4":
-        agent = OpenAIAgent(model_name="gpt-4-turbo")
+        agent = OpenAIAgent(model_name="gpt-4.1-mini")
     elif args.agent == "mock":
         agent = ScenarioMockAgent()
     else:

@@ -1,5 +1,13 @@
 -- Seed data for CRM Postgres sandbox.
 -- Inserts anonymized records aligned with golden-case happy paths.
+-- 
+-- This script uses advisory locks to prevent concurrent execution
+-- and explicit transaction control with error handling.
+
+-- Use advisory lock to prevent concurrent seed operations
+SELECT pg_advisory_lock(1234567890);
+
+BEGIN;
 
 -- Clients ------------------------------------------------------------------
 INSERT INTO clients (client_id, name, industry, email, phone, address, status, created_date, owner)
@@ -114,3 +122,8 @@ VALUES
     ('9fc11e24-e46c-48d5-8b2f-0568ad139abd', 'Quote', '99cc3df1-7c7c-4ad9-bdd7-a0eade43b437', 'Ready for executive signature.', 'luca.carra', '2025-04-13T10:05:00Z'),
     ('a72164c3-e8a8-403f-ba8c-60a778559975', 'Contract', '2f51a0fe-7ccb-4ad3-8795-80d43299cb3a', 'Renewal auto-renews annually unless canceled 60 days prior.', 'gaby.chan', '2025-04-02T09:30:00Z')
 ON CONFLICT (note_id) DO NOTHING;
+
+COMMIT;
+
+-- Release advisory lock
+SELECT pg_advisory_unlock(1234567890);

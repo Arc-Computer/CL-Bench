@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import date
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 import random
 import uuid
 
@@ -17,9 +17,9 @@ class Scenario:
     task: str
     intent: str
     utterance: str  # Production-faithful natural language user input
-    expected_tool: str
+    expected_tool: Union[str, List[str]]  # Single or sequence of tools
     setup_entities: Dict[str, Any]
-    expected_args: Dict[str, Any]
+    expected_args: Union[Dict[str, Any], List[Dict[str, Any]]]  # Single or sequence
     expect_success: bool
     expected_error_substring: Optional[str]
     failure_category: Optional[FailureCategory]
