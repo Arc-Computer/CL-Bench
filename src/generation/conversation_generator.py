@@ -421,18 +421,34 @@ def _get_entity_builder(entity_type: str):
     return builders.get(entity_type)
 
 
+def _require_metadata_value(
+    metadata: Mapping[str, Any],
+    field_name: str,
+    entity_type: str,
+    entity_id: str,
+) -> Any:
+    value = metadata.get(field_name)
+    if value in ("", None, [], {}):
+        raise ValueError(f"{entity_type} {entity_id} missing required metadata field '{field_name}'.")
+    return value
+
+
 def _build_client(entity_id: str, metadata: Mapping[str, Any], _: Optional[str]) -> Client:
     status = metadata.get("status") or "Active"
     if status not in {"Active", "Prospect", "Inactive"}:
         status = "Active"
+    name = metadata.get("name")
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError(f"Client {entity_id} missing human-readable name metadata.")
+    owner = _require_metadata_value(metadata, "owner", "Client", entity_id)
     return Client(
         client_id=entity_id,
-        name=metadata.get("name") or f"Client {entity_id[:8]}",
+        name=name.strip(),
         status=status,
         email=metadata.get("email"),
         phone=metadata.get("phone"),
         industry=metadata.get("industry") or "Technology",
-        owner=metadata.get("owner") or "owner@example.com",
+        owner=owner,
     )
 
 
@@ -440,11 +456,13 @@ def _build_contact(entity_id: str, metadata: Mapping[str, Any], fallback_client_
     client_id = metadata.get("client_id") or fallback_client_id
     if not client_id:
         raise ValueError("Contact seeding requires a client_id.")
+    first_name = _require_metadata_value(metadata, "first_name", "Contact", entity_id)
+    last_name = _require_metadata_value(metadata, "last_name", "Contact", entity_id)
     return Contact(
         contact_id=entity_id,
         client_id=client_id,
-        first_name=metadata.get("first_name") or "Jordan",
-        last_name=metadata.get("last_name") or "Parker",
+        first_name=str(first_name),
+        last_name=str(last_name),
         email=metadata.get("email"),
         phone=metadata.get("phone"),
         title=metadata.get("title"),
@@ -469,25 +487,33 @@ def _build_opportunity(entity_id: str, metadata: Mapping[str, Any], fallback_cli
         stage = "Qualification"
     if stage in closed_stages:
         stage = "Qualification"
-    amount = metadata.get("amount") or 100000.0
+    amount = metadata.get("amount")
+    if amount is None:
+        raise ValueError(f"Opportunity {entity_id} missing amount metadata.")
     try:
         amount = float(amount)
     except (TypeError, ValueError):
-        amount = 100000.0
-    probability = metadata.get("probability") or 35
+        raise ValueError(f"Opportunity {entity_id} has non-numeric amount metadata: {amount!r}")
+    probability = metadata.get("probability")
+    if probability is None:
+        raise ValueError(f"Opportunity {entity_id} missing probability metadata.")
     try:
         probability = int(probability)
     except (TypeError, ValueError):
-        probability = 35
+        raise ValueError(f"Opportunity {entity_id} has invalid probability metadata: {probability!r}")
     probability = max(1, min(99, probability))
+    name = metadata.get("name")
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError(f"Opportunity {entity_id} missing human-readable name metadata.")
     return Opportunity(
         opportunity_id=entity_id,
         client_id=client_id,
-        name=metadata.get("name") or f"Opportunity {entity_id[:8]}",
+        name=name.strip(),
         stage=stage,
         amount=amount,
         probability=probability,
         notes=metadata.get("notes"),
+        owner=metadata.get("owner"),
     )
 
 
@@ -498,11 +524,13 @@ def _build_quote(entity_id: str, metadata: Mapping[str, Any], _: Optional[str]) 
     status = metadata.get("status") or "Draft"
     if status not in {"Draft", "Sent", "Approved", "Rejected", "Canceled"}:
         status = "Draft"
-    amount = metadata.get("amount") or 50000.0
+    amount = metadata.get("amount")
+    if amount is None:
+        raise ValueError(f"Quote {entity_id} missing amount metadata.")
     try:
         amount = float(amount)
     except (TypeError, ValueError):
-        amount = 50000.0
+        raise ValueError(f"Quote {entity_id} has non-numeric amount metadata: {amount!r}")
     return Quote(
         quote_id=entity_id,
         opportunity_id=opportunity_id,
