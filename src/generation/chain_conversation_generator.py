@@ -10,16 +10,25 @@ import os
 import random
 import re
 import uuid
+from collections import defaultdict
 from dataclasses import replace
-from typing import Any, Dict, List, Mapping, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from src.conversation_schema import Conversation, ConversationTurn
-from src.conversation_templates import TurnTemplate, WorkflowChain, WorkflowTemplate, WORKFLOW_CHAINS, WORKFLOW_TEMPLATES
+from src.conversation_templates import (
+    TurnTemplate,
+    WorkflowChain,
+    WorkflowTemplate,
+    WORKFLOW_CHAINS,
+    WORKFLOW_TEMPLATES,
+)
 from src.generation.chain_curator import ChainUtteranceGenerator, ScenarioSelector
+from src.generation.curator_chain_models import TurnMetadata
 from src.generation.conversation_generator import (
     API_STORE_ATTR,
     ENTITY_TYPE_ORDER,
     _collect_entity_seeds,
+    _normalize_entity_ids,
     _merge_template_with_scenario,
     _sanitize_arguments,
     _seed_crm_state,
@@ -31,7 +40,11 @@ from src.generation.conversation_generator import (
     CREATION_TOOL_ENTITY,
 )
 from src.pipeline.scenario_repository import ScenarioRecord, ScenarioRepository
-from src.reference_resolver import resolve_template, validate_template_references
+from src.reference_resolver import (
+    resolve_template,
+    validate_template_references,
+    extract_template_references,
+)
 from src.crm_sandbox import MockCrmApi
 from src.evaluation.verification import VerificationMode
 
@@ -47,6 +60,96 @@ ENTITY_HANDOFF_FIELDS: Dict[str, str] = {
 }
 
 FIELD_TO_ENTITY: Dict[str, str] = {field: entity for entity, field in ENTITY_HANDOFF_FIELDS.items()}
+
+DEFAULT_PERSONA_HINT = "Account executive managing CRM updates"
+
+PERSONA_HINTS_BY_WORKFLOW: Dict[str, str] = {
+    "Client Management": "Account manager reviewing client records",
+    "Contact Management": "Customer success rep coordinating contact follow-ups",
+    "Opportunity Management": "Sales manager progressing active pipeline deals",
+    "Quote Management": "Sales operations specialist fine-tuning pipeline quotes",
+    "Contract Management": "Legal liaison finalizing customer contracts",
+    "Client Onboarding": "Implementation lead onboarding a new client",
+    "Deal Pipeline": "Sales leader coordinating internal pipeline updates",
+    "Document Management": "Sales coordinator managing supporting documents",
+    "Multi-Entity Search": "Analyst gathering related CRM records",
+}
+
+TOOL_STAGE_HINTS: Dict[str, str] = {
+    "client_search": "Client lookup and qualification",
+    "modify_client": "Client status or ownership change",
+    "create_new_contact": "New contact capture for the account",
+    "modify_contact": "Contact grooming and enrichment",
+    "contact_search": "Contact lookup for follow-up",
+    "opportunity_search": "Opportunity review prior to updates",
+    "create_new_opportunity": "Pipeline creation for the highlighted client",
+    "modify_opportunity": "Pipeline advancement or hygiene update",
+    "create_quote": "Drafting a sales quote for active deal",
+    "modify_quote": "Adjusting quote details for negotiation",
+    "cancel_quote": "Flagging quote for cancellation",
+    "upload_document": "Uploading supporting sales collateral",
+    "add_note": "Recording contextual account note",
+    "document_search": "Locating existing documents",
+    "create_contract": "Authoring contract for approved deal",
+    "contract_search": "Reviewing existing contract",
+    "deal_stage_summary": "Summarizing deal pipeline positions",
+}
+
+
+def _persona_hint_for_turn(template: WorkflowTemplate, turn_template: TurnTemplate) -> str:
+    """Return persona hint, honoring any turn-level overrides."""
+    overrides = (turn_template.generation_params or {}).get("persona_hint")
+    if overrides:
+        return str(overrides)
+    return PERSONA_HINTS_BY_WORKFLOW.get(template.workflow_category, DEFAULT_PERSONA_HINT)
+
+
+def _stage_hint_for_turn(turn_template: TurnTemplate, expected_args: Optional[Mapping[str, Any]] = None) -> Optional[str]:
+    """Infer a stage hint for the turn from overrides, expected arguments, or tool defaults."""
+    overrides = (turn_template.generation_params or {}).get("stage_hint")
+    if overrides:
+        return str(overrides)
+
+    stage_candidates: List[Any] = []
+    if expected_args:
+        stage_candidates.extend(
+            _deep_collect_fields(expected_args, {"stage", "status", "probability", "quote_status"})
+        )
+        updates = expected_args.get("updates")
+        if isinstance(updates, Mapping):
+            stage_candidates.extend(
+                _deep_collect_fields(updates, {"stage", "status", "probability"})
+            )
+
+    for candidate in stage_candidates:
+        if candidate is None or candidate == "":
+            continue
+        text = str(candidate).strip()
+        if text:
+            return text
+
+    return TOOL_STAGE_HINTS.get(turn_template.tool_name)
+
+
+def _deep_collect_fields(payload: Mapping[str, Any], target_keys: Iterable[str]) -> List[Any]:
+    """Collect values from nested dictionaries for the specified keys."""
+    values: List[Any] = []
+    for key, value in payload.items():
+        if key in target_keys:
+            values.append(value)
+        if isinstance(value, Mapping):
+            values.extend(_deep_collect_fields(value, target_keys))
+        elif isinstance(value, list):
+            for item in value:
+                if isinstance(item, Mapping):
+                    values.extend(_deep_collect_fields(item, target_keys))
+    return values
+
+
+def _handoff_dependencies_from_template(turn_template: TurnTemplate) -> List[str]:
+    """Derive entity handoff dependencies for a turn by inspecting template references."""
+    referenced_fields = {field for _, field in extract_template_references(turn_template.argument_template)}
+    return sorted(referenced_fields)
 
 
 def instantiate_chained_conversation(
@@ -78,7 +181,6 @@ def instantiate_chained_conversation(
             workflow_template,
             repo,
             scenario_selector,
-            rng,
             segment_index,
             desired_segment_success,
         )
@@ -96,12 +198,16 @@ def instantiate_chained_conversation(
     entity_seeds = _collect_entity_seeds(all_contexts, repo)
     initial_entities = _seed_crm_state(api, entity_seeds)
 
+    cumulative_entities: Dict[str, set[str]] = defaultdict(set)
+    _prime_cumulative_entities(cumulative_entities, initial_entities)
+
     previous_turn_outputs: Dict[int, Dict[str, Any]] = {}
     conversation_history: List[Dict[str, Any]] = []
     segment_summaries: List[Dict[str, Any]] = []
     handoff_ids: Dict[str, str] = {}
     conversation_turns: List[ConversationTurn] = []
     segment_boundaries: List[int] = []
+    turn_annotations: List[Dict[str, Any]] = []
 
     global_turn = 0
     contains_failure = False
@@ -114,13 +220,18 @@ def instantiate_chained_conversation(
         segment_expect_success: bool = segment["segment_success"]
 
         adjusted_contexts = _adjust_contexts_for_offset(contexts, global_turn)
+        segment_start_turn = global_turn + 1
+        segment_created: Dict[str, set[str]] = defaultdict(set)
+        segment_referenced: Dict[str, set[str]] = defaultdict(set)
+        segment_failure_observed = False
+        segment_failure_turn: Optional[int] = None
 
         argument_summaries = [_summarize_arguments_safe(ctx.expected_args) for ctx in adjusted_contexts]
 
         utterance_rows = _generate_segment_utterances(
             utterance_generator,
             template,
-            len(adjusted_contexts),
+            adjusted_contexts,
             argument_summaries,
             handoff_ids,
             segment_summaries,
@@ -139,6 +250,7 @@ def instantiate_chained_conversation(
             global_turn += 1
             turn_template = context.turn_template
             scenario = context.scenario
+            turn_row = utterance_rows[local_index - 1] if local_index - 1 < len(utterance_rows) else {}
 
             merged_args = _merge_template_with_scenario(turn_template.argument_template, context.expected_args)
             merged_args = _sanitize_arguments(template, turn_template, merged_args, local_index)
@@ -154,6 +266,11 @@ def instantiate_chained_conversation(
             resolved_args = _apply_handoff_overrides(resolved_args, chain.entity_handoff_rules, handoff_ids)
             logger.debug("Chain turn %s resolved args after handoff: %s", turn_template.tool_name, resolved_args)
             resolved_args = _remove_empty_strings(resolved_args)
+            entity_references = _collect_entity_references_from_args(resolved_args)
+            for entity_type, ids in entity_references.items():
+                if not ids:
+                    continue
+                segment_referenced[entity_type].update(ids)
 
             user_utterance = utterance_map.get(turn_template.turn_number)
             if not user_utterance:
@@ -173,6 +290,13 @@ def instantiate_chained_conversation(
                     scenario.expect_success,
                 )
                 logger.debug("Updated handoff IDs after %s: %s", turn_template.tool_name, handoff_ids)
+                created_entities = _collect_entities_from_payload(reference_payload)
+                for entity_type, ids in created_entities.items():
+                    if not ids:
+                        continue
+                    segment_created[entity_type].update(ids)
+                    segment_referenced[entity_type].update(ids)
+                    cumulative_entities[entity_type].update(ids)
                 creation_entity = CREATION_TOOL_ENTITY.get(turn_template.tool_name)
                 if creation_entity:
                     creation_field = ENTITY_HANDOFF_FIELDS.get(creation_entity)
@@ -193,6 +317,9 @@ def instantiate_chained_conversation(
                     previous_turn_outputs[global_turn] = {}
                     assistant_summary = f"{assistant_summary} (expected failure)"
                     contains_failure = True
+                    segment_failure_observed = True
+                    if segment_failure_turn is None:
+                        segment_failure_turn = global_turn
                     if failure_turn is None:
                         failure_turn = global_turn
                 else:
@@ -206,6 +333,18 @@ def instantiate_chained_conversation(
                     {"turn": global_turn, "speaker": "User", "content": user_utterance},
                     {"turn": global_turn, "speaker": "Assistant", "content": assistant_summary},
                 ]
+            )
+
+            turn_annotations.append(
+                {
+                    "turn_id": global_turn,
+                    "segment_number": segment_index,
+                    "scenario_id": scenario.scenario_id,
+                    "persona_hint": turn_row.get("persona_hint"),
+                    "stage_focus": turn_row.get("stage_focus"),
+                    "referenced_entities": _ensure_list(turn_row.get("referenced_entities")),
+                    "handoff_summary": turn_row.get("handoff_summary"),
+                }
             )
 
             conversation_turns.append(
@@ -222,11 +361,22 @@ def instantiate_chained_conversation(
             )
 
         segment_boundaries.append(global_turn)
+        for entity_type, ids in segment_referenced.items():
+            if not ids:
+                continue
+            cumulative_entities[entity_type].update(ids)
         segment_summaries.append(
             {
                 "segment_number": segment_index,
                 "workflow_category": template.workflow_category,
                 "expected_outcome": "success" if segment_expect_success else "failure",
+                "actual_outcome": "failure" if segment_failure_observed else "success",
+                "turn_range": {"start": segment_start_turn, "end": global_turn},
+                "entities_created": _convert_entity_sets_to_lists(segment_created),
+                "entities_referenced": _convert_entity_sets_to_lists(segment_referenced),
+                "cumulative_entities": _convert_entity_sets_to_lists(cumulative_entities),
+                "handoff_trace": dict(handoff_ids),
+                "failure_turn": segment_failure_turn,
             }
         )
 
@@ -250,7 +400,12 @@ def instantiate_chained_conversation(
         segment_number=None,
         segment_boundaries=segment_boundaries,
         expected_outcome="Multi-segment workflow completion",
-        cumulative_context={"handoff_ids": handoff_ids},
+        cumulative_context={
+            "handoff_ids": dict(handoff_ids),
+            "segment_summaries": segment_summaries,
+            "cumulative_entities": _convert_entity_sets_to_lists(cumulative_entities),
+            "turn_annotations": turn_annotations,
+        },
         verification_mode=VerificationMode.DATABASE,
     )
 
@@ -259,7 +414,6 @@ def _select_segment_contexts(
     workflow_template: WorkflowTemplate,
     repo: ScenarioRepository,
     scenario_selector: ScenarioSelector,
-    rng: random.Random,
     segment_index: int,
     expect_success: bool,
 ) -> List[TurnGenerationContext]:
@@ -275,6 +429,7 @@ def _select_segment_contexts(
 
     available: Dict[str, List[str]] = {}
     candidate_ids: set[str] = set()
+    turn_metadata_objects: List[TurnMetadata] = []
     for idx, turn_template in enumerate(workflow_template.turn_templates, start=1):
         tool_name = turn_template.tool_name
         turn_key = f"turn_{idx}:{tool_name}"
@@ -290,18 +445,22 @@ def _select_segment_contexts(
         scenario_ids = [record.scenario_id for record in pool]
         available[turn_key] = scenario_ids
         candidate_ids.update(scenario_ids)
+        turn_metadata_objects.append(
+            TurnMetadata(
+                turn_number=idx,
+                tool_name=tool_name,
+                desired_outcome="success" if desired_outcomes[idx - 1] else "failure",
+                stage_hint=_stage_hint_for_turn(turn_template),
+                persona_hint=_persona_hint_for_turn(workflow_template, turn_template),
+                handoff_dependencies=_handoff_dependencies_from_template(turn_template),
+            )
+        )
 
     selector_input = {
         "segment_index": segment_index,
         "workflow_category": workflow_template.workflow_category,
-        "turn_templates": [
-            {
-                "turn_number": idx,
-                "tool_name": turn_template.tool_name,
-                "desired_outcome": "success" if desired_outcomes[idx - 1] else "failure",
-            }
-            for idx, turn_template in enumerate(workflow_template.turn_templates, start=1)
-        ],
+        "workflow_description": workflow_template.description,
+        "turn_templates": [metadata.model_dump(exclude_none=True) for metadata in turn_metadata_objects],
         "available_scenarios": available,
         "scenario_tags": {
             scenario_id: repo.scenario_tags.get(scenario_id, {})
@@ -309,7 +468,10 @@ def _select_segment_contexts(
         },
     }
 
-    selected_map = _run_scenario_selector(scenario_selector, selector_input)
+    if _use_offline_curator():
+        selected_map = _offline_select_scenarios(turn_metadata_objects, available, selector_input["scenario_tags"])
+    else:
+        selected_map = _run_scenario_selector(scenario_selector, selector_input)
 
     contexts: List[TurnGenerationContext] = []
     for idx, turn_template in enumerate(workflow_template.turn_templates, start=1):
@@ -319,7 +481,7 @@ def _select_segment_contexts(
 
         scenario_id = selected_map.get((idx, turn_template.tool_name))
         if scenario_id not in candidates:
-            scenario_id = rng.choice(candidates)
+            scenario_id = sorted(candidates)[0]
 
         scenario = repo.get_scenario(scenario_id)
         if scenario.expect_success != desired_success:
@@ -352,6 +514,49 @@ def _select_failure_turn(turn_templates: Sequence[TurnTemplate], failure_by_tool
     return None
 
 
+def _use_offline_curator() -> bool:
+    """Return True when deterministic offline generation should be used."""
+    return os.environ.get("CURATOR_SIMPLE_DATASET") == "1"
+
+
+def _offline_select_scenarios(
+    turn_metadata: Sequence[TurnMetadata],
+    available: Mapping[str, Sequence[str]],
+    scenario_tags: Mapping[str, Mapping[str, Any]],
+) -> Dict[Tuple[int, str], str]:
+    """Deterministically select scenarios without LLM calls."""
+    selections: Dict[Tuple[int, str], str] = {}
+    for metadata in turn_metadata:
+        key = f"turn_{metadata.turn_number}:{metadata.tool_name}"
+        candidates = list(available.get(key) or [])
+        if not candidates:
+            continue
+        candidates.sort()
+        stage_hint = (metadata.stage_hint or "").lower()
+        if stage_hint:
+            stage_matches = [
+                scenario_id
+                for scenario_id in candidates
+                if stage_hint in {
+                    value.lower()
+                    for value in _iter_stage_like_values(scenario_tags.get(scenario_id, {}))
+                }
+            ]
+            if stage_matches:
+                selections[(metadata.turn_number, metadata.tool_name)] = stage_matches[0]
+                continue
+        selections[(metadata.turn_number, metadata.tool_name)] = candidates[0]
+    return selections
+
+
+def _iter_stage_like_values(tags: Mapping[str, Any]) -> Iterable[str]:
+    """Yield tag values that represent stage/status style metadata."""
+    for key in ("opportunity_stage", "quote_status", "client_status", "failure_category", "tool_action"):
+        value = tags.get(key)
+        if isinstance(value, str):
+            yield value
+
+
 def _run_scenario_selector(
     scenario_selector: ScenarioSelector,
     selector_input: Dict[str, Any],
@@ -360,9 +565,8 @@ def _run_scenario_selector(
     try:
         response = scenario_selector(dataset)
         rows = list(response.dataset)
-    except Exception as exc:  # pragma: no cover - safety net for offline runs
-        logger.warning("Scenario selector failed (%s); falling back to deterministic selection.", exc)
-        return {}
+    except Exception as exc:  # pragma: no cover - explicit failure if online path errors
+        raise RuntimeError("Scenario selector failed when offline mode was disabled.") from exc
 
     selections: Dict[tuple[int, str], str] = {}
     for row in rows:
@@ -424,31 +628,130 @@ def _summarize_arguments_safe(arguments: Mapping[str, Any]) -> str:
 def _generate_segment_utterances(
     utterance_generator: ChainUtteranceGenerator,
     template: WorkflowTemplate,
-    turn_count: int,
+    contexts: Sequence[TurnGenerationContext],
     argument_summaries: Sequence[str],
     handoff_ids: Mapping[str, str],
     segment_history: Sequence[Mapping[str, Any]],
 ) -> List[Dict[str, Any]]:
+    turn_metadata_objects: List[TurnMetadata] = []
+    for local_turn, context in enumerate(contexts, start=1):
+        turn_metadata_objects.append(
+            TurnMetadata(
+                turn_number=local_turn,
+                tool_name=context.turn_template.tool_name,
+                desired_outcome="success" if context.scenario.expect_success else "failure",
+                stage_hint=_stage_hint_for_turn(context.turn_template, context.expected_args),
+                persona_hint=_persona_hint_for_turn(template, context.turn_template),
+                handoff_dependencies=_handoff_dependencies_from_template(context.turn_template),
+            )
+        )
+
     generator_input = {
         "workflow_category": template.workflow_category,
-        "turn_count": turn_count,
+        "workflow_description": template.description,
+        "turn_count": len(contexts),
+        "turn_metadata": [metadata.model_dump(exclude_none=True) for metadata in turn_metadata_objects],
         "argument_summaries": list(argument_summaries),
         "cumulative_context": dict(handoff_ids),
         "previous_segments": list(segment_history),
     }
 
+    if _use_offline_curator():
+        return _offline_generate_segment_utterances(contexts, turn_metadata_objects, argument_summaries, handoff_ids)
+
     dataset = _create_curator_dataset([generator_input])
     try:
         response = utterance_generator(dataset)
         rows = list(response.dataset)
-    except Exception as exc:  # pragma: no cover - graceful fallback
-        logger.warning("Utterance generator failed (%s); using fallback utterances.", exc)
-        rows = [
-            {"turn_number": idx, "user_utterance": f"User request for {template.workflow_category} turn {idx}"}
-            for idx in range(1, turn_count + 1)
-        ]
+    except Exception as exc:  # pragma: no cover - propagate failure when online mode errors
+        raise RuntimeError("Utterance generator failed when offline mode was disabled.") from exc
 
+    return _normalize_utterance_rows(rows, len(contexts), turn_metadata_objects)
+
+
+def _offline_generate_segment_utterances(
+    contexts: Sequence[TurnGenerationContext],
+    turn_metadata: Sequence[TurnMetadata],
+    argument_summaries: Sequence[str],
+    handoff_ids: Mapping[str, str],
+) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    for metadata, context, summary in zip(turn_metadata, contexts, argument_summaries):
+        utterance = _deterministic_utterance_from_scenario(context, summary)
+        rows.append(
+            {
+                "turn_number": metadata.turn_number,
+                "user_utterance": utterance,
+                "persona_hint": metadata.persona_hint,
+                "stage_focus": metadata.stage_hint or TOOL_STAGE_HINTS.get(context.turn_template.tool_name),
+                "referenced_entities": list(metadata.handoff_dependencies),
+                "handoff_summary": _format_handoff_summary(metadata, handoff_ids),
+            }
+        )
     return rows
+
+
+def _normalize_utterance_rows(
+    rows: Sequence[Mapping[str, Any]],
+    turn_count: int,
+    turn_metadata: Sequence[TurnMetadata],
+) -> List[Dict[str, Any]]:
+    """Normalize Curator output rows and ensure required fields are populated."""
+    normalized: List[Dict[str, Any]] = []
+    for idx in range(turn_count):
+        metadata = turn_metadata[idx]
+        base_row = rows[idx] if idx < len(rows) else {}
+        user_utterance = str(base_row.get("user_utterance", "")).strip()
+        if not user_utterance:
+            raise ValueError(
+                f"Curator returned empty utterance for turn {metadata.turn_number} in segment generation."
+            )
+
+        normalized.append(
+            {
+                "turn_number": base_row.get("turn_number", metadata.turn_number),
+                "user_utterance": user_utterance,
+                "persona_hint": base_row.get("persona_hint", metadata.persona_hint),
+                "stage_focus": base_row.get("stage_focus", metadata.stage_hint),
+                "referenced_entities": _ensure_list(
+                    base_row.get("referenced_entities", metadata.handoff_dependencies)
+                ),
+                "handoff_summary": base_row.get("handoff_summary"),
+            }
+        )
+    return normalized
+
+
+def _deterministic_utterance_from_scenario(
+    context: TurnGenerationContext,
+    argument_summary: Optional[str],
+) -> str:
+    """Build a deterministic utterance from validated scenario data."""
+    scenario_utterance = context.scenario.raw.get("utterance")
+    if isinstance(scenario_utterance, str) and scenario_utterance.strip():
+        return scenario_utterance.strip()
+
+    tool_phrase = context.turn_template.tool_name.replace("_", " ")
+    if argument_summary:
+        return f"Please {tool_phrase} using {argument_summary}."
+    return f"Please {tool_phrase} for me."
+
+
+def _format_handoff_summary(metadata: TurnMetadata, handoff_ids: Mapping[str, str]) -> Optional[str]:
+    """Summarize which entity identifiers are being reused in this turn."""
+    referenced: List[str] = []
+    for dependency in metadata.handoff_dependencies:
+        entity_type = FIELD_TO_ENTITY.get(dependency)
+        identifier = None
+        if entity_type and entity_type in handoff_ids:
+            identifier = handoff_ids.get(entity_type)
+        elif dependency in handoff_ids:
+            identifier = handoff_ids.get(dependency)
+        if identifier:
+            referenced.append(f"{dependency}={identifier}")
+    if referenced:
+        return ", ".join(referenced)
+    return None
 
 
 def _apply_handoff_overrides(
@@ -524,6 +827,84 @@ def _normalize_entity_key(raw_key: str) -> Optional[str]:
     if raw_key in ENTITY_HANDOFF_FIELDS:
         return raw_key
     return FIELD_TO_ENTITY.get(raw_key)
+
+
+def _prime_cumulative_entities(
+    cumulative_entities: defaultdict[str, set[str]],
+    initial_entities: Mapping[str, Any],
+) -> None:
+    """Seed cumulative entity map from initial CRM entities."""
+    if not isinstance(initial_entities, Mapping):
+        return
+    seed_data = initial_entities.get("seed_data")
+    if not isinstance(seed_data, Mapping):
+        return
+    for entity_type, entities in seed_data.items():
+        if not isinstance(entities, Mapping):
+            continue
+        for entity_id in entities.keys():
+            cumulative_entities[entity_type].add(str(entity_id))
+
+
+def _collect_entity_references_from_args(arguments: Mapping[str, Any]) -> Dict[str, set[str]]:
+    """Collect entity references from resolved argument payloads."""
+    references: defaultdict[str, set[str]] = defaultdict(set)
+
+    def _walk(value: Any) -> None:
+        if isinstance(value, Mapping):
+            for key, sub_value in value.items():
+                if key in FIELD_TO_ENTITY:
+                    entity_type = FIELD_TO_ENTITY[key]
+                    for entity_id in _normalize_entity_ids(sub_value):
+                        references[entity_type].add(entity_id)
+                _walk(sub_value)
+        elif isinstance(value, list):
+            for item in value:
+                _walk(item)
+
+    _walk(arguments)
+    return references
+
+
+def _collect_entities_from_payload(payload: Mapping[str, Any]) -> Dict[str, set[str]]:
+    """Collect entity identifiers from tool execution payloads."""
+    entities: defaultdict[str, set[str]] = defaultdict(set)
+
+    def _walk(value: Any) -> None:
+        if isinstance(value, Mapping):
+            for key, sub_value in value.items():
+                if key in FIELD_TO_ENTITY:
+                    entity_type = FIELD_TO_ENTITY[key]
+                    for entity_id in _normalize_entity_ids(sub_value):
+                        entities[entity_type].add(entity_id)
+                _walk(sub_value)
+        elif isinstance(value, list):
+            for item in value:
+                _walk(item)
+
+    _walk(payload)
+    return entities
+
+
+def _convert_entity_sets_to_lists(source: Mapping[str, Iterable[str]]) -> Dict[str, List[str]]:
+    """Convert mapping of entity sets to sorted lists for serialization."""
+    converted: Dict[str, List[str]] = {}
+    for entity_type, values in source.items():
+        if not values:
+            continue
+        converted[entity_type] = sorted({str(value) for value in values if value})
+    return converted
+
+
+def _ensure_list(value: Any) -> List[str]:
+    """Coerce arbitrary input into a list of string values."""
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item) for item in value if item not in ("", None)]
+    if isinstance(value, tuple) or isinstance(value, set):
+        return [str(item) for item in value if item not in ("", None)]
+    return [str(value)]
 
 
 def _create_curator_dataset(rows: List[Dict[str, Any]]):

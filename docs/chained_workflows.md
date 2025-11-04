@@ -24,24 +24,42 @@ chain = WORKFLOW_CHAINS["onboarding_pipeline_contract"]
 
 ### Curator Structured Output
 
-All Curator classes follow the Bespoke Curator patterns:
+The chained generator exposes Bespoke Curator outputs through explicit Pydantic models:
+
+- `TurnMetadata` – stage/persona hints and handoff dependencies per turn.
+- `ScenarioSelectionResponse` – deterministic scenario picks with justifications and handoff actions.
+- `TurnUtteranceResponse` – user utterances, stage focus, and referenced entity hints.
+- `ChainSegmentSummary` / `SegmentContext` – segment-level summaries used for downstream analytics.
 
 ```python
-from pydantic import BaseModel, Field
-from bespokelabs import curator
+from src.generation.curator_chain_models import (
+    ScenarioSelectionResponse,
+    TurnMetadata,
+    TurnUtteranceResponse,
+)
 
-class ResponseModel(BaseModel):
-    items: List[ItemModel] = Field(description="...")
+class ScenarioSelector(curator.LLM):
+    response_format = ScenarioSelectionResponse
+    # prompt(...) renders workflow + turn metadata
+    # parse(...) returns rows such as {"scenario_id": "SC-010", ...}
 
-class CuratorLLM(curator.LLM):
-    response_format = ResponseModel
-    
-    def prompt(self, input: Dict) -> str:
-        return "..."  # Human-readable prompt
-    
-    def parse(self, input: Dict, response: ResponseModel) -> Dict:
-        return [{"input_key": input["key"], **item.dict()} for item in response.items]
+class ChainUtteranceGenerator(curator.LLM):
+    response_format = TurnUtteranceResponse
+    # prompt(...) consumes turn metadata + cumulative context
+    # parse(...) yields user utterances plus optional persona/stage annotations
 ```
+
+These schemas keep Curator responses fully structured and ensure row-level determinism when replayed.
+
+### Segment & Turn Metadata
+
+`instantiate_chained_conversation` surfaces rich metadata alongside the canonical `Conversation` object:
+
+- `conversation.segment_boundaries` – turn indices where segments end.
+- `conversation.cumulative_context["segment_summaries"]` – per-segment payloads (expected/actual outcome, entities created, handoff trace).
+- `conversation.cumulative_context["turn_annotations"]` – turn-level persona, stage focus, referenced entity hints, and scenario IDs.
+
+This context powers deterministic handoffs, Atlas analytics, and end-to-end harness validation without re-running Curator.
 
 ### Generation Process
 
@@ -49,6 +67,8 @@ class CuratorLLM(curator.LLM):
 2. **Utterance Generation**: `ChainUtteranceGenerator` generates natural language utterances
 3. **Entity Propagation**: Entity state carries across segments using `cumulative_context`
 4. **Template Resolution**: Cross-turn references (`{{turn_N.field}}`) resolve correctly
+
+Setting `CURATOR_SIMPLE_DATASET=1` activates the offline stub pipeline: scenario selection and utterance generation fall back to deterministic logic built from validated scenario data (no API calls, no fallback utterances).
 
 ## Usage
 
@@ -60,10 +80,12 @@ from src.generation.chain_curator import ScenarioSelector, ChainUtteranceGenerat
 from src.conversation_templates import WORKFLOW_CHAINS
 from src.pipeline.scenario_repository import ScenarioRepository
 import random
+import os
 
 repo = ScenarioRepository.from_default_paths()
-scenario_selector = ScenarioSelector(model_name="gpt-4.1-mini")
-utterance_generator = ChainUtteranceGenerator(model_name="gpt-4.1-mini")
+offline = os.environ.get("CURATOR_SIMPLE_DATASET") == "1"
+scenario_selector = None if offline else ScenarioSelector(model_name="gpt-4.1-mini")
+utterance_generator = None if offline else ChainUtteranceGenerator(model_name="gpt-4.1-mini")
 rng = random.Random(42)
 
 chain = WORKFLOW_CHAINS["onboarding_pipeline_contract"]
@@ -73,7 +95,6 @@ conversation = instantiate_chained_conversation(
     scenario_selector,
     utterance_generator,
     rng,
-    success_ratio=0.6,  # 60/40 success/failure split
 )
 ```
 
@@ -89,7 +110,10 @@ result = results[0]
 print(f"Chain success: {result.chain_success}")
 print(f"Segments: {len(result.per_segment_results)}")
 for segment in result.per_segment_results:
-    print(f"  Segment {segment['segment_number']}: {segment['success']}")
+    print(
+        f"  Segment {segment['segment_number']}: "
+        f"actual={segment['actual_outcome']}, expected={segment['expected_outcome']}"
+    )
 ```
 
 ## Template Resolution
@@ -130,11 +154,13 @@ python scripts/generate_conversations.py \
 ### Generate Chained Conversations
 
 ```bash
-# TODO: Add chain generation script
-python scripts/generate_chained_conversations.py \
-    --chain onboarding_pipeline_contract \
+CURATOR_SIMPLE_DATASET=1 python scripts/generate_conversations.py \
+    --mode chain \
+    --chain-id onboarding_pipeline_contract \
+    --chain-id client_opp_quote \
     --count 50 \
-    --seed 42
+    --seed 42 \
+    --output-dir artifacts/conversations_chains
 ```
 
 ### Validate Conversations
@@ -147,22 +173,21 @@ python scripts/validate_chains.py \
 
 ## Success/Failure Distribution
 
-The system maintains a 60/40 success/failure distribution:
+The single-workflow generator maintains a 60/40 success/failure distribution via the `success_ratio` parameter (default 0.6):
 - **Scenario level**: 60% success, 40% failure scenarios
 - **Turn level**: 60% success turns, 40% failure turns
 - **Conversation level**: 60% success conversations, 40% failure conversations
-- **Chain level**: 60% success chains, 40% failure chains
 
-This is controlled via the `success_ratio` parameter (default 0.6).
+For chained workflows, success and failure segments are controlled explicitly through each chain’s `success_pattern`. Harness validation guarantees the expected outcome per segment.
 
 ## Validation
 
 All generated conversations must:
-1. Pass `ConversationHarness` validation
-2. Resolve template references correctly
-3. Propagate entity state across turns and segments
-4. Comply with `fake_crm_tables_schema.json`
-5. Execute successfully against mock harness
+1. Pass `ConversationHarness` validation (segment-by-segment expected vs actual outcome checks).
+2. Resolve template references correctly (including cross-segment offsets).
+3. Propagate entity state across turns and segments without fallbacks.
+4. Comply with `fake_crm_tables_schema.json` and Mock CRM constraints.
+5. Execute deterministically in offline mode (`CURATOR_SIMPLE_DATASET=1`) with no placeholder utterances.
 
 ## No Fallbacks Policy
 
@@ -170,4 +195,4 @@ All generated conversations must:
 - Missing tools trigger generation, not fallbacks
 - No placeholder values or artificial data
 - All conversations must execute successfully
-
+- Offline mode mirrors the same guarantees—deterministic utterances replace Curator calls, never generic placeholders
