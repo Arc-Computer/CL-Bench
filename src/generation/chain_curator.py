@@ -5,7 +5,9 @@ This module implements Curator LLM classes following Bespoke patterns:
 - ChainUtteranceGenerator: Generates user utterances for chained conversations
 """
 
-from typing import Any, Dict, List, Mapping
+from __future__ import annotations
+
+from typing import Any, Dict, List, Mapping, Sequence
 
 from datasets import Dataset
 from pydantic import BaseModel, Field
@@ -20,6 +22,7 @@ except ImportError as exc:
 from src.generation.curator_chain_models import (
     ScenarioSelection,
     ScenarioSelectionResponse,
+    TurnMetadata,
     TurnUtterance,
     TurnUtteranceResponse,
 )
@@ -59,34 +62,50 @@ class ScenarioSelector(curator.LLM):
             backend="litellm",
             backend_params=merged_backend,
             generation_params=merged_generation,
-        )
+    )
 
     def prompt(self, input: Dict[str, Any]) -> str:
         """Build prompt for scenario selection."""
         workflow_category = input["workflow_category"]
-        turn_templates = input["turn_templates"]
+        turn_template_payload: Sequence[Mapping[str, Any]] = input["turn_templates"]
+        turn_templates: List[TurnMetadata] = [
+            TurnMetadata.model_validate(item) for item in turn_template_payload
+        ]
         available_scenarios = input.get("available_scenarios", {})
+        workflow_description = input.get("workflow_description", "")
 
-        turn_info = []
-        for i, turn_template in enumerate(turn_templates, start=1):
-            tool_name = turn_template.get("tool_name", "")
-            desired = turn_template.get("desired_outcome", "")
-            key = f"turn_{i}:{tool_name}"
+        turn_info: List[str] = []
+        for turn in turn_templates:
+            turn_number = turn.get("turn_number")
+            tool_name = turn.tool_name
+            desired = turn.desired_outcome
+            persona = turn.persona_hint or "default persona"
+            stage_hint = turn.stage_hint or "general stage"
+            dependencies = ", ".join(turn.handoff_dependencies or []) or "none"
+            key = f"turn_{turn_number}:{tool_name}"
             scenarios_for_tool = available_scenarios.get(key, [])
             turn_info.append(
-                f"Turn {i}: tool={tool_name}, desired={desired}, available_scenarios={len(scenarios_for_tool)}"
+                f"Turn {turn_number}: tool={tool_name}, desired={desired}, persona={persona}, "
+                f"stage_hint={stage_hint}, handoff_dependencies={dependencies}, "
+                f"available_scenarios={len(scenarios_for_tool)}"
             )
 
-        return f"""Select scenarios for each turn in a {workflow_category} workflow segment.
+        tags_summary = self._format_scenario_tags(input.get("scenario_tags", {}))
 
-Turns to select scenarios for:
-{chr(10).join(turn_info)}
+        description_block = f"Workflow description: {workflow_description}\n" if workflow_description else ""
 
-Available scenarios by tool:
-{self._format_available_scenarios(available_scenarios)}
-
-For each turn, select an appropriate scenario ID from the available scenarios.
-Return selections as JSON following the ScenarioSelectionResponse schema."""
+        return (
+            f"Select scenarios for each turn in a {workflow_category} workflow segment.\n"
+            f"{description_block}\n"
+            "Turns to select scenarios for:\n"
+            f"{chr(10).join(turn_info)}\n\n"
+            "Available scenarios by tool:\n"
+            f"{self._format_available_scenarios(available_scenarios)}\n\n"
+            "Scenario tags:\n"
+            f"{tags_summary}\n\n"
+            "For each turn, select an appropriate scenario ID from the available scenarios.\n"
+            "Return selections as JSON following the ScenarioSelectionResponse schema."
+        )
 
     def parse(self, input: Dict[str, Any], response: ScenarioSelectionResponse) -> List[Dict[str, Any]]:
         """Parse response into list of selection dictionaries."""
@@ -94,12 +113,16 @@ Return selections as JSON following the ScenarioSelectionResponse schema."""
 
         results = []
         for selection in response.selections:
-            results.append({
-                "workflow_category": workflow_category,
-                "scenario_id": selection.scenario_id,
-                "tool_name": selection.tool_name,
-                "turn_number": selection.turn_number,
-            })
+            results.append(
+                {
+                    "workflow_category": workflow_category,
+                    "scenario_id": selection.scenario_id,
+                    "tool_name": selection.tool_name,
+                    "turn_number": selection.turn_number,
+                    "justification": selection.justification,
+                    "handoff_actions": dict(selection.handoff_actions),
+                }
+            )
         return results
 
     @staticmethod
@@ -111,6 +134,16 @@ Return selections as JSON following the ScenarioSelectionResponse schema."""
             if len(scenario_ids) > 10:
                 lines.append(f"    ... and {len(scenario_ids) - 10} more")
         return "\n".join(lines) if lines else "  (no scenarios available)"
+
+    @staticmethod
+    def _format_scenario_tags(tags: Mapping[str, Mapping[str, Any]]) -> str:
+        if not tags:
+            return "  (no tag metadata provided)"
+        lines: List[str] = []
+        for scenario_id, metadata in sorted(tags.items()):
+            formatted = ", ".join(f"{key}={value}" for key, value in sorted(metadata.items()))
+            lines.append(f"  {scenario_id}: {formatted or 'no tags'}")
+        return "\n".join(lines)
 
 
 class ChainUtteranceGenerator(curator.LLM):
@@ -156,6 +189,10 @@ class ChainUtteranceGenerator(curator.LLM):
         argument_summaries = input.get("argument_summaries", [])
         cumulative_context = input.get("cumulative_context", {})
         previous_segments = input.get("previous_segments", [])
+        turn_metadata_payload: Sequence[Mapping[str, Any]] = input.get("turn_metadata", [])
+        turn_metadata: List[TurnMetadata] = [
+            TurnMetadata.model_validate(item) for item in turn_metadata_payload
+        ]
 
         context_parts = [
             f"Workflow category: {workflow_category}",
@@ -172,6 +209,18 @@ class ChainUtteranceGenerator(curator.LLM):
             context_parts.append("Tool arguments per turn:")
             for i, args in enumerate(argument_summaries, start=1):
                 context_parts.append(f"  Turn {i}: {args}")
+
+        if turn_metadata:
+            context_parts.append("Turn metadata:")
+            for turn in turn_metadata:
+                dependencies = ", ".join(turn.handoff_dependencies or []) or "none"
+                persona = turn.persona_hint or "default persona"
+                stage_hint = turn.stage_hint or "general stage"
+                context_parts.append(
+                    f"  Turn {turn.turn_number}: tool={turn.tool_name}, "
+                    f"desired={turn.desired_outcome}, persona={persona}, "
+                    f"stage_hint={stage_hint}, handoff_dependencies={dependencies}"
+                )
 
         return f"""Generate natural language user utterances for a CRM conversation segment.
 
@@ -193,9 +242,15 @@ Return utterances as JSON following the TurnUtteranceResponse schema."""
 
         results = []
         for i, utterance in enumerate(response.utterances[:turn_count], start=1):
-            results.append({
-                "workflow_category": workflow_category,
-                "turn_number": i,
-                "user_utterance": utterance.user_utterance,
-            })
+            results.append(
+                {
+                    "workflow_category": workflow_category,
+                    "turn_number": utterance.turn_number or i,
+                    "user_utterance": utterance.user_utterance,
+                    "persona_hint": utterance.persona_hint,
+                    "stage_focus": utterance.stage_focus,
+                    "referenced_entities": list(utterance.referenced_entities or []),
+                    "handoff_summary": utterance.handoff_summary,
+                }
+            )
         return results

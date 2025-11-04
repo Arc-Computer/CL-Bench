@@ -113,6 +113,7 @@ class ConversationHarness:
                 per_turn.append(
                     {
                         "turn_id": turn.turn_id,
+                        "segment_number": current_segment + 1,
                         "tool_name": turn.expected_tool,
                         "arguments": resolved_args,
                         "error": error_message,
@@ -142,6 +143,7 @@ class ConversationHarness:
             per_turn.append(
                 {
                     "turn_id": turn.turn_id,
+                    "segment_number": current_segment + 1,
                     "tool_name": turn.expected_tool,
                     "arguments": resolved_args,
                     "result": previous_turn_outputs[turn.turn_id],
@@ -166,27 +168,82 @@ class ConversationHarness:
         per_turn: List[Dict[str, Any]] = []
         per_segment: List[Dict[str, Any]] = []
         segment_boundaries = conversation.segment_boundaries or []
+        if not segment_boundaries:
+            raise ValueError(
+                f"Chained conversation {conversation.conversation_id} is missing segment boundaries."
+            )
+
+        segment_meta_data = conversation.cumulative_context.get("segment_summaries", [])
+        segment_meta_lookup: Dict[int, Mapping[str, Any]] = {}
+        for item in segment_meta_data:
+            if not isinstance(item, Mapping):
+                continue
+            number = item.get("segment_number") or item.get("segment_id")
+            if number is None:
+                continue
+            segment_meta_lookup[int(number)] = item
 
         current_segment = 0
         segment_start_turn = 1
 
-        for turn in conversation.turns:
-            # Check if we've crossed a segment boundary
-            if segment_boundaries and turn.turn_id > segment_boundaries[current_segment]:
-                # Record segment result
-                segment_turns = [
-                    pt for pt in per_turn
-                    if segment_start_turn <= pt["turn_id"] <= segment_boundaries[current_segment]
-                ]
-                per_segment.append({
-                    "segment_number": current_segment + 1,
+        def finalize_segment(
+            end_turn: int,
+            *,
+            success: bool,
+            failure_turn: Optional[int] = None,
+            error: Optional[str] = None,
+        ) -> None:
+            nonlocal current_segment, segment_start_turn
+            segment_number = current_segment + 1
+            segment_turns = [
+                pt
+                for pt in per_turn
+                if segment_start_turn <= pt["turn_id"] <= end_turn
+            ]
+            successful_turns = [pt for pt in segment_turns if "result" in pt]
+            expected = segment_meta_lookup.get(segment_number, {})
+            expected_outcome = str(expected.get("expected_outcome", "success")).lower()
+            if expected_outcome not in ("success", "failure"):
+                expected_outcome = "success"
+            actual_outcome = "failure" if not success else "success"
+            if expected_outcome == "failure" and success:
+                raise RuntimeError(
+                    f"Segment {segment_number} in {conversation.conversation_id} "
+                    "was expected to fail but completed successfully."
+                )
+            if expected_outcome == "success" and not success:
+                raise RuntimeError(
+                    f"Segment {segment_number} in {conversation.conversation_id} "
+                    f"was expected to succeed but failed at turn {failure_turn}."
+                )
+
+            per_segment.append(
+                {
+                    "segment_number": segment_number,
                     "start_turn": segment_start_turn,
-                    "end_turn": segment_boundaries[current_segment],
-                    "turns_executed": len(segment_turns),
-                    "success": True,  # Assume success if we got here
-                })
-                current_segment += 1
-                segment_start_turn = segment_boundaries[current_segment - 1] + 1
+                    "end_turn": end_turn,
+                    "turns_attempted": len(segment_turns),
+                    "successful_turns": len(successful_turns),
+                    "success": success,
+                    "actual_outcome": actual_outcome,
+                    "expected_outcome": expected_outcome,
+                    "expected_failure": expected_outcome == "failure",
+                    "failed_at_turn": failure_turn,
+                    "error": error,
+                    "turn_ids": [pt["turn_id"] for pt in segment_turns],
+                    "expected_metadata": dict(expected),
+                }
+            )
+            current_segment += 1
+            segment_start_turn = end_turn + 1
+
+        for turn in conversation.turns:
+            while (
+                segment_boundaries
+                and current_segment < len(segment_boundaries)
+                and turn.turn_id > segment_boundaries[current_segment]
+            ):
+                finalize_segment(segment_boundaries[current_segment], success=True)
 
             resolved_args = resolve_template(turn.expected_args, previous_turn_outputs, turn.turn_id)
             tool = getattr(api, turn.expected_tool, None)
@@ -208,19 +265,6 @@ class ConversationHarness:
                         f"Expected error containing '{expected_substring}' but got '{error_message}'."
                     ) from exc
 
-                segment_turns = [
-                    pt for pt in per_turn
-                    if segment_start_turn <= pt["turn_id"] < turn.turn_id
-                ]
-                per_segment.append({
-                    "segment_number": current_segment + 1,
-                    "start_turn": segment_start_turn,
-                    "end_turn": turn.turn_id - 1,
-                    "turns_executed": len(segment_turns),
-                    "success": False,
-                    "failed_at_turn": turn.turn_id,
-                    "expected_failure": True,
-                })
                 per_turn.append(
                     {
                         "turn_id": turn.turn_id,
@@ -229,6 +273,13 @@ class ConversationHarness:
                         "error": error_message,
                     }
                 )
+                finalize_segment(
+                    turn.turn_id,
+                    success=False,
+                    failure_turn=turn.turn_id,
+                    error=error_message,
+                )
+                expected_failure = per_segment[-1].get("expected_failure", False) if per_segment else False
                 return ConversationResult(
                     conversation_id=conversation.conversation_id,
                     overall_success=False,
@@ -240,7 +291,7 @@ class ConversationHarness:
                     metadata={
                         "verification_mode": conversation.verification_mode.value,
                         "chain_id": conversation.chain_id,
-                        "expected_failure": True,
+                        "expected_failure": expected_failure,
                     },
                     per_segment_results=per_segment,
                     chain_success=False,
@@ -263,19 +314,8 @@ class ConversationHarness:
                 }
             )
 
-        # Record final segment
-        if segment_boundaries:
-            segment_turns = [
-                pt for pt in per_turn
-                if segment_start_turn <= pt["turn_id"] <= len(conversation.turns)
-            ]
-            per_segment.append({
-                "segment_number": current_segment + 1,
-                "start_turn": segment_start_turn,
-                "end_turn": len(conversation.turns),
-                "turns_executed": len(segment_turns),
-                "success": True,
-            })
+        while current_segment < len(segment_boundaries):
+            finalize_segment(segment_boundaries[current_segment], success=True)
 
         chain_success = all(seg.get("success", False) for seg in per_segment)
 

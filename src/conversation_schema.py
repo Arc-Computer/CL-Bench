@@ -108,6 +108,8 @@ class Conversation:
         
         # Validate complexity level matches turn count
         turn_count = len(self.turns)
+        is_chain = self.chain_id is not None
+
         if self.complexity_level == "simple" and not (1 <= turn_count <= 3):
             raise ValueError(
                 f"Simple conversations must have 1-3 turns, got {turn_count}"
@@ -116,10 +118,11 @@ class Conversation:
             raise ValueError(
                 f"Medium conversations must have 4-6 turns, got {turn_count}"
             )
-        elif self.complexity_level == "complex" and not (7 <= turn_count <= 10):
-            raise ValueError(
-                f"Complex conversations must have 7-10 turns, got {turn_count}"
-            )
+        elif self.complexity_level == "complex":
+            if not is_chain and not (7 <= turn_count <= 10):
+                raise ValueError(
+                    f"Complex conversations must have 7-10 turns, got {turn_count}"
+                )
         
         # Validate failure turn if contains_failure=True
         if self.contains_failure and self.failure_turn is None:
