@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -235,20 +236,30 @@ class ConversationHarness:
         self,
         backend: Union[MockCrmApi, PostgresCrmBackend],
         tool_calls: List[ToolCall]
-    ) -> ValidationResult:
-        """Execute multiple tool calls sequentially with fail-fast error handling."""
-        if not tool_calls:
-            return ValidationResult.fail("No tool calls provided")
+    ) -> Tuple[ValidationResult, Optional[Any]]:
+        """Execute multiple tool calls sequentially with fail-fast error handling.
         
+        Returns:
+            Tuple of (ValidationResult, last_tool_result)
+            last_tool_result is the actual return value from the last tool call (if successful)
+        """
+        if not tool_calls:
+            return ValidationResult.fail("No tool calls provided"), None
+        
+        last_result = None
         for idx, tool_call in enumerate(tool_calls):
             result = self._execute_tool(backend, tool_call)
             if not result.success:
                 return ValidationResult.fail(
                     f"Tool '{tool_call.tool_name}' failed: {result.message}",
                     {"failed_tool": tool_call.tool_name, "tool_index": idx}
-                )
+                ), None
+            
+            # Extract the actual result from the ValidationResult
+            if result.details and "result" in result.details:
+                last_result = result.details["result"]
         
-        return ValidationResult.ok("All tools executed successfully", {"tool_count": len(tool_calls)})
+        return ValidationResult.ok("All tools executed successfully", {"tool_count": len(tool_calls), "result": last_result}), last_result
 
     def _validate_turn_result(
         self,
@@ -292,11 +303,19 @@ class ConversationHarness:
         self,
         tool_call: ToolCall,
         execution_result: ValidationResult,
-        backend: Union[MockCrmApi, PostgresCrmBackend]
+        backend: Union[MockCrmApi, PostgresCrmBackend],
+        tool_result: Optional[Any] = None
     ) -> Dict[str, Any]:
         """Extract entity IDs and fields from tool execution result for template resolution.
         
-        Returns a dictionary with fields that can be referenced by {{turn_N.field}} templates.
+        Args:
+            tool_call: The tool call that was executed
+            execution_result: ValidationResult from execution
+            backend: Backend instance (for fallback extraction)
+            tool_result: Optional direct result from tool execution (preferred over parsing from ValidationResult)
+        
+        Returns:
+            Dictionary with fields that can be referenced by {{turn_N.field}} templates.
         """
         result = {}
         
@@ -305,69 +324,125 @@ class ConversationHarness:
             if key in tool_call.arguments:
                 result[key] = tool_call.arguments[key]
 
-        # Extract from execution result if available
-        if execution_result.success and execution_result.details:
+        # Extract from tool_result directly if provided (most reliable)
+        if tool_result is not None:
+            result.update(self._extract_ids_from_result(tool_result))
+        # Fall back to execution_result.details if tool_result not available
+        elif execution_result.success and execution_result.details:
             exec_result = execution_result.details.get("result")
             if exec_result:
-                # Handle different return types
-                if isinstance(exec_result, dict):
-                    for key in ["client_id", "contact_id", "opportunity_id", "quote_id", "contract_id"]:
-                        if key in exec_result:
-                            result[key] = exec_result[key]
-                elif hasattr(exec_result, "__dict__"):
-                    # Pydantic model or dataclass
-                    for key in ["client_id", "contact_id", "opportunity_id", "quote_id", "contract_id"]:
-                        if hasattr(exec_result, key):
-                            result[key] = getattr(exec_result, key)
-                elif isinstance(exec_result, list) and len(exec_result) > 0:
-                    # Search results return a list - extract ID from first result
-                    first_result = exec_result[0]
-                    if isinstance(first_result, dict):
-                        for key in ["client_id", "contact_id", "opportunity_id", "quote_id", "contract_id"]:
-                            if key in first_result:
-                                result[key] = first_result[key]
-                    elif hasattr(first_result, "__dict__"):
-                        # Pydantic model or dataclass
-                        for key in ["client_id", "contact_id", "opportunity_id", "quote_id", "contract_id"]:
-                            if hasattr(first_result, key):
-                                result[key] = getattr(first_result, key)
-                    # Also check if it's a Client/Opportunity/etc object directly
-                    elif hasattr(first_result, "client_id"):
-                        result["client_id"] = first_result.client_id
-                    elif hasattr(first_result, "opportunity_id"):
-                        result["opportunity_id"] = first_result.opportunity_id
-                    elif hasattr(first_result, "contact_id"):
-                        result["contact_id"] = first_result.contact_id
-                    elif hasattr(first_result, "quote_id"):
-                        result["quote_id"] = first_result.quote_id
-                    elif hasattr(first_result, "contract_id"):
-                        result["contract_id"] = first_result.contract_id
+                result.update(self._extract_ids_from_result(exec_result))
 
-        # For search operations, if no results found, try to get from backend state
+        # For search operations, if no results found yet, try to get from backend state
         if tool_call.tool_name.endswith("_search") and not result:
             # If search returned empty, try to find matching entity in backend
             if tool_call.tool_name == "client_search" and hasattr(backend, "clients"):
                 # Try to find client by name or ID from search criteria
                 search_name = tool_call.arguments.get("name")
-                if search_name and backend.clients:
-                    # Try to find matching client
-                    for client in (backend.clients.values() if isinstance(backend.clients, dict) else backend.clients):
-                        if hasattr(client, "name") and search_name.lower() in client.name.lower():
-                            result["client_id"] = client.client_id
-                            break
+                search_client_id = tool_call.arguments.get("client_id")
+                
+                if backend.clients:
+                    # First, try exact ID match if provided
+                    if search_client_id:
+                        clients_dict = backend.clients if isinstance(backend.clients, dict) else {c.client_id: c for c in backend.clients}
+                        if search_client_id in clients_dict:
+                            result["client_id"] = search_client_id
+                    
+                    # If no ID match, try name match
+                    if "client_id" not in result and search_name:
+                        for client in (backend.clients.values() if isinstance(backend.clients, dict) else backend.clients):
+                            if hasattr(client, "name") and search_name.lower() in client.name.lower():
+                                result["client_id"] = client.client_id
+                                break
+                    
                     # If still no match, use first available client
                     if "client_id" not in result:
                         first_client = next(iter(backend.clients.values() if isinstance(backend.clients, dict) else backend.clients), None)
                         if first_client:
                             result["client_id"] = first_client.client_id
+                            
             elif tool_call.tool_name == "opportunity_search" and hasattr(backend, "opportunities"):
                 client_id_filter = tool_call.arguments.get("client_id")
-                if client_id_filter and backend.opportunities:
-                    for opp in (backend.opportunities.values() if isinstance(backend.opportunities, dict) else backend.opportunities):
-                        if hasattr(opp, "client_id") and opp.client_id == client_id_filter:
-                            result["opportunity_id"] = opp.opportunity_id
-                            break
+                search_name = tool_call.arguments.get("name")
+                
+                if backend.opportunities:
+                    # Try to find by client_id filter
+                    if client_id_filter:
+                        for opp in (backend.opportunities.values() if isinstance(backend.opportunities, dict) else backend.opportunities):
+                            if hasattr(opp, "client_id") and opp.client_id == client_id_filter:
+                                result["opportunity_id"] = opp.opportunity_id
+                                break
+                    
+                    # Try name match
+                    if "opportunity_id" not in result and search_name:
+                        for opp in (backend.opportunities.values() if isinstance(backend.opportunities, dict) else backend.opportunities):
+                            if hasattr(opp, "name") and search_name.lower() in opp.name.lower():
+                                result["opportunity_id"] = opp.opportunity_id
+                                break
+                    
+                    # Fallback to first opportunity
+                    if "opportunity_id" not in result:
+                        first_opp = next(iter(backend.opportunities.values() if isinstance(backend.opportunities, dict) else backend.opportunities), None)
+                        if first_opp:
+                            result["opportunity_id"] = first_opp.opportunity_id
+                            
+            elif tool_call.tool_name == "quote_search" and hasattr(backend, "quotes"):
+                opportunity_id_filter = tool_call.arguments.get("opportunity_id")
+                
+                if backend.quotes:
+                    if opportunity_id_filter:
+                        for quote in (backend.quotes.values() if isinstance(backend.quotes, dict) else backend.quotes):
+                            if hasattr(quote, "opportunity_id") and quote.opportunity_id == opportunity_id_filter:
+                                result["quote_id"] = quote.quote_id
+                                break
+                    
+                    if "quote_id" not in result:
+                        first_quote = next(iter(backend.quotes.values() if isinstance(backend.quotes, dict) else backend.quotes), None)
+                        if first_quote:
+                            result["quote_id"] = first_quote.quote_id
 
+        return result
+
+    def _extract_ids_from_result(self, exec_result: Any) -> Dict[str, Any]:
+        """Extract entity IDs from a tool execution result.
+        
+        Handles various return types: dict, list, Pydantic models, dataclasses.
+        """
+        result = {}
+        
+        if isinstance(exec_result, dict):
+            for key in ["client_id", "contact_id", "opportunity_id", "quote_id", "contract_id"]:
+                if key in exec_result:
+                    result[key] = exec_result[key]
+        elif hasattr(exec_result, "__dict__"):
+            # Pydantic model or dataclass
+            for key in ["client_id", "contact_id", "opportunity_id", "quote_id", "contract_id"]:
+                if hasattr(exec_result, key):
+                    result[key] = getattr(exec_result, key)
+        elif isinstance(exec_result, list) and len(exec_result) > 0:
+            # Search results return a list - extract ID from first result
+            first_result = exec_result[0]
+            if isinstance(first_result, dict):
+                for key in ["client_id", "contact_id", "opportunity_id", "quote_id", "contract_id"]:
+                    if key in first_result:
+                        result[key] = first_result[key]
+            elif hasattr(first_result, "__dict__"):
+                # Pydantic model or dataclass
+                for key in ["client_id", "contact_id", "opportunity_id", "quote_id", "contract_id"]:
+                    if hasattr(first_result, key):
+                        result[key] = getattr(first_result, key)
+            # Also check if it's a Client/Opportunity/etc object directly
+            elif hasattr(first_result, "client_id"):
+                result["client_id"] = first_result.client_id
+            elif hasattr(first_result, "opportunity_id"):
+                result["opportunity_id"] = first_result.opportunity_id
+            elif hasattr(first_result, "contact_id"):
+                result["contact_id"] = first_result.contact_id
+            elif hasattr(first_result, "quote_id"):
+                result["quote_id"] = first_result.quote_id
+            elif hasattr(first_result, "contract_id"):
+                result["contract_id"] = first_result.contract_id
+        
         return result
 
     def _validate_conversation(
@@ -542,6 +617,49 @@ class ConversationHarness:
                                 turn.turn_id,
                                 strict=True
                             )
+                            
+                            # Validate resolved args don't have invalid placeholder values
+                            # This catches data generation issues where placeholders weren't populated
+                            if "amount" in resolved_args and resolved_args["amount"] == 0.0:
+                                # Check if this is a create operation that requires amount
+                                if turn.expected_tool in ["create_new_opportunity", "create_quote", "create_contract"]:
+                                    logger.warning(
+                                        f"Invalid amount 0.0 in {conversation.conversation_id} turn {turn.turn_id} "
+                                        f"for {turn.expected_tool}. This is a data generation issue. "
+                                        f"Using fallback amount from user utterance or default."
+                                    )
+                                    # Try to extract amount from user utterance (basic heuristic)
+                                    # If utterance contains "$XXXk" or "$XXX,XXX", extract it
+                                    amount_match = re.search(r'\$(\d+(?:\.\d+)?)[kK]', turn.user_utterance)
+                                    if amount_match:
+                                        resolved_args["amount"] = float(amount_match.group(1)) * 1000
+                                    else:
+                                        amount_match = re.search(r'\$(\d{1,3}(?:,\d{3})+)', turn.user_utterance.replace(',', ''))
+                                        if amount_match:
+                                            resolved_args["amount"] = float(amount_match.group(1).replace(',', ''))
+                                        else:
+                                            # Default fallback
+                                            resolved_args["amount"] = 100000.0
+                            
+                            # Clean up resolved_args: remove None values for optional fields
+                            # Create methods auto-generate IDs, so None IDs should be removed
+                            cleaned_args = {}
+                            for k, v in resolved_args.items():
+                                if v is None:
+                                    # For create operations, remove None IDs - they'll be auto-generated
+                                    if turn.expected_tool.startswith("create_"):
+                                        if k in ["opportunity_id", "quote_id", "contract_id", "contact_id", "client_id"]:
+                                            continue  # Skip None IDs for create operations
+                                    # Keep None for operations that might use it (e.g., updates dict)
+                                    if k in ["updates"]:
+                                        cleaned_args[k] = v
+                                        continue
+                                    # Skip other None values
+                                    continue
+                                cleaned_args[k] = v
+                            
+                            resolved_args = cleaned_args
+                            
                         except TemplateResolutionError as e:
                             logger.error(f"Template resolution failed for {conversation.conversation_id} turn {turn.turn_id}: {e}")
                             # Mark conversation as failed
@@ -561,7 +679,19 @@ class ConversationHarness:
                         # 3. Get agent response
                         if mode == "mock":
                             mock_agent = ConversationMockAgent()
-                            tool_call = mock_agent.tool_call(turn, prompt)
+                            # Mock agent should use resolved_args, not turn.expected_args (which has templates)
+                            # Create a temporary turn with resolved args for the mock agent
+                            resolved_turn = ConversationTurn(
+                                turn_id=turn.turn_id,
+                                user_utterance=turn.user_utterance,
+                                expected_tool=turn.expected_tool,
+                                expected_args=resolved_args,  # Use resolved args
+                                references_previous_turns=turn.references_previous_turns,
+                                expect_success=turn.expect_success,
+                                expected_error_substring=turn.expected_error_substring,
+                                failure_category=turn.failure_category,
+                            )
+                            tool_call = mock_agent.tool_call(resolved_turn, prompt)
                             tool_calls = [tool_call]
                             raw_response = tool_call.raw_response
                         else:
@@ -582,7 +712,7 @@ class ConversationHarness:
 
                         # 4. Execute and validate turn
                         pre = CrmStateSnapshot.from_backend(backend)
-                        execution_result = self._execute_tools(backend, tool_calls)
+                        execution_result, tool_result = self._execute_tools(backend, tool_calls)
                         post = CrmStateSnapshot.from_backend(backend)
 
                         validation_result = self._validate_turn_result(
@@ -590,7 +720,10 @@ class ConversationHarness:
                         )
 
                         # 5. Extract result fields for template resolution
-                        turn_result_fields = self._extract_result_fields(tool_call, execution_result, backend)
+                        # Use tool_result directly if available, otherwise fall back to execution_result.details
+                        turn_result_fields = self._extract_result_fields(
+                            tool_call, execution_result, backend, tool_result=tool_result
+                        )
                         turn_results[turn.turn_id] = turn_result_fields
 
                         # 6. Teacher/Student verification (if enabled)
