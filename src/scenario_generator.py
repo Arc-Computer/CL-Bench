@@ -9,6 +9,7 @@ from .entity_sampler import EntitySampler, SamplerConfig
 from .intent_blueprints import get_all_intent_blueprints, IntentBlueprint
 from .failure_blueprints import get_all_blueprints, FailureBlueprint, FailureCategory
 from .validators import VerificationMode
+from .conversation_schema import Conversation, ConversationTurn
 
 
 @dataclass
@@ -227,3 +228,58 @@ class ScenarioGenerator:
 
         random.shuffle(scenarios)
         return scenarios
+
+    def to_conversation(self, scenario: Scenario) -> Conversation:
+        """Convert a Scenario object to a 1-turn Conversation.
+        
+        This provides backward compatibility, allowing existing scenarios
+        to be used with the new conversation harness.
+        
+        Args:
+            scenario: Scenario object to convert
+            
+        Returns:
+            Conversation object with single turn
+        """
+        # Handle both single tool and multi-tool scenarios
+        if isinstance(scenario.expected_tool, list):
+            # Multi-tool scenario: create multiple turns
+            turns = []
+            expected_args_list = scenario.expected_args if isinstance(scenario.expected_args, list) else [scenario.expected_args]
+            
+            for turn_idx, (tool, args) in enumerate(zip(scenario.expected_tool, expected_args_list)):
+                turns.append(ConversationTurn(
+                    turn_id=turn_idx + 1,
+                    user_utterance=scenario.utterance if turn_idx == 0 else f"Continue with {tool}",
+                    expected_tool=tool,
+                    expected_args=args,
+                    expect_success=scenario.expect_success,
+                    expected_error_substring=scenario.expected_error_substring if turn_idx == len(scenario.expected_tool) - 1 else None,
+                    failure_category=scenario.failure_category if turn_idx == len(scenario.expected_tool) - 1 else None,
+                ))
+            
+            complexity_level = "simple" if len(turns) <= 3 else ("medium" if len(turns) <= 6 else "complex")
+        else:
+            # Single-tool scenario: create single turn
+            turns = [ConversationTurn(
+                turn_id=1,
+                user_utterance=scenario.utterance,
+                expected_tool=scenario.expected_tool,
+                expected_args=scenario.expected_args,
+                expect_success=scenario.expect_success,
+                expected_error_substring=scenario.expected_error_substring,
+                failure_category=scenario.failure_category,
+            )]
+            complexity_level = "simple"
+        
+        return Conversation(
+            conversation_id=f"CONV-{scenario.scenario_id}",
+            workflow_category=scenario.intent,
+            complexity_level=complexity_level,
+            turns=turns,
+            initial_entities=scenario.setup_entities,
+            success_criteria="all_turns",
+            contains_failure=not scenario.expect_success,
+            failure_turn=1 if not scenario.expect_success else None,
+            verification_mode=scenario.verification_mode,
+        )
