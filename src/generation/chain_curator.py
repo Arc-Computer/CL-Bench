@@ -22,6 +22,7 @@ except ImportError as exc:
 from src.generation.curator_chain_models import (
     ScenarioSelection,
     ScenarioSelectionResponse,
+    TurnMetadata,
     TurnUtterance,
     TurnUtteranceResponse,
 )
@@ -61,23 +62,26 @@ class ScenarioSelector(curator.LLM):
             backend="litellm",
             backend_params=merged_backend,
             generation_params=merged_generation,
-        )
+    )
 
     def prompt(self, input: Dict[str, Any]) -> str:
         """Build prompt for scenario selection."""
         workflow_category = input["workflow_category"]
-        turn_templates: Sequence[Mapping[str, Any]] = input["turn_templates"]
+        turn_template_payload: Sequence[Mapping[str, Any]] = input["turn_templates"]
+        turn_templates: List[TurnMetadata] = [
+            TurnMetadata.model_validate(item) for item in turn_template_payload
+        ]
         available_scenarios = input.get("available_scenarios", {})
         workflow_description = input.get("workflow_description", "")
 
         turn_info: List[str] = []
         for turn in turn_templates:
             turn_number = turn.get("turn_number")
-            tool_name = turn.get("tool_name", "")
-            desired = turn.get("desired_outcome", "")
-            persona = turn.get("persona_hint") or "default persona"
-            stage_hint = turn.get("stage_hint") or "general stage"
-            dependencies = ", ".join(turn.get("handoff_dependencies", []) or []) or "none"
+            tool_name = turn.tool_name
+            desired = turn.desired_outcome
+            persona = turn.persona_hint or "default persona"
+            stage_hint = turn.stage_hint or "general stage"
+            dependencies = ", ".join(turn.handoff_dependencies or []) or "none"
             key = f"turn_{turn_number}:{tool_name}"
             scenarios_for_tool = available_scenarios.get(key, [])
             turn_info.append(
@@ -185,7 +189,10 @@ class ChainUtteranceGenerator(curator.LLM):
         argument_summaries = input.get("argument_summaries", [])
         cumulative_context = input.get("cumulative_context", {})
         previous_segments = input.get("previous_segments", [])
-        turn_metadata: Sequence[Mapping[str, Any]] = input.get("turn_metadata", [])
+        turn_metadata_payload: Sequence[Mapping[str, Any]] = input.get("turn_metadata", [])
+        turn_metadata: List[TurnMetadata] = [
+            TurnMetadata.model_validate(item) for item in turn_metadata_payload
+        ]
 
         context_parts = [
             f"Workflow category: {workflow_category}",
@@ -206,12 +213,12 @@ class ChainUtteranceGenerator(curator.LLM):
         if turn_metadata:
             context_parts.append("Turn metadata:")
             for turn in turn_metadata:
-                dependencies = ", ".join(turn.get("handoff_dependencies", []) or []) or "none"
-                persona = turn.get("persona_hint") or "default persona"
-                stage_hint = turn.get("stage_hint") or "general stage"
+                dependencies = ", ".join(turn.handoff_dependencies or []) or "none"
+                persona = turn.persona_hint or "default persona"
+                stage_hint = turn.stage_hint or "general stage"
                 context_parts.append(
-                    f"  Turn {turn.get('turn_number')}: tool={turn.get('tool_name')}, "
-                    f"desired={turn.get('desired_outcome')}, persona={persona}, "
+                    f"  Turn {turn.turn_number}: tool={turn.tool_name}, "
+                    f"desired={turn.desired_outcome}, persona={persona}, "
                     f"stage_hint={stage_hint}, handoff_dependencies={dependencies}"
                 )
 

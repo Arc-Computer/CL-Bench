@@ -163,6 +163,27 @@ CURATOR_SIMPLE_DATASET=1 python scripts/generate_conversations.py \
     --output-dir artifacts/conversations_chains
 ```
 
+This command validates every generated chain on the fly; any unexpected segment failure/success aborts the run.
+
+### Chain Smoke Test
+
+```bash
+CURATOR_SIMPLE_DATASET=1 python scripts/generate_conversations.py \
+    --mode chain \
+    --smoke-test \
+    --output-dir artifacts/conversations_chains/smoke
+```
+
+The smoke run prints one conversation per chain with per-segment expected vs actual outcomes and exits on mismatches.
+
+After a full run, inspect a sample JSON row to confirm metadata fields:
+
+```bash
+head -n 1 artifacts/conversations_chains/chains.jsonl | jq
+```
+
+The `cumulative_context.segment_summaries` and `turn_annotations` blocks should match the segment logs printed during generation.
+
 ### Validate Conversations
 
 ```bash

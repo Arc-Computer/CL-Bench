@@ -11,7 +11,7 @@ import random
 from collections import Counter
 from dataclasses import asdict
 from pathlib import Path
-from typing import Dict, List, Mapping, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
 
 from src.evaluation.conversation_harness import ConversationHarness
 from src.conversation_templates import (
@@ -35,6 +35,23 @@ SMOKE_TEST_COUNT = 10
 CHAIN_BY_ID: Dict[str, WorkflowChain] = {
     chain.chain_id: chain for chain in WORKFLOW_CHAINS.values()
 }
+
+
+class _OfflineScenarioSelector:
+    def __call__(self, dataset: Iterable[Mapping[str, Any]]) -> Mapping[str, Any]:
+        raise RuntimeError(
+            "ScenarioSelector stub invoked unexpectedly in offline mode. "
+            "Ensure CURATOR_SIMPLE_DATASET=1 for deterministic generation."
+        )
+
+
+class _OfflineUtteranceGenerator:
+    def __call__(self, dataset: Iterable[Mapping[str, Any]]) -> Mapping[str, Any]:
+        raise RuntimeError(
+            "ChainUtteranceGenerator stub invoked unexpectedly in offline mode. "
+            "Ensure CURATOR_SIMPLE_DATASET=1 for deterministic generation."
+        )
+
 
 WORKFLOW_WEIGHTS: Mapping[str, float] = {
     "client_management": 0.12,
@@ -115,9 +132,9 @@ def compute_chain_plan(total_count: int, chain_ids: Sequence[str], smoke_test: b
         raise ValueError("At least one chain ID must be provided for chain generation.")
 
     if smoke_test:
-        plan = {chain_id: 1 for chain_id in unique_ids}
-    else:
-        plan = {chain_id: 0 for chain_id in unique_ids}
+        return {chain_id: 1 for chain_id in unique_ids}
+
+    plan = {chain_id: 0 for chain_id in unique_ids}
 
     allocated = sum(plan.values())
     remaining = max(0, total_count - allocated)
@@ -177,6 +194,8 @@ def generate_chain_conversations(
     scenario_selector: Optional[ScenarioSelector],
     utterance_generator: Optional[ChainUtteranceGenerator],
     rng: random.Random,
+    *,
+    smoke_test: bool = False,
 ) -> List:
     conversations = []
     for chain_key, desired_count in chain_plan.items():
@@ -206,8 +225,32 @@ def generate_chain_conversations(
                     "the harness did not surface the failure."
                 )
 
+            if smoke_test:
+                _print_chain_summary(conversation, result)
+
             conversations.append(conversation)
     return conversations
+
+
+def _print_chain_summary(conversation, result) -> None:
+    print("=" * 80)
+    outcome = "success" if result.chain_success else "failure"
+    print(f"{conversation.conversation_id} | chain={conversation.chain_id} | overall={outcome}")
+    if not result.per_segment_results:
+        print("  (no segment results)")
+        return
+    for segment in result.per_segment_results:
+        expected = segment.get("expected_outcome")
+        actual = segment.get("actual_outcome")
+        status = "OK" if expected == actual else "MISMATCH"
+        turn_range = f"{segment.get('start_turn')}–{segment.get('end_turn')}"
+        failure_note = ""
+        if segment.get("failed_at_turn"):
+            failure_note = f", failed_at={segment['failed_at_turn']}"
+        print(
+            f"  • segment {segment['segment_number']} (turns {turn_range}): "
+            f"expected={expected}, actual={actual} [{status}]{failure_note}"
+        )
 
 
 def main() -> None:
@@ -238,12 +281,16 @@ def main() -> None:
         if not offline_mode:
             scenario_selector = ScenarioSelector(model_name=args.model_name)
             chain_curator = ChainUtteranceGenerator(model_name=args.model_name)
+        else:
+            scenario_selector = _OfflineScenarioSelector()
+            chain_curator = _OfflineUtteranceGenerator()
         conversations = generate_chain_conversations(
             plan,
             repo,
             scenario_selector,
             chain_curator,
             rng,
+            smoke_test=args.smoke_test,
         )
         output_dir = args.output_dir
         if output_dir == DEFAULT_OUTPUT_DIR:

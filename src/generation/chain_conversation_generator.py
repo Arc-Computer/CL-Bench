@@ -481,6 +481,21 @@ def _select_segment_contexts(
 
         scenario_id = selected_map.get((idx, turn_template.tool_name))
         if scenario_id not in candidates:
+            if scenario_id is not None:
+                logger.warning(
+                    "Scenario selector returned invalid scenario '%s' for turn %s (%s). Candidates: %s. Using deterministic fallback.",
+                    scenario_id,
+                    idx,
+                    turn_template.tool_name,
+                    candidates,
+                )
+            else:
+                logger.warning(
+                    "Scenario selector did not provide a scenario for turn %s (%s). Using deterministic fallback from candidates: %s.",
+                    idx,
+                    turn_template.tool_name,
+                    candidates,
+                )
             scenario_id = sorted(candidates)[0]
 
         scenario = repo.get_scenario(scenario_id)
@@ -704,7 +719,7 @@ def _normalize_utterance_rows(
         user_utterance = str(base_row.get("user_utterance", "")).strip()
         if not user_utterance:
             raise ValueError(
-                f"Curator returned empty utterance for turn {metadata.turn_number} in segment generation."
+                f"Curator returned empty utterance for turn {metadata.turn_number} (tool: {metadata.tool_name}) in segment generation."
             )
 
         normalized.append(
