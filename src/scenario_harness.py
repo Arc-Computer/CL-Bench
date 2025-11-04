@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Literal, Optional, Sequence, Union
 
 from .crm_backend import DatabaseConfig, PostgresCrmBackend
 from .crm_sandbox import MockCrmApi, ClientStatus, OpportunityStage, QuoteStatus, ContractStatus
-from .harness import Agent, ClaudeAgent, OpenAIAgent, MockAgent, ToolCall, EpisodeLog
+from .harness import Agent, ClaudeAgent, OpenAIAgent, MockAgent, ToolCall, EpisodeLog, _parse_tool_calls
 from .scenario_generator import Scenario
 from .validators import CrmStateSnapshot, ValidationResult, VerificationMode
 from .verifier import VerifierRequest, VerifierResult, get_registered_verifier, ToolTrace as VerifierToolTrace
@@ -279,7 +279,7 @@ class ScenarioBaselineHarness:
         backend: Union[MockCrmApi, PostgresCrmBackend],
         tool_call: ToolCall
     ) -> ValidationResult:
-        """Execute tool call against backend and return result."""
+        """Execute a single tool call against backend and return result."""
         try:
             method = getattr(backend, tool_call.tool_name, None)
             if not method:
@@ -289,6 +289,31 @@ class ScenarioBaselineHarness:
             return ValidationResult.ok("Tool executed successfully", {"result": result})
         except Exception as e:
             return ValidationResult.fail(str(e), {"exception": repr(e)})
+
+    def _execute_tools(
+        self,
+        backend: Union[MockCrmApi, PostgresCrmBackend],
+        tool_calls: List[ToolCall]
+    ) -> ValidationResult:
+        """Execute multiple tool calls sequentially with fail-fast error handling.
+        
+        Stops on first failure and returns failure result. For research baseline data,
+        we need clean pass/fail signals - continuing would mask partial failures.
+        """
+        if not tool_calls:
+            return ValidationResult.fail("No tool calls provided")
+        
+        for idx, tool_call in enumerate(tool_calls):
+            result = self._execute_tool(backend, tool_call)
+            if not result.success:
+                # Fail-fast: stop on first failure
+                return ValidationResult.fail(
+                    f"Tool '{tool_call.tool_name}' failed: {result.message}",
+                    {"failed_tool": tool_call.tool_name, "tool_index": idx}
+                )
+        
+        # All tools executed successfully
+        return ValidationResult.ok("All tools executed successfully", {"tool_count": len(tool_calls)})
 
     def _validate_scenario_result(
         self,
@@ -365,26 +390,35 @@ class ScenarioBaselineHarness:
                     # Build prompt
                     prompt = build_scenario_prompt(scenario, backend)
 
-                    # Get tool call from agent
+                    # Get tool call(s) from agent
                     if mode == "mock":
                         mock_agent = ScenarioMockAgent()
                         tool_call = mock_agent.tool_call(scenario, prompt)
+                        tool_calls = [tool_call]
+                        raw_response = tool_call.raw_response
                     else:
                         # Adapt agent interface
                         if hasattr(self.agent, "tool_call"):
                             # Check if agent expects GoldenCase or can handle generic call
                             if isinstance(self.agent, (ClaudeAgent, OpenAIAgent)):
                                 # These agents parse prompt directly
-                                tool_call = self.agent.tool_call(scenario, prompt)
+                                agent_tool_call = self.agent.tool_call(scenario, prompt)
+                                raw_response = agent_tool_call.raw_response
+                                # Parse potentially multiple tool calls from raw response
+                                tool_calls = _parse_tool_calls(raw_response)
                             else:
                                 # Try generic call
-                                tool_call = self.agent.tool_call(scenario, prompt)
+                                agent_tool_call = self.agent.tool_call(scenario, prompt)
+                                raw_response = agent_tool_call.raw_response
+                                tool_calls = _parse_tool_calls(raw_response)
                         else:
                             raise RuntimeError(f"Agent {type(self.agent)} does not support tool_call interface")
+                        
+                        tool_call = tool_calls[0]  # Use first for backward compatibility with validation
 
-                    # Execute tool
+                    # Execute tool(s)
                     pre = CrmStateSnapshot.from_backend(backend)
-                    execution_result = self._execute_tool(backend, tool_call)
+                    execution_result = self._execute_tools(backend, tool_calls)
                     post = CrmStateSnapshot.from_backend(backend)
 
                     # Validate result
@@ -398,14 +432,19 @@ class ScenarioBaselineHarness:
                     # Teacher/Student verification (if enabled)
                     verifier_result: Optional[VerifierResult] = None
                     if self._verifier_enabled and self._verifier_name:
-                        tool_trace = VerifierToolTrace(
-                            step=1,
-                            tool_name=tool_call.tool_name,
-                            arguments=dict(tool_call.arguments),
-                            execution_success=execution_result.success,
-                            validator_success=validation_result.success,
-                            message=validation_result.message,
+                        # Build tool traces for verifier (one per tool call)
+                        tool_traces = tuple(
+                            VerifierToolTrace(
+                                step=idx + 1,
+                                tool_name=tc.tool_name,
+                                arguments=dict(tc.arguments),
+                                execution_success=execution_result.success if idx == 0 else True,  # Only first can fail in fail-fast
+                                validator_success=validation_result.success if idx == 0 else True,
+                                message=validation_result.message if idx == 0 else "Tool executed successfully",
+                            )
+                            for idx, tc in enumerate(tool_calls)
                         )
+                        tool_trace = tool_traces[0]  # Primary trace for backward compatibility
 
                         verifier = get_registered_verifier(self._verifier_name)
                         request = VerifierRequest(
@@ -416,8 +455,8 @@ class ScenarioBaselineHarness:
                             expected_error_substring=scenario.expected_error_substring,
                             expected_tool=scenario.expected_tool,
                             expected_arguments=scenario.expected_args,
-                            tool_traces=(tool_trace,),
-                            final_response=tool_call.raw_response,
+                            tool_traces=tool_traces,
+                            final_response=raw_response,
                             validator_result=validation_result,
                             pre_state=pre,
                             post_state=post,
@@ -482,7 +521,7 @@ class ScenarioBaselineHarness:
                         expected_success=scenario.expect_success,
                         message=outcome_message,
                         tool_call={"tool_name": tool_call.tool_name, "arguments": tool_call.arguments},
-                        agent_response=tool_call.raw_response,
+                        agent_response=raw_response,
                         validator_details=validation_result.details,
                         expected_tool=scenario.expected_tool,
                         expected_arguments=scenario.expected_args,

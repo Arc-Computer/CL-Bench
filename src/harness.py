@@ -274,22 +274,64 @@ def _format_context(context: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _parse_tool_call(text: str) -> ToolCall:
-    """Parse a JSON tool call from LLM output."""
+def _parse_single_tool_call(data: Dict[str, Any], raw_response: str) -> ToolCall:
+    """Parse a single tool call from a dictionary."""
+    if not isinstance(data, dict) or "tool_name" not in data or "arguments" not in data:
+        raise ValueError(f"Tool call missing required keys: {data}")
+    if not isinstance(data["arguments"], dict):
+        raise ValueError("Tool arguments must be a JSON object.")
+    return ToolCall(tool_name=data["tool_name"], arguments=data["arguments"], raw_response=raw_response)
+
+
+def _parse_tool_calls(text: str) -> List[ToolCall]:
+    """Parse one or more JSON tool calls from LLM output.
+    
+    Supports:
+    - Single: {"tool_name": "...", "arguments": {...}}
+    - Array: [{"tool_name": "...", ...}, ...]
+    - Newline-separated JSON objects
+    """
     cleaned = text.strip()
     if cleaned.startswith("```"):
         cleaned = cleaned.strip("`")
         if cleaned.startswith("json"):
             cleaned = cleaned[4:].strip()
+    
+    # Try single JSON object
     try:
         data = json.loads(cleaned)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"Agent response is not valid JSON: {cleaned}") from exc
-    if not isinstance(data, dict) or "tool_name" not in data or "arguments" not in data:
-        raise ValueError(f"Agent response missing required keys: {data}")
-    if not isinstance(data["arguments"], dict):
-        raise ValueError("Agent arguments must be a JSON object.")
-    return ToolCall(tool_name=data["tool_name"], arguments=data["arguments"], raw_response=text)
+        if isinstance(data, dict) and "tool_name" in data:
+            return [_parse_single_tool_call(data, text)]
+        elif isinstance(data, list):
+            return [_parse_single_tool_call(item, text) for item in data]
+    except json.JSONDecodeError:
+        pass
+    
+    # Try newline-separated objects
+    tool_calls = []
+    for line in cleaned.split('\n'):
+        line = line.strip()
+        if not line or line.startswith(('#', '//')):
+            continue
+        try:
+            data = json.loads(line)
+            if isinstance(data, dict) and "tool_name" in data:
+                tool_calls.append(_parse_single_tool_call(data, line))
+        except json.JSONDecodeError:
+            continue
+    
+    if tool_calls:
+        return tool_calls
+    
+    raise ValueError(f"Could not parse tool call(s): {text[:200]}...")
+
+
+def _parse_tool_call(text: str) -> ToolCall:
+    """Parse a single tool call (backwards compatibility wrapper)."""
+    tool_calls = _parse_tool_calls(text)
+    if len(tool_calls) != 1:
+        raise ValueError(f"Expected single tool call but got {len(tool_calls)} calls")
+    return tool_calls[0]
 
 
 # ---------------------------------------------------------------------------
@@ -367,11 +409,19 @@ class BaselineHarness:
 
                     if mode == "mock":
                         tool_call = ToolCall(case.expected_tool, expected_args, raw_response=json.dumps(expected_args))
+                        tool_calls = [tool_call]
+                        raw_response = json.dumps(expected_args)
                     else:
-                        tool_call = self.agent.tool_call(case, prompt)
+                        # Get tool call(s) from agent - parse raw response to support multi-tool
+                        agent_tool_call = self.agent.tool_call(case, prompt)
+                        raw_response = agent_tool_call.raw_response
+                        # Parse potentially multiple tool calls from raw response
+                        tool_calls = _parse_tool_calls(raw_response)
+                        tool_call = tool_calls[0]  # Use first for backward compatibility with validation
 
                     pre = CrmStateSnapshot.from_backend(backend)
-                    execution_result = self._execute_tool(backend, tool_call)
+                    # Execute all tool calls sequentially (fail-fast on first error)
+                    execution_result = self._execute_tools(backend, tool_calls)
                     post = CrmStateSnapshot.from_backend(backend)
 
                     tool_correct = tool_call.tool_name == case.expected_tool
@@ -426,14 +476,19 @@ class BaselineHarness:
                         validator_result_for_verifier = ValidationResult.fail("Validator result unavailable.")
                     validator_details = validator_result_for_verifier.details
 
-                    tool_trace = VerifierToolTrace(
-                        step=1,
-                        tool_name=tool_call.tool_name,
-                        arguments=dict(tool_call.arguments),
-                        execution_success=execution_result.success,
-                        validator_success=validator_result_for_verifier.success,
-                        message=validator_result_for_verifier.message,
+                    # Build tool traces for verifier (one per tool call)
+                    tool_traces = tuple(
+                        VerifierToolTrace(
+                            step=idx + 1,
+                            tool_name=tc.tool_name,
+                            arguments=dict(tc.arguments),
+                            execution_success=execution_result.success if idx == 0 else True,  # Only first can fail in fail-fast
+                            validator_success=validator_result_for_verifier.success if idx == 0 else True,
+                            message=validator_result_for_verifier.message if idx == 0 else "Tool executed successfully",
+                        )
+                        for idx, tc in enumerate(tool_calls)
                     )
+                    tool_trace = tool_traces[0]  # Primary trace for backward compatibility
                     verifier_result: Optional[VerifierResult] = None
                     verifier_name_used: Optional[str] = None
                     if self._verifier_enabled:
@@ -456,8 +511,8 @@ class BaselineHarness:
                                 expected_error_substring=case.expected_error_substring,
                                 expected_tool=case.expected_tool,
                                 expected_arguments=expected_args,
-                                tool_traces=(tool_trace,),
-                                final_response=tool_call.raw_response,
+                                tool_traces=tool_traces,
+                                final_response=raw_response,
                                 validator_result=validator_result_for_verifier,
                                 pre_state=pre,
                                 post_state=post,
@@ -503,7 +558,7 @@ class BaselineHarness:
                         expected_success=case.expect_success,
                         message=outcome_message,
                         tool_call={"tool_name": tool_call.tool_name, "arguments": tool_call.arguments},
-                        agent_response=tool_call.raw_response,
+                        agent_response=raw_response,
                         validator_details=validator_details,
                         expected_tool=case.expected_tool,
                         expected_arguments=expected_args,
@@ -596,7 +651,7 @@ class BaselineHarness:
 
     @staticmethod
     def _execute_tool(api: Any, tool_call: ToolCall) -> ValidationResult:
-        """Run the tool call against the MockCrmApi and capture immediate errors."""
+        """Run a single tool call against the backend and capture immediate errors."""
         try:
             tool = getattr(api, tool_call.tool_name)
         except AttributeError:
@@ -610,5 +665,30 @@ class BaselineHarness:
 
         return ValidationResult.ok()
 
+    @staticmethod
+    def _execute_tools(
+        backend: Union[MockCrmApi, PostgresCrmBackend],
+        tool_calls: List[ToolCall]
+    ) -> ValidationResult:
+        """Execute multiple tool calls sequentially with fail-fast error handling.
+        
+        Stops on first failure and returns failure result. For research baseline data,
+        we need clean pass/fail signals - continuing would mask partial failures.
+        """
+        if not tool_calls:
+            return ValidationResult.fail("No tool calls provided")
+        
+        for idx, tool_call in enumerate(tool_calls):
+            result = BaselineHarness._execute_tool(backend, tool_call)
+            if not result.success:
+                # Fail-fast: stop on first failure
+                return ValidationResult.fail(
+                    f"Tool '{tool_call.tool_name}' failed: {result.message}",
+                    {"failed_tool": tool_call.tool_name, "tool_index": idx}
+                )
+        
+        # All tools executed successfully
+        return ValidationResult.ok("All tools executed successfully", {"tool_count": len(tool_calls)})
 
-__all__ = ["BaselineHarness", "HarnessResult", "MockAgent", "ClaudeAgent", "OpenAIAgent", "build_prompt", "ToolCall"]
+
+__all__ = ["BaselineHarness", "HarnessResult", "MockAgent", "ClaudeAgent", "OpenAIAgent", "build_prompt", "ToolCall", "_parse_tool_calls"]
