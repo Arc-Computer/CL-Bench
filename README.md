@@ -111,6 +111,7 @@ OPENAI_API_KEY=your_key
 
 # Run evaluation
 python -m src.run_baseline \
+    --mode scenario \
     --scenarios artifacts/generated_scenarios/scenarios.jsonl \
     --agent claude \
     --backend mock \
@@ -158,26 +159,46 @@ quote = api.create_quote(
 
 All relationship and enum constraints are enforced with clear error messages.
 
-## Atlas Integration
+## Integration with Atlas SDK
 
-### Runtime Evaluation with Atlas SDK
-
-Use the Atlas SDK to run adaptive evaluations:
+### Runtime Evaluation
 
 ```python
-from atlas.core import run as atlas_run
-from src.scenario_harness import ScenarioBaselineHarness
-from src.harness import ClaudeAgent
+from atlas.sdk import Agent, Scenario
+from src.harness import BaselineHarness
+from src.crm_backend import DatabaseConfig
+from src.scenario_harness import load_scenarios_from_jsonl
 
-# Load scenarios
+# Load curated scenarios
 scenarios = load_scenarios_from_jsonl("artifacts/generated_scenarios/scenarios.jsonl")
 
-# Create agent with Atlas wrapping
-agent = ClaudeAgent(model_name="claude-sonnet-4-5-20250929")
+# Configure agent via Atlas SDK (Teacher + Student)
+agent = Agent.from_config("configs/atlas_teacher_student.yaml")
 
-# Run with Atlas SDK for adaptive learning
-# Atlas SDK routes tasks through supervision lanes (auto, paired, coach)
-# based on capability probe confidence
+harness = BaselineHarness(
+    agent=agent,
+    backend="postgres",
+    db_config=DatabaseConfig.from_env(),
+    log_path="artifacts/baseline_claude_postgres.jsonl",
+)
+
+# Run evaluation
+result = harness.evaluate(scenarios)
+print(f"Reliability: {result.success_rate:.3f}")
+
+# Telemetry is automatically logged for Atlas ingest
+```
+
+### Continual Learning Loop
+
+```python
+from atlas.sdk import atlas_run
+from src.harness import ClaudeAgent
+from src.scenario_harness import load_scenarios_from_jsonl
+
+agent = ClaudeAgent(model_name="claude-sonnet-4.5")
+scenarios = load_scenarios_from_jsonl("artifacts/generated_scenarios/scenarios.jsonl")
+
 result = atlas_run(
     agent=agent,
     scenarios=scenarios[:10],

@@ -12,12 +12,21 @@ _Updated: November 2, 2025_
   4. Telemetry capturing _what_ was learned (reward deltas + pamphlets), _how_ (adapter/teacher events), and _why_ (verifier rationale, drift notes).
   5. Learning metrics demonstrating gradient-free adaptation: Cue Hit Rate, Adoption Rate, Reward Delta, Token Delta, Transfer Success.
 
-## 2. Current Status (November 3, 2025)
+## 2. Current Status (November 4, 2025)
 - **Environment:** `CrmEnv` (Gymnasium wrapper) + harness + docs shipped; GPT-4.1 rollouts succeed on the Postgres-backed sandbox with schema + seeds aligned to `fake_crm_tables_schema.json`. Snapshot/reset CLIs (`scripts/db_snapshot.py`, `scripts/db_reset.py`) keep database state deterministic.
 - **Telemetry:** JSONL per-episode logs now include reward breakdowns, verifier scores/rationales, validator metadata, and placeholder learning signals (student/teacher, drift notes) ahead of Atlas integration.
-- **Open GitHub issues:** #4, #12, #14, #21, #25.
+- **Open GitHub issues:** #4, #12, #14, #21, #26.
 - **Completed issues:** #13 (failure taxonomy - 80 blueprints).
-- **Gap:** Golden-case corpus at 103 scenarios must reach ≥1,500 with production-faithful data. Issue #25 (dataset regeneration via Curator) now in progress. Heuristic approach (Issue #22/PR #24) was insufficient - produced formulaic patterns that won't transfer to production. Atlas dual-agent adapter (Issue #14) and the uplift evaluation/hand-off (Issue #21) blocked until Issue #25 complete.
+- **Gap:** Golden-case corpus at 103 scenarios must reach ≥1,500 with production-faithful data. Issue #26 (multi-turn conversation architecture) replaces Issue #25. Customer requirement: "entire conversations, with an average of 5 to 10 turns (with turns i mean question+answer)". Heuristic approach (Issue #22/PR #24) was insufficient - produced formulaic patterns that won't transfer to production. Atlas dual-agent adapter (Issue #14) and the uplift evaluation/hand-off (Issue #21) blocked until Issue #26 complete.
+
+### 2.1 Multi-Turn Conversation Requirement
+Customer feedback (November 4, 2025): "entire conversations, with an average of 5 to 10 turns (with turns i mean question+answer)"
+
+**Architecture shift:**
+- Previous: Single utterance → multiple tool calls (multi-tool)
+- New: Multiple utterances → conversation with history (multi-turn)
+
+**Implementation**: Hybrid approach supporting both single-turn (1-3 turns) and complex multi-turn (7-10 turns) under unified Conversation schema. See Issue #26 for full specification.
 
 ## 3. Atlas Architecture & Integration Requirements
 Based on the Atlas SDK (`atlas-sdk`, v0.1.10+) and the _Continual Learning Online Adaptation_ paper:
@@ -108,64 +117,67 @@ _Milestone B:_ Environment reproduces high-frequency failure modes. Dataset gene
 
 ---
 
-### Phase B.5 – Dataset Regeneration (Nov 3-8, Issue #25) ⚠️ IN PROGRESS
+### Phase B.5 – Multi-Turn Conversation Architecture (Issue #26) ⚠️ IN PROGRESS
 
-#### 6. **Issue #25 – Regenerate full dataset via LLM (1,500 scenarios)** (Nov 3-8, 5 days)
+#### 6. **Issue #26 – Multi-turn conversation architecture (1,500 conversations)** 
    - **Critical blocker**: Current dataset blocks Atlas integration and baseline evaluations
-   - **Problem with heuristic generation** (PR #24):
-     - Formulaic patterns: All clients named "Client {id}", random amounts like $330,801.38
-     - Random entity relationships: No realistic multi-step workflows
-     - Template-based failures: Random enum mutations (change "Active" → "active"), not contextual errors
-     - Won't stress continual learning: Artificial regularities don't exist in production
-     - Testing on heuristic data doesn't measure production readiness
-   - **Approach**: Regenerate entire dataset using Bespoke Curator
-     - Generate utterances: Natural language from CSV "Typical User Phrasing" patterns
-     - Generate setup entities: Realistic company names, industries, relationships
-     - Generate expected args: Contextual values (not random)
-     - Generate failure scenarios: Contextual errors (not random mutations)
-     - Generate multi-step workflows: Where applicable (create client → opportunity → quote)
-   - **Rationale for full regeneration**:
+   - **Customer requirement**: "entire conversations, with an average of 5 to 10 turns (with turns i mean question+answer)"
+   - **Problem with single-turn scenarios** (Issue #25 approach):
+     - Only supports single utterance → multiple tool calls (multi-tool)
+     - Missing conversation history and cross-turn references
+     - Doesn't match production patterns where users reference previous turns
+     - Testing on single-turn data doesn't measure production readiness
+   - **Architecture shift**:
+     - **Multi-tool** = 1 utterance, N tools (already supported)
+     - **Multi-turn** = N utterances, N responses, with conversation history (NEW)
+   - **Approach**: Implement unified Conversation schema supporting both single-turn and multi-turn
+     - Generate conversations: Iterative multi-turn generation using Bespoke Curator with GPT-5-mini
+     - Generate utterances: Natural language with pronouns/implicit references ("Create an opp for them")
+     - Generate ground truth: Explicit `{{turn_N.field}}` templates for cross-turn entity references
+     - Generate workflow patterns: 8 common CRM workflows (client onboarding, deal pipeline, etc.)
+     - Complexity distribution: 900 simple (1-3 turns), 450 medium (4-6 turns), 150 complex (7-10 turns)
+   - **Rationale for multi-turn architecture**:
      - Plan requires "synthetic yet production-faithful" data (line 5)
-     - Continual learning adapts to patterns; heuristic patterns don't transfer to production
-     - Transfer Success metric (≥+40%) requires realistic scenarios that generalize
-     - Atlas playbooks learned on heuristic data won't apply to production
+     - Production users engage in multi-turn conversations, not atomic commands
+     - Continual learning adapts to conversation patterns; single-turn patterns don't transfer
+     - Transfer Success metric (≥+40%) requires realistic conversation scenarios
+     - Atlas playbooks learned on conversations will apply to production
    - **Implementation**:
-     - Use [Bespoke Curator](https://github.com/bespokelabsai/curator) with GPT-4o-mini batch mode
+     - Use [Bespoke Curator](https://github.com/bespokelabsai/curator) with GPT-5-mini batch mode
      - Load schema (`fake_crm_tables_schema.json`) and CSV taxonomy as constraints
-     - Generate 900 success + 600 failure scenarios (60/40 ratio maintained)
-     - Validate schema compliance, FK integrity, verifier coverage
-     - Cost: ~$375 (batch API discount, within $500 development budget)
+     - Generate 1,500 conversations (900 simple, 450 medium, 150 complex)
+     - Validate template resolution (`{{turn_N.field}}` references), schema compliance, FK integrity
+     - Cost: ~$525 (batch API discount, within $500-600 development budget)
    - **Deliverables**:
-     - `src/curator_dataset_generator.py` - Full dataset generator with schema validation
-     - Regenerated `artifacts/generated_scenarios/scenarios.jsonl` (1,500 scenarios)
-     - All scenarios include: utterance, setup_entities, expected_args, verification_mode
-     - All scenarios executable by harness in mock and Postgres modes
-     - `requirements.txt` updated with `bespokelabs-curator` dependency
-   - **Timeline**:
-     - Day 1 (Nov 3): Design prompts, validation pipeline
-     - Day 2-3 (Nov 4-5): Generate scenarios via batch API
-     - Day 4 (Nov 6): Validation, schema fixes
-     - Day 5 (Nov 7-8): Testing, PR review, merge
+     - `src/conversation_schema.py` - Core schema (Turn, Conversation, Result)
+     - `src/conversation_templates.py` - 8 workflow templates
+     - `src/reference_resolver.py` - Resolves `{{turn_N.field}}` templates
+     - `src/curator_conversation_generator.py` - Iterative multi-turn generation
+     - `src/conversation_harness.py` - Multi-turn execution engine
+     - Generated `artifacts/conversations/conversations.jsonl` (1,500 conversations)
+     - All conversations include: turns with user_utterance, expected_tool, expected_args with templates
+     - All conversations executable by harness in mock and Postgres modes
+     - Backward compatibility: Existing scenarios convert to 1-turn conversations
    - **Dependencies**:
-     - Supersedes Issue #22 and PR #24 (heuristic approach)
-     - Blocks Issue #21 (Atlas uplift evaluation requires executable scenarios)
-     - Blocks Issue #12 (baseline re-runs require full scenario corpus)
+     - Supersedes Issue #25 (single-turn scenarios) - extends to multi-turn conversations
+     - Blocks Issue #21 (Atlas uplift evaluation requires executable conversations)
+     - Blocks Issue #12 (baseline re-runs require full conversation corpus)
 
-_Milestone B.5:_ All 1,500 scenarios are production-faithful with realistic patterns; harness can execute full corpus; Atlas playbooks will learn patterns that transfer to production.
+_Milestone B.5:_ All 1,500 conversations are production-faithful with realistic multi-turn patterns; harness executes conversations with history preservation; Atlas playbooks will learn conversation patterns that transfer to production.
 
 ---
 
-### Phase C – Atlas Integration & Learning Metrics (Nov 9-12, Week 2, Days 1-4)
+### Phase C – Atlas Integration & Learning Metrics (Nov 12-14, Week 2, Days 1-3)
 
-#### 7. **Issue #14 – Integrate Atlas continual-learning adapter** (Nov 9-12, 4 days)
+#### 7. **Issue #14 – Integrate Atlas continual-learning adapter** (Nov 12-14, 3 days compressed)
    - **Simplified scope** (Atlas SDK provides infrastructure):
-     - **Day 1 (Nov 9)**: Run `atlas env init` on CrmEnv, validate autodiscovery generates `.atlas/generated_config.yaml`
-     - **Day 2 (Nov 10)**: Configure RIM judges to use existing `StructuredVerifier` + `LlmJudgeVerifier`, test reward aggregation
-     - **Day 3 (Nov 11)**: Run 10-episode smoke test (5 success, 5 failure cases), validate:
+     - **Day 1 (Nov 12)**: Run `atlas env init` on CrmEnv, validate autodiscovery generates `.atlas/generated_config.yaml`
+     - **Day 2 (Nov 13)**: Configure RIM judges to use existing `StructuredVerifier` + `LlmJudgeVerifier`, test reward aggregation. Run 10-conversation smoke test (3 simple, 5 medium, 2 complex), validate:
        - Playbook retrieval/injection
        - Teacher guidance generation
        - Learning metrics telemetry (Cue Hit Rate, Adoption Rate, Token Delta)
-     - **Day 4 (Nov 12)**: Create baseline toggle (`atlas_enabled: false` config), document Atlas usage
+       - Conversation history preservation in Atlas telemetry
+     - **Day 3 (Nov 14)**: Create baseline toggle (`atlas_enabled: false` config), document Atlas usage with multi-turn conversations
 
    - **No custom implementation needed**:
      - ✅ PLM storage: Atlas SDK's Postgres backend (already integrated)
@@ -208,18 +220,18 @@ _Milestone C:_ Rollouts emit Atlas telemetry with learning metrics; playbooks pe
 
 ---
 
-### Phase D – Baselines & Comparative Analytics (Nov 12-14, Week 2, Days 4-6)
+### Phase D – Baselines & Comparative Analytics (Nov 14-15, Week 2, Days 3-4)
 
-#### 8. **Issue #12 – Re-run baselines on Postgres + verifier** (Nov 12-13, 2 days parallel with Issue #14 Day 4)
+#### 8. **Issue #12 – Re-run baselines on Postgres + verifier** (Nov 14-15, 2 days compressed)
    - **Baseline configurations**:
      - GPT-4.1 (Student-only, no Atlas)
      - Claude Sonnet 4.5 (Teacher-only, no Atlas)
      - Mock random agent (sanity check)
-   - **Evaluation subset**: 300-500 scenarios (stratified sample from 1,500 corpus)
+   - **Evaluation subset**: 300 conversations (stratified sample from 1,500 corpus, maintaining complexity distribution)
    - **Metrics captured**: Token usage, verifier scores, success rate, cost per episode
    - **Alignment**: Map CRM tasks to Salesforce CRM LLM Leaderboard categories (lead creation, opportunity modification, etc.)
 
-#### 9. **Issue #4 – Generate baseline analytics & comparative report** (Nov 13-14, 2 days)
+#### 9. **Issue #4 – Generate baseline analytics & comparative report** (Nov 15, 1 day compressed)
    - **Deliverables**:
      - Performance comparison tables (baseline vs. Atlas-enabled)
      - Learning progression plots (Cue Hit Rate, Token Delta over episodes)
@@ -231,33 +243,35 @@ _Milestone D:_ Deliver reproducible baselines and comparative narrative demonstr
 
 ---
 
-### Phase E – Atlas Uplift Evaluation & Hand-off (Nov 14-16, Week 2, Days 6-8)
+### Phase E – Atlas Uplift Evaluation & Hand-off (Nov 15-16, Week 2, Days 4-5)
 
-#### 10. **Issue #21 – Deliver Atlas uplift evaluation and hand-off package** (Nov 14-16, 3 days)
-   - **Seeding phase (Nov 14, 0.5 days)**:
-     - Run 20-30 seed episodes to populate PLM (mirrors ExCyTIn seeding)
-     - Validate playbook synthesis quality, ensure guidance is actionable
+#### 10. **Issue #21 – Deliver Atlas uplift evaluation and hand-off package** (Nov 15-16, 2 days compressed)
+   - **Seeding phase (Nov 15 morning, 0.5 days)**:
+     - Run 20-30 seed conversations to populate PLM (mirrors ExCyTIn seeding)
+     - Validate playbook synthesis quality, ensure guidance is actionable for multi-turn conversations
 
-   - **Uplift evaluation (Nov 14-15, 1.5 days)**:
-     - Atlas-enabled runs on full 1,500-scenario corpus (or 500+ if timeline compressed)
-     - Measure vs. success definition: **95% of cases achieve verifier score ≥0.9**
-     - Track learning metrics across episodes (Cue Hit Rate, Reward Delta, Token Delta)
+   - **Uplift evaluation (Nov 15 afternoon, 1 day)**:
+     - Atlas-enabled runs on 500+ conversation subset (stratified by complexity: 300 simple, 150 medium, 50 complex)
+     - Measure vs. success definition: **95% of conversations achieve verifier score ≥0.9**
+     - Track learning metrics across conversations (Cue Hit Rate, Reward Delta, Token Delta)
+     - Validate conversation history preservation in Atlas telemetry
 
-   - **Cross-task transfer validation (Nov 15-16, 1 day)**:
-     - Hold out 10-15% of scenarios (not seen during seeding)
+   - **Cross-task transfer validation (Nov 16 morning, 0.5 days)**:
+     - Hold out 10-15% of conversations (not seen during seeding)
      - Run with frozen playbooks (no new Teacher guidance)
      - Measure transfer success: Target ≥+40% accuracy improvement
 
-   - **Hand-off package (Nov 16)**:
+   - **Hand-off package (Nov 16 afternoon)**:
      - **Code**: Tagged release with Atlas integration (v1.0.0)
-     - **Data**: Database snapshot (Postgres dump), 1,500-scenario manifests, seed data
-     - **Telemetry**: Complete JSONL session traces with learning metrics
+     - **Data**: Database snapshot (Postgres dump), 1,500-conversation manifests, seed data
+     - **Telemetry**: Complete JSONL session traces with learning metrics (conversation-level)
      - **Playbooks**: Exported PLM artifacts (JSON)
      - **Documentation**:
        - Setup instructions (`atlas env init` → `atlas run`)
        - Reproduction guide (baseline vs. Atlas runs)
-       - Telemetry schema reference
+       - Telemetry schema reference (includes conversation history)
        - Learning metrics interpretation guide
+       - Multi-turn conversation format specification
      - **Analytics**: Comparative report (Issue #4 output)
 
 _Milestone E:_ Demonstrate ≥95% reliability uplift with turnkey hand-off bundle reproducible on Arc infrastructure.
@@ -292,16 +306,18 @@ _Milestone E:_ Demonstrate ≥95% reliability uplift with turnkey hand-off bundl
 
 ## 5. Expected Atlas Experiment Flow
 1. **Baseline pass** (Phase D, Issue #12):
-   - Run Student-only (GPT-4.1, `atlas_enabled: false`) against 300-500 scenario subset
+   - Run Student-only (GPT-4.1, `atlas_enabled: false`) against 300 conversation subset
+   - Maintain complexity distribution: 180 simple, 90 medium, 30 complex
    - Establish ~80% starting point (or lower if failure coverage is high)
-   - Capture token usage, verifier scores, cost per episode
+   - Capture token usage, verifier scores, cost per conversation
+   - Measure per-turn success rates (simple vs medium vs complex)
 
 2. **Atlas-enabled pass** (Phase E, Issue #21):
-   - **Seeding (20-30 episodes)**:
+   - **Seeding (20-30 conversations)**:
      - Initialize empty PLM
-     - Teacher (Claude Sonnet 4.5) observes Student (GPT-4.1) trajectories
-     - Generate initial playbooks (principles + action schemas)
-   - **Uplift evaluation (remaining episodes)**:
+     - Teacher (Claude Sonnet 4.5) observes Student (GPT-4.1) trajectories across multi-turn conversations
+     - Generate initial playbooks (principles + action schemas for conversation handling)
+   - **Uplift evaluation (remaining conversations)**:
      - Retrieve playbooks via semantic similarity
      - Inject into Student/Teacher prompts
      - Measure learning metrics:
@@ -309,19 +325,22 @@ _Milestone E:_ Demonstrate ≥95% reliability uplift with turnkey hand-off bundl
        - Adoption Rate ≥90%
        - Reward Delta ≥+15pp
        - Token Delta ≥-40%
-   - **Target outcome**: 95% of cases achieve verifier score ≥0.9
+     - Validate conversation history preservation in playbooks
+   - **Target outcome**: 95% of conversations achieve verifier score ≥0.9
 
 3. **Cross-task transfer validation** (Phase E, hold-out set):
    - Freeze PLM (no new playbooks)
    - Switch to Student-only mode (`atlas_enabled: true`, but Teacher provides no new guidance)
-   - Run on held-out scenarios (10-15% of corpus)
+   - Run on held-out conversations (10-15% of corpus, stratified by complexity)
    - Measure Transfer Success: ≥+40% accuracy improvement vs. baseline
+   - Validate transfer across complexity tiers (simple → medium → complex)
 
 4. **Telemetry audit** (Phase E, final review):
    - Confirm JSONL captures:
      - Learning metrics (Cue Hit Rate, Adoption Rate, Reward/Token Delta)
-     - Teacher interventions with rationale
-     - Playbook retrieval/injection events
+     - Teacher interventions with rationale (per turn)
+     - Playbook retrieval/injection events (conversation-level)
+     - Conversation history (all turns with cross-turn references)
      - Drift notes (supervision lane escalations)
    - Validate against customer audit requirements
 
@@ -356,16 +375,17 @@ _Milestone E:_ Demonstrate ≥95% reliability uplift with turnkey hand-off bundl
     - Issue #12 (baselines) runs parallel with Phase C completion
   - **Buffer**: Phase E can slip to Nov 18 if critical path blocked (negotiate 2-day extension)
 
-## 7. Next Steps (November 3-8, Immediate)
+## 7. Next Steps (November 4-11, Immediate)
 1. ✅ **Issue #13** (COMPLETED Nov 3): Failure taxonomy blueprints merged to master
-2. ⚠️ **Issue #25** (IN PROGRESS Nov 3-8): Regenerate full dataset via Curator (1,500 scenarios with production-faithful patterns)
-   - Nov 3: Design prompts, validation pipeline
-   - Nov 4-5: Generate via batch API
-   - Nov 6: Validation, schema fixes
-   - Nov 7-8: Testing, PR review, merge
-3. **Issue #22 / PR #24**: Superseded by Issue #25 (heuristic approach insufficient for research requirements)
-4. **Issue #14 Day 1** (Nov 9): Run `atlas env init` on CrmEnv, validate autodiscovery (blocked until Issue #25 complete)
-5. **Coordination**: Weekly sync with Federico's team (schedule Nov 6 or 7) to surface telemetry progress and gather pending failure traces
+2. ⚠️ **Issue #26** (IN PROGRESS Nov 4-11): Multi-turn conversation architecture (1,500 conversations with production-faithful patterns)
+   - Phase 1 (Nov 4-5): Schema & infrastructure (conversation_schema.py, reference_resolver.py)
+   - Phase 2 (Nov 5-7): Curator multi-turn generator (iterative generation with GPT-5-mini)
+   - Phase 3 (Nov 8-9): Multi-turn harness (conversation_harness.py with history preservation)
+   - Phase 4 (Nov 10-11): Validation & testing (smoke tests, template resolution, Atlas integration)
+3. **Issue #22 / PR #24**: Superseded by Issue #26 (heuristic approach insufficient for research requirements)
+4. **Issue #25**: Superseded by Issue #26 (single-turn scenarios extended to multi-turn conversations)
+5. **Issue #14 Day 1** (Nov 12): Run `atlas env init` on CrmEnv, validate autodiscovery (blocked until Issue #26 complete)
+6. **Coordination**: Weekly sync with Federico's team (schedule Nov 7 or 8) to surface telemetry progress and gather pending failure traces
 
 ---
 

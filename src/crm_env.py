@@ -50,7 +50,7 @@ except ImportError:  # pragma: no cover - legacy gym fallback.
 from .crm_backend import DatabaseConfig, PostgresCrmBackend
 from .crm_sandbox import MockCrmApi
 from .golden_cases import GOLDEN_CASES, GoldenCase
-from .validators import CrmStateSnapshot, ValidationResult, VerificationMode, get_task_verification_mode
+from src.evaluation.verification import CrmStateSnapshot, ValidationResult, VerificationMode, get_task_verification_mode
 from .verifier import ToolTrace, Verifier, VerifierRequest, VerifierResult, get_registered_verifier
 
 
