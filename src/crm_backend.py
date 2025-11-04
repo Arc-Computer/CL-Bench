@@ -400,6 +400,9 @@ class PostgresCrmBackend:
     def list_notes(self) -> Dict[str, Note]:
         return {row["note_id"]: Note(**row) for row in self._fetchall("SELECT * FROM notes;")}
 
+    def list_companies(self) -> Dict[str, Company]:
+        return {row["company_id"]: Company(**row) for row in self._fetchall("SELECT * FROM companies;")}
+
     def summarize_counts(self) -> Dict[str, int]:
         def _count(table: str) -> int:
             allowed_tables = {

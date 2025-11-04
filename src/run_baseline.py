@@ -148,9 +148,9 @@ def main():
     if args.agent == "claude":
         agent = ClaudeAgent(model_name="claude-sonnet-4-5-20250929")
     elif args.agent == "gpt4.1":
-        agent = OpenAIAgent(model_name="gpt-4.1-turbo")
+        agent = OpenAIAgent(model_name="gpt-4.1")
     elif args.agent == "gpt4":
-        agent = OpenAIAgent(model_name="gpt-4-turbo")
+        agent = OpenAIAgent(model_name="gpt-4.1-mini")
     elif args.agent == "mock":
         agent = ScenarioMockAgent()
     else:
