@@ -27,12 +27,14 @@ try_compose_exec() {
     return 1
   fi
   echo "Applying seed data via docker compose exec..."
+  # SQL file now has explicit BEGIN/COMMIT, so we don't need --single-transaction
+  # but we keep ON_ERROR_STOP=on to fail fast on errors
   docker compose exec -T db psql \
     --username "${POSTGRES_USER:-$DB_USER}" \
     --dbname "${POSTGRES_DB:-$DB_NAME}" \
     --file "${SQL_CONTAINER_PATH}" \
     --echo-errors \
-    --single-transaction
+    --set ON_ERROR_STOP=on
 }
 
 should_use_compose() {
@@ -53,6 +55,8 @@ fi
 
 export PGPASSWORD="${DB_PASSWORD}"
 
+# SQL file now has explicit BEGIN/COMMIT, so we don't need --single-transaction
+# but we keep ON_ERROR_STOP=on to fail fast on errors
 psql \
   --host "${DB_HOST}" \
   --port "${DB_PORT}" \
@@ -60,6 +64,6 @@ psql \
   --dbname "${DB_NAME}" \
   --file "${SQL_FILE}" \
   --echo-errors \
-  --single-transaction
+  --set ON_ERROR_STOP=on
 
 echo "Seed data applied successfully."
