@@ -122,56 +122,29 @@ class CuratorConversationGenerator(curator.LLM):
         # Format entity pool for prompt
         entity_pool_text = self._format_entity_pool()
 
-        prompt = f"""You are generating the first turn of a multi-turn CRM conversation.
+        prompt = f"""Generate the first turn of a multi-turn CRM conversation.
 
 Workflow Category: {workflow_category}
-Expected Tool: {tool_name}
-User Utterance Pattern: {user_utterance_pattern}
+Task: {tool_name}
+Pattern: {user_utterance_pattern}
 
-Available Entity Pool:
+Available Entities:
 {entity_pool_text}
 
-Current CRM State:
-{self._format_crm_state(current_crm_state)}
+Generate ONLY a natural language user utterance that:
+- Matches the pattern "{user_utterance_pattern}"
+- Uses realistic company names from the entity pool
+- Sounds like real user input (casual, abbreviated like "$330k", "opp" instead of "opportunity")
+- Is specific and realistic (e.g., "Show me Acme Corp" not "Show me a client")
 
-Argument Template:
-{json.dumps(argument_template, indent=2)}
+Examples:
+- "Show me Acme Corp"
+- "Create a $250k opp for cloud migration"
+- "Generate a quote for Enterprise Integration Services"
 
-Requirements:
-1. User Utterance: Generate natural language matching the pattern "{user_utterance_pattern}". Use realistic company names from the entity pool. Make it sound like real user input (casual, abbreviated like "$330k", "opp" instead of "opportunity").
-
-2. Expected Args: Fill in the argument template with realistic values:
-   - Select entities from the entity pool (use their IDs)
-   - Amounts should be rounded to thousands (e.g., 330000 not 330801.38)
-   - Match enum values exactly (case-sensitive)
-   - Do NOT include {{turn_N.field}} templates yet (this is Turn 1)
-
-3. Make the utterance specific and realistic (e.g., "Show me Acme Corp" not "Show me a client")
-
-❌ DO NOT:
-- Generate generic names like "Client 214" or "Test Company"
-- Include {{turn_N.field}} templates in Turn 1 (no previous turns exist)
-- Use placeholder values like "PLACEHOLDER" or "TODO"
-- Generate invalid enum values (must match exactly: "Active", "Prospecting", etc.)
-
-EXAMPLE OUTPUT:
+Output JSON:
 {{
-  "user_utterance": "Show me Acme Corp"
-}}
-
-ANOTHER EXAMPLE:
-{{
-  "user_utterance": "Create a $250k opp for cloud migration"
-}}
-
-ANOTHER EXAMPLE:
-{{
-  "user_utterance": "Generate a quote for Enterprise Integration Services"
-}}
-
-Output JSON with user_utterance field:
-{{
-  "user_utterance": "natural language user input matching the task"
+  "user_utterance": "your generated utterance here"
 }}
 """
         return prompt
@@ -196,12 +169,11 @@ Output JSON with user_utterance field:
         # Format entity pool
         entity_pool_text = self._format_entity_pool()
 
-        prompt = f"""You are generating turn {turn_number} of a multi-turn CRM conversation.
+        prompt = f"""Generate turn {turn_number} of a multi-turn CRM conversation.
 
 Workflow Category: {workflow_category}
-Expected Tool: {tool_name}
-User Utterance Pattern: {user_utterance_pattern}
-References Previous Turns: {references_previous_turns}
+Task: {tool_name}
+Pattern: {user_utterance_pattern}
 
 Conversation History:
 {history_text}
@@ -209,52 +181,28 @@ Conversation History:
 Current CRM State:
 {self._format_crm_state(current_crm_state)}
 
-Available Entity Pool:
-{entity_pool_text}
+Generate ONLY a natural language user utterance that:
+- Naturally continues the conversation using pronouns ("them", "that", "it", "the opp")
+- References entities from previous turns implicitly (NOT explicit IDs)
+- Matches the pattern "{user_utterance_pattern}"
+- Sounds like real user input (casual, abbreviated like "$250k", "opp" instead of "opportunity")
+- Follows the conversation flow naturally
 
-Argument Template:
-{json.dumps(argument_template, indent=2)}
+Examples:
+- "Create a $250k opp for them"
+- "Update the status to Active"
+- "Move that opportunity to Negotiation"
+- "Send the quote"
+- "Add a contact for them"
 
-Requirements:
-1. User Utterance: Generate natural language that naturally follows the conversation history. Use pronouns like "them", "it", "that", "the client", "the opp" to reference entities from previous turns. Make it sound like a real continuation of the conversation.
+DO NOT:
+- Use explicit IDs (e.g., "Create opp for client abc-123" - use "them" instead)
+- Be generic (e.g., "Do the thing" - be specific)
+- Use entity names that don't exist in the conversation history
 
-2. Expected Args: Fill in the argument template with realistic values:
-   - Use {{turn_N.field}} templates to reference entities from previous turns (e.g., {{turn_1.client_id}})
-   - Select NEW entities from the entity pool only if not referenced from history
-   - Amounts should be rounded to thousands
-   - Match enum values exactly (case-sensitive)
-
-3. Ensure the utterance naturally references previous turns using pronouns/implicit references, while the expected_args uses explicit {{turn_N.field}} templates for evaluation.
-
-Example:
-- User utterance: "Create an opp for them" (natural language with pronoun)
-- Expected args: {{"client_id": "{{turn_1.client_id}}", "name": "Cloud Migration", "amount": 250000}} (explicit template)
-
-❌ DO NOT:
-- Use explicit IDs in user utterance (e.g., "Create opp for client abc-123" - use "them" instead)
-- Reference turns that don't exist (e.g., {{{{turn_5.field}}}} when only 2 turns exist)
-- Generate generic utterances like "Do the thing" or "Update it"
-- Forget to include {{{{turn_N.field}}}} templates when referencing previous entities
-- Use turn numbers that haven't occurred yet (forward references)
-
-EXAMPLE OUTPUT:
+Output JSON:
 {{
-  "user_utterance": "Create a $250k opp for them"
-}}
-
-ANOTHER EXAMPLE:
-{{
-  "user_utterance": "Update the status to Active"
-}}
-
-ANOTHER EXAMPLE:
-{{
-  "user_utterance": "Move that opportunity to Negotiation"
-}}
-
-Output JSON with user_utterance field:
-{{
-  "user_utterance": "natural language user input with pronouns referencing previous entities"
+  "user_utterance": "your generated utterance here"
 }}
 """
         return prompt
