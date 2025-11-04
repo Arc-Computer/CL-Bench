@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Any, Dict, Mapping, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Set
 
 import psycopg
 from psycopg import Connection
@@ -20,6 +20,7 @@ from .crm_sandbox import (
     Document,
     DocumentEntityType,
     Note,
+    NoteEntityType,
     Opportunity,
     OpportunityStage,
     Quote,
@@ -447,6 +448,368 @@ class PostgresCrmBackend:
             {"entity_id": entity_id},
         )
         return bool(record)
+
+    def _build_search_where_clause(self, criteria: Dict[str, Any], string_fields: Set[str]) -> tuple[str, Dict[str, Any]]:
+        """Build WHERE clause for search with case-insensitive partial matching for strings, exact for others."""
+        if not criteria:
+            return "", {}
+        
+        conditions = []
+        params: Dict[str, Any] = {}
+        
+        for idx, (field, value) in enumerate(criteria.items()):
+            param_name = f"search_{field}_{idx}"
+            if field in string_fields:
+                # Case-insensitive partial matching for strings using ILIKE
+                conditions.append(f"{field} ILIKE %({param_name})s")
+                params[param_name] = f"%{value}%"
+            else:
+                # Exact match for non-strings
+                conditions.append(f"{field} = %({param_name})s")
+                params[param_name] = value
+        
+        where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
+        return where_clause, params
+
+    # ------------------------------------------------------------------
+    # Search methods (Phase 1)
+    # ------------------------------------------------------------------
+
+    def client_search(self, **criteria: Any) -> List[Client]:
+        """Search clients by criteria with case-insensitive partial matching for strings."""
+        string_fields = {"name", "email", "phone", "address", "industry", "owner"}
+        where_clause, params = self._build_search_where_clause(criteria, string_fields)
+        query = f"SELECT * FROM clients {where_clause};"
+        rows = self._fetchall(query, params)
+        return [Client(**row) for row in rows]
+
+    def opportunity_search(self, **criteria: Any) -> List[Opportunity]:
+        """Search opportunities by criteria with case-insensitive partial matching for strings."""
+        string_fields = {"name", "owner", "notes"}
+        where_clause, params = self._build_search_where_clause(criteria, string_fields)
+        query = f"SELECT * FROM opportunities {where_clause};"
+        rows = self._fetchall(query, params)
+        return [Opportunity(**row) for row in rows]
+
+    def contact_search(self, **criteria: Any) -> List[Contact]:
+        """Search contacts by criteria with case-insensitive partial matching for strings."""
+        string_fields = {"first_name", "last_name", "title", "email", "phone", "notes"}
+        where_clause, params = self._build_search_where_clause(criteria, string_fields)
+        query = f"SELECT * FROM contacts {where_clause};"
+        rows = self._fetchall(query, params)
+        return [Contact(**row) for row in rows]
+
+    def quote_search(self, **criteria: Any) -> List[Quote]:
+        """Search quotes by criteria with case-insensitive partial matching for strings."""
+        string_fields = {"version", "quote_prefix"}
+        where_clause, params = self._build_search_where_clause(criteria, string_fields)
+        query = f"SELECT * FROM quotes {where_clause};"
+        rows = self._fetchall(query, params)
+        return [Quote(**row) for row in rows]
+
+    def contract_search(self, **criteria: Any) -> List[Contract]:
+        """Search contracts by criteria with case-insensitive partial matching for strings."""
+        string_fields = {"document_url"}
+        where_clause, params = self._build_search_where_clause(criteria, string_fields)
+        query = f"SELECT * FROM contracts {where_clause};"
+        rows = self._fetchall(query, params)
+        return [Contract(**row) for row in rows]
+
+    def company_search(self, **criteria: Any) -> List[Company]:
+        """Search companies by criteria with case-insensitive partial matching for strings."""
+        string_fields = {"name", "industry", "address"}
+        where_clause, params = self._build_search_where_clause(criteria, string_fields)
+        query = f"SELECT * FROM companies {where_clause};"
+        rows = self._fetchall(query, params)
+        return [Company(**row) for row in rows]
+
+    # ------------------------------------------------------------------
+    # CRUD methods (Phase 1)
+    # ------------------------------------------------------------------
+
+    def create_new_contact(
+        self, first_name: str, last_name: str, client_id: str, **kwargs: Any
+    ) -> Contact:
+        """Create a new contact linked to a client."""
+        client = self._fetchone("SELECT 1 FROM clients WHERE client_id = %(client_id)s;", {"client_id": client_id})
+        if not client:
+            raise ValueError(f"Client not found with ID '{client_id}'.")
+        _require_non_empty_string(first_name, "Contact first name")
+        _require_non_empty_string(last_name, "Contact last name")
+        payload = {
+            "first_name": first_name,
+            "last_name": last_name,
+            "client_id": client_id,
+            "title": kwargs.get("title"),
+            "email": kwargs.get("email"),
+            "phone": kwargs.get("phone"),
+            "notes": kwargs.get("notes"),
+        }
+        query = """
+            INSERT INTO contacts (first_name, last_name, client_id, title, email, phone, notes)
+            VALUES (%(first_name)s, %(last_name)s, %(client_id)s, %(title)s, %(email)s, %(phone)s, %(notes)s)
+            RETURNING *;
+        """
+        record = self._fetchone(query, payload)
+        if not record:
+            raise RuntimeError("Failed to insert contact.")
+        return Contact(**record)
+
+    def modify_client(self, client_id: str, updates: Dict[str, Any]) -> Client:
+        """Apply validated updates to an existing client."""
+        record = self._fetchone("SELECT * FROM clients WHERE client_id = %(id)s;", {"id": client_id})
+        if not record:
+            raise ValueError(f"Client not found with ID '{client_id}'.")
+        client = Client(**record)
+        
+        assignments: Dict[str, Any] = {}
+        for field_name, value in updates.items():
+            if field_name not in client.model_fields:
+                raise ValueError(f"Client has no field named '{field_name}'.")
+            if field_name == "status":
+                value = _validate_enum_value(value, ClientStatus, "Client status update")
+            elif isinstance(value, str):
+                _require_non_empty_string(value, f"Client {field_name}")
+            assignments[field_name] = value
+
+        if not assignments:
+            return client
+
+        allowed_columns = {"name", "email", "phone", "address", "industry", "status", "owner"}
+        invalid = set(assignments) - allowed_columns
+        if invalid:
+            raise ValueError(f"Unsupported client fields for update: {sorted(invalid)}")
+        set_clause = ", ".join(f"{field} = %({field})s" for field in assignments.keys())
+        params = dict(assignments)
+        params["client_id"] = client_id
+        self._execute(f"UPDATE clients SET {set_clause} WHERE client_id = %(client_id)s;", params)
+        updated = self._fetchone("SELECT * FROM clients WHERE client_id = %(id)s;", {"id": client_id})
+        if not updated:
+            raise RuntimeError("Client disappeared after update.")
+        return Client(**updated)
+
+    def modify_contact(self, contact_id: str, updates: Dict[str, Any]) -> Contact:
+        """Apply validated updates to an existing contact."""
+        record = self._fetchone("SELECT * FROM contacts WHERE contact_id = %(id)s;", {"id": contact_id})
+        if not record:
+            raise ValueError(f"Contact not found with ID '{contact_id}'.")
+        contact = Contact(**record)
+        
+        assignments: Dict[str, Any] = {}
+        for field_name, value in updates.items():
+            if field_name not in contact.model_fields:
+                raise ValueError(f"Contact has no field named '{field_name}'.")
+            if isinstance(value, str):
+                _require_non_empty_string(value, f"Contact {field_name}")
+            assignments[field_name] = value
+
+        if not assignments:
+            return contact
+
+        allowed_columns = {"first_name", "last_name", "title", "email", "phone", "notes"}
+        invalid = set(assignments) - allowed_columns
+        if invalid:
+            raise ValueError(f"Unsupported contact fields for update: {sorted(invalid)}")
+        set_clause = ", ".join(f"{field} = %({field})s" for field in assignments.keys())
+        params = dict(assignments)
+        params["contact_id"] = contact_id
+        self._execute(f"UPDATE contacts SET {set_clause} WHERE contact_id = %(contact_id)s;", params)
+        updated = self._fetchone("SELECT * FROM contacts WHERE contact_id = %(id)s;", {"id": contact_id})
+        if not updated:
+            raise RuntimeError("Contact disappeared after update.")
+        return Contact(**updated)
+
+    def modify_quote(self, quote_id: str, updates: Dict[str, Any]) -> Quote:
+        """Apply validated updates to an existing quote."""
+        record = self._fetchone("SELECT * FROM quotes WHERE quote_id = %(id)s;", {"id": quote_id})
+        if not record:
+            raise ValueError(f"Quote not found with ID '{quote_id}'.")
+        quote = Quote(**record)
+        
+        assignments: Dict[str, Any] = {}
+        for field_name, value in updates.items():
+            if field_name not in quote.model_fields:
+                raise ValueError(f"Quote has no field named '{field_name}'.")
+            if field_name == "status":
+                value = _validate_enum_value(value, QuoteStatus, "Quote status update")
+            elif field_name == "amount":
+                _validate_amount(value, "Quote amount")
+                value = float(value)
+            elif isinstance(value, str):
+                _require_non_empty_string(value, f"Quote {field_name}")
+            assignments[field_name] = value
+
+        if not assignments:
+            return quote
+
+        allowed_columns = {"version", "amount", "status", "valid_until", "quote_prefix"}
+        invalid = set(assignments) - allowed_columns
+        if invalid:
+            raise ValueError(f"Unsupported quote fields for update: {sorted(invalid)}")
+        set_clause = ", ".join(f"{field} = %({field})s" for field in assignments.keys())
+        params = dict(assignments)
+        params["quote_id"] = quote_id
+        self._execute(f"UPDATE quotes SET {set_clause} WHERE quote_id = %(quote_id)s;", params)
+        updated = self._fetchone("SELECT * FROM quotes WHERE quote_id = %(id)s;", {"id": quote_id})
+        if not updated:
+            raise RuntimeError("Quote disappeared after update.")
+        return Quote(**updated)
+
+    def delete_opportunity(self, opportunity_id: str) -> bool:
+        """Delete an opportunity."""
+        record = self._fetchone("SELECT 1 FROM opportunities WHERE opportunity_id = %(id)s;", {"id": opportunity_id})
+        if not record:
+            raise ValueError(f"Opportunity not found with ID '{opportunity_id}'.")
+        self._execute("DELETE FROM opportunities WHERE opportunity_id = %(id)s;", {"id": opportunity_id})
+        return True
+
+    def delete_quote(self, quote_id: str) -> bool:
+        """Delete a quote."""
+        record = self._fetchone("SELECT 1 FROM quotes WHERE quote_id = %(id)s;", {"id": quote_id})
+        if not record:
+            raise ValueError(f"Quote not found with ID '{quote_id}'.")
+        self._execute("DELETE FROM quotes WHERE quote_id = %(id)s;", {"id": quote_id})
+        return True
+
+    def cancel_quote(self, quote_id: str) -> Quote:
+        """Cancel a quote by setting its status to Canceled."""
+        record = self._fetchone("SELECT * FROM quotes WHERE quote_id = %(id)s;", {"id": quote_id})
+        if not record:
+            raise ValueError(f"Quote not found with ID '{quote_id}'.")
+        self._execute(
+            "UPDATE quotes SET status = %(status)s WHERE quote_id = %(quote_id)s;",
+            {"quote_id": quote_id, "status": QuoteStatus.CANCELED.value}
+        )
+        updated = self._fetchone("SELECT * FROM quotes WHERE quote_id = %(id)s;", {"id": quote_id})
+        if not updated:
+            raise RuntimeError("Quote disappeared after cancel.")
+        return Quote(**updated)
+
+    # ------------------------------------------------------------------
+    # Read methods (Phase 1)
+    # ------------------------------------------------------------------
+
+    def view_opportunity_details(self, opportunity_id: str) -> Opportunity:
+        """View detailed information about an opportunity."""
+        record = self._fetchone("SELECT * FROM opportunities WHERE opportunity_id = %(id)s;", {"id": opportunity_id})
+        if not record:
+            raise ValueError(f"Opportunity not found with ID '{opportunity_id}'.")
+        return Opportunity(**record)
+
+    def opportunity_details(self, opportunity_id: str) -> Opportunity:
+        """Alias for view_opportunity_details."""
+        return self.view_opportunity_details(opportunity_id)
+
+    def quote_details(self, quote_id: str) -> Quote:
+        """View detailed information about a quote."""
+        record = self._fetchone("SELECT * FROM quotes WHERE quote_id = %(id)s;", {"id": quote_id})
+        if not record:
+            raise ValueError(f"Quote not found with ID '{quote_id}'.")
+        return Quote(**record)
+
+    def compare_quotes(self, quote_ids: List[str]) -> List[Quote]:
+        """Compare multiple quotes by their IDs."""
+        quotes = []
+        for quote_id in quote_ids:
+            record = self._fetchone("SELECT * FROM quotes WHERE quote_id = %(id)s;", {"id": quote_id})
+            if not record:
+                raise ValueError(f"Quote not found with ID '{quote_id}'.")
+            quotes.append(Quote(**record))
+        return quotes
+
+    def compare_quote_details(self, quote_ids: List[str]) -> Dict[str, Any]:
+        """Compare multiple quotes and return detailed comparison."""
+        quotes = self.compare_quotes(quote_ids)
+        comparison = {
+            "quotes": quotes,
+            "amounts": [q.amount for q in quotes if q.amount],
+            "statuses": [q.status for q in quotes if q.status],
+            "total_amount": sum(q.amount for q in quotes if q.amount is not None),
+        }
+        return comparison
+
+    # ------------------------------------------------------------------
+    # Utility methods (Phase 1)
+    # ------------------------------------------------------------------
+
+    def clone_opportunity(self, opportunity_id: str) -> Opportunity:
+        """Clone an opportunity with '(Clone)' appended to the name."""
+        source = self.view_opportunity_details(opportunity_id)
+        if source.amount is None:
+            raise ValueError("Cannot clone opportunity with None amount.")
+        cloned = self.create_new_opportunity(
+            name=f"{source.name} (Clone)",
+            client_id=source.client_id,
+            amount=source.amount,
+            stage=source.stage.value if source.stage else "Prospecting",
+            owner=source.owner,
+            probability=source.probability,
+            close_date=source.close_date,
+            notes=source.notes,
+        )
+        return cloned
+
+    def add_note(self, entity_type: str, entity_id: str, content: str, **kwargs: Any) -> Note:
+        """Add a note to an entity."""
+        _require_non_empty_string(content, "Note content")
+        note_entity_type = NoteEntityType(entity_type)
+        
+        # Verify entity exists
+        entity_map = {
+            NoteEntityType.OPPORTUNITY: ("opportunities", "opportunity_id"),
+            NoteEntityType.CLIENT: ("clients", "client_id"),
+            NoteEntityType.CONTACT: ("contacts", "contact_id"),
+            NoteEntityType.QUOTE: ("quotes", "quote_id"),
+            NoteEntityType.CONTRACT: ("contracts", "contract_id"),
+        }
+        table, pk_column = entity_map[note_entity_type]
+        entity_exists = self._fetchone(
+            f"SELECT 1 FROM {table} WHERE {pk_column} = %(entity_id)s LIMIT 1;",
+            {"entity_id": entity_id},
+        )
+        if not entity_exists:
+            raise ValueError(f"{note_entity_type.value} not found with ID '{entity_id}'.")
+        
+        payload = {
+            "entity_type": note_entity_type.value,
+            "entity_id": entity_id,
+            "content": content,
+            "created_by": kwargs.get("created_by"),
+            "created_at": kwargs.get("created_at"),
+        }
+        query = """
+            INSERT INTO notes (entity_type, entity_id, content, created_by, created_at)
+            VALUES (%(entity_type)s, %(entity_id)s, %(content)s, %(created_by)s, COALESCE(%(created_at)s, NOW()))
+            RETURNING *;
+        """
+        record = self._fetchone(query, payload)
+        if not record:
+            raise RuntimeError("Failed to insert note.")
+        return Note(**record)
+
+    def summarize_opportunities(self, **criteria: Any) -> Dict[str, Any]:
+        """Summarize opportunities, optionally filtered by criteria."""
+        opportunities = self.opportunity_search(**criteria) if criteria else [
+            Opportunity(**row) for row in self._fetchall("SELECT * FROM opportunities;")
+        ]
+        summary = {
+            "total_count": len(opportunities),
+            "total_amount": sum(o.amount for o in opportunities if o.amount),
+            "by_stage": {},
+            "by_owner": {},
+        }
+        for opp in opportunities:
+            if opp.stage:
+                summary["by_stage"][opp.stage] = summary["by_stage"].get(opp.stage, 0) + 1
+            if opp.owner:
+                summary["by_owner"][opp.owner] = summary["by_owner"].get(opp.owner, 0) + 1
+        return summary
+
+    def quote_prefixes(self) -> List[str]:
+        """Get all unique quote prefixes, sorted."""
+        rows = self._fetchall("SELECT DISTINCT quote_prefix FROM quotes WHERE quote_prefix IS NOT NULL;")
+        prefixes = {row["quote_prefix"] for row in rows if row.get("quote_prefix")}
+        return sorted(prefixes)
 
     def _truncate_tables(self) -> None:
         """Clear CRM tables; used to provide a pristine sandbox for each session."""
