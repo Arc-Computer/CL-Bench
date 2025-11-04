@@ -2,9 +2,9 @@
 
 ## Executive Summary
 
-- **Total Scenarios**: 488
-- **Success Scenarios**: 293 (60.0%)
-- **Failure Scenarios**: 195 (40.0%)
+- **Total Scenarios**: 493
+- **Success Scenarios**: 296 (60.0%)
+- **Failure Scenarios**: 197 (40.0%)
 - **Target Ratio**: 60% success / 40% failure
 - **Deviation from Target**: 0.0%
 
@@ -36,15 +36,12 @@
 | quote_details | 12 | 10 | 2 | 83.3% |
 | quote_search | 8 | 7 | 1 | 87.5% |
 | summarize_opportunities | 5 | 3 | 2 | 60.0% |
+| upload_document | 5 | 3 | 2 | 60.0% |
 | view_opportunity_details | 22 | 14 | 8 | 63.6% |
 
 ## Cross-Reference with Agent Tasks CSV
 
-### Missing Tools (High Frequency)
-
-| Task | Tool | Frequency |
-|------|------|-----------|
-| upload_document | upload_document | 2190 |
+✅ All high-frequency CSV tasks have corresponding scenarios
 
 ### Unexpected Tools (Not in CSV)
 
@@ -75,4 +72,4 @@ Scenarios with template references (`{{turn_N.field}}`): 0
 
 ## Recommendations
 
-- Generate scenarios for 1 missing tools
+- ✅ Scenario corpus meets all quality targets
