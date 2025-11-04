@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.crm_sandbox import MockCrmApi
 from src.entity_sampler import EntitySampler, SamplerConfig
-from src.curator_conversation_generator import CuratorConversationDatasetGenerator
+from src.curator_conversation_generator import CuratorConversationDatasetGenerator, simulate_turn_execution
 from src.conversation_schema import Conversation
 
 logging.basicConfig(level=logging.INFO)
@@ -100,17 +100,15 @@ def generate_conversations(
                         validation_errors.append(
                             f"{conv.conversation_id} turn {turn.turn_id}: {errors[0]}"
                         )
-                
-                # Simulate execution result (simplified)
-                # In real execution, this would come from actual tool execution
-                execution_result = {}
-                for key in ["client_id", "contact_id", "opportunity_id", "quote_id", "contract_id"]:
-                    if key in turn.expected_args:
-                        execution_result[key] = turn.expected_args[key]
-                    elif "updates" in turn.expected_args and isinstance(turn.expected_args["updates"], dict):
-                        if key in turn.expected_args["updates"]:
-                            execution_result[key] = turn.expected_args["updates"][key]
-                
+
+                # Simulate execution to get proper entity IDs for next turn
+                execution_result = simulate_turn_execution(
+                    turn.expected_tool,
+                    turn.expected_args,
+                    api,
+                    generator.entity_pool,
+                )
+
                 previous_turns_dict[turn.turn_id] = execution_result
             
             valid_conversations.append(conv)

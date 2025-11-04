@@ -49,15 +49,15 @@ logger = logging.getLogger(__name__)
 
 
 class ConversationTurnResponse(BaseModel):
-    """Structured output format for a single turn generation from LLM."""
+    """Structured output format for a single turn generation from LLM.
+
+    Note: The LLM only generates user_utterance. The expected_args and
+    expected_tool come from the turn template for deterministic ground truth.
+    """
 
     user_utterance: str = Field(
         description="Natural language user utterance for this turn. Use pronouns like 'them', 'it', 'that' to reference previous entities when appropriate."
     )
-    expected_args: Dict[str, Any] = Field(
-        description="Tool arguments matching the utterance. Include {{turn_N.field}} templates where this turn references previous turns."
-    )
-    # Note: expected_tool is derived from the turn template, not generated
 
 
 class CuratorConversationGenerator(curator.LLM):
@@ -154,10 +154,24 @@ Requirements:
 - Use placeholder values like "PLACEHOLDER" or "TODO"
 - Generate invalid enum values (must match exactly: "Active", "Prospecting", etc.)
 
-Output JSON matching this schema:
+EXAMPLE OUTPUT:
 {{
-  "user_utterance": "string - natural language user input",
-  "expected_args": {{"field": "value", ...}}  # Filled argument template
+  "user_utterance": "Show me Acme Corp"
+}}
+
+ANOTHER EXAMPLE:
+{{
+  "user_utterance": "Create a $250k opp for cloud migration"
+}}
+
+ANOTHER EXAMPLE:
+{{
+  "user_utterance": "Generate a quote for Enterprise Integration Services"
+}}
+
+Output JSON with user_utterance field:
+{{
+  "user_utterance": "natural language user input matching the task"
 }}
 """
         return prompt
@@ -218,15 +232,29 @@ Example:
 
 ❌ DO NOT:
 - Use explicit IDs in user utterance (e.g., "Create opp for client abc-123" - use "them" instead)
-- Reference turns that don't exist (e.g., {{turn_5.field}} when only 2 turns exist)
+- Reference turns that don't exist (e.g., {{{{turn_5.field}}}} when only 2 turns exist)
 - Generate generic utterances like "Do the thing" or "Update it"
-- Forget to include {{turn_N.field}} templates when referencing previous entities
+- Forget to include {{{{turn_N.field}}}} templates when referencing previous entities
 - Use turn numbers that haven't occurred yet (forward references)
 
-Output JSON matching this schema:
+EXAMPLE OUTPUT:
 {{
-  "user_utterance": "string - natural language that references previous turns",
-  "expected_args": {{"field": "value", "ref_field": "{{turn_N.field}}", ...}}
+  "user_utterance": "Create a $250k opp for them"
+}}
+
+ANOTHER EXAMPLE:
+{{
+  "user_utterance": "Update the status to Active"
+}}
+
+ANOTHER EXAMPLE:
+{{
+  "user_utterance": "Move that opportunity to Negotiation"
+}}
+
+Output JSON with user_utterance field:
+{{
+  "user_utterance": "natural language user input with pronouns referencing previous entities"
 }}
 """
         return prompt
@@ -304,13 +332,17 @@ Output JSON matching this schema:
         return "\n".join(lines) if lines else "No entities in CRM state."
 
     def parse(self, input: Dict, response: Any) -> Dict:
-        """Convert LLM response to turn dict."""
+        """Convert LLM response to turn dict.
+
+        Note: expected_args comes from the turn template, not the LLM response.
+        The LLM only generates the natural language user_utterance.
+        """
         if isinstance(response, ConversationTurnResponse):
             return {
                 "conversation_id": input.get("conversation_id", ""),
                 "turn_number": input["turn_number"],
                 "user_utterance": response.user_utterance,
-                "expected_args": response.expected_args,
+                "expected_args": input["turn_template"]["argument_template"],
                 "tool_name": input["turn_template"]["tool_name"],
             }
         elif isinstance(response, str):
@@ -351,6 +383,52 @@ Output JSON matching this schema:
             }
 
 
+def populate_argument_placeholders(
+    argument_template: Dict[str, Any],
+    current_crm_state: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Fill placeholder values in argument_template with actual entity data.
+
+    Placeholders like empty strings ("") or None in the template are filled
+    with corresponding values from current_crm_state.
+
+    Args:
+        argument_template: Template with placeholders (e.g., {"name": "", "status": null})
+        current_crm_state: Current CRM entities available for this turn
+
+    Returns:
+        Populated arguments with actual values
+    """
+    populated_args = {}
+
+    for key, value in argument_template.items():
+        # Keep non-placeholder values as-is
+        if value not in ("", None) and value != 0.0:
+            populated_args[key] = value
+            continue
+
+        # Fill placeholders from current_crm_state
+        if key == "client_id" and "clients" in current_crm_state and current_crm_state["clients"]:
+            populated_args[key] = current_crm_state["clients"][0]["client_id"]
+        elif key == "name" and "clients" in current_crm_state and current_crm_state["clients"]:
+            populated_args[key] = current_crm_state["clients"][0]["name"]
+        elif key == "email" and "clients" in current_crm_state and current_crm_state["clients"]:
+            populated_args[key] = current_crm_state["clients"][0].get("email")
+        elif key == "opportunity_id" and "opportunities" in current_crm_state and current_crm_state["opportunities"]:
+            populated_args[key] = current_crm_state["opportunities"][0]["opportunity_id"]
+        elif key == "quote_id" and "quotes" in current_crm_state and current_crm_state["quotes"]:
+            populated_args[key] = current_crm_state["quotes"][0]["quote_id"]
+        elif key == "contact_id" and "contacts" in current_crm_state and current_crm_state["contacts"]:
+            populated_args[key] = current_crm_state["contacts"][0]["contact_id"]
+        elif key == "contract_id" and "contracts" in current_crm_state and current_crm_state["contracts"]:
+            populated_args[key] = current_crm_state["contracts"][0]["contract_id"]
+        else:
+            # Keep placeholder if we can't fill it
+            populated_args[key] = value
+
+    return populated_args
+
+
 def simulate_turn_execution(
     tool_name: str,
     expected_args: Dict[str, Any],
@@ -358,16 +436,16 @@ def simulate_turn_execution(
     entity_pool: Dict[str, List[Dict[str, Any]]],
 ) -> Dict[str, Any]:
     """Simulate tool execution to update CRM state for next turn.
-    
+
     This doesn't actually execute the tool, but simulates what would happen
     to extract entity IDs from search results or created entities.
-    
+
     Args:
         tool_name: Name of the tool that was called
         expected_args: Arguments passed to the tool
         api: MockCrmApi instance (for validation, not actual execution)
         entity_pool: Entity pool to select from for searches
-        
+
     Returns:
         Dictionary with entity IDs and other fields extracted from simulated execution
     """
@@ -898,25 +976,31 @@ class CuratorConversationDatasetGenerator:
                     state = conversation_states[conv_id]
                     template = state["template"]
                     turn_template = template.turn_templates[turn_number - 1]
-                    
+
                     if not row.get("user_utterance"):
                         logger.warning(f"Failed to generate turn {turn_number} for {conv_id}")
                         continue
-                    
+
+                    # Populate argument placeholders with actual entity data
+                    populated_args = populate_argument_placeholders(
+                        row["expected_args"],
+                        state["crm_state"]
+                    )
+
                     # Create ConversationTurn
                     turn = ConversationTurn(
                         turn_id=turn_number,
                         user_utterance=row["user_utterance"],
                         expected_tool=row["tool_name"],
-                        expected_args=row["expected_args"],
+                        expected_args=populated_args,
                         references_previous_turns=turn_template.references_previous_turns,
                     )
                     state["turns"].append(turn)
-                    
+
                     # Simulate execution
                     execution_result = simulate_turn_execution(
                         row["tool_name"],
-                        row["expected_args"],
+                        populated_args,
                         self.api,
                         self.entity_pool,
                     )
