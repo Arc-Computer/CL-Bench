@@ -143,12 +143,12 @@ class ScenarioValidator:
 
             if "updates" in args and isinstance(args["updates"], dict):
                 updates = args["updates"]
-                if "stage" in updates:
+                if "stage" in updates and isinstance(updates["stage"], str):
                     opportunity_stages.append(updates["stage"])
                 if "status" in updates:
-                    if scenario.task == "modify_quote":
+                    if scenario.task == "modify_quote" and isinstance(updates["status"], str):
                         quote_statuses.append(updates["status"])
-                    elif scenario.task == "modify_client":
+                    elif scenario.task == "modify_client" and isinstance(updates["status"], str):
                         client_statuses.append(updates["status"])
 
             if "type" in args and args["type"]:
