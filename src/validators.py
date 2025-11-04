@@ -93,6 +93,7 @@ class CrmStateSnapshot:
     contracts: Dict[str, CRMBaseModel]
     documents: Dict[str, Document]
     notes: Dict[str, CRMBaseModel]
+    companies: Dict[str, CRMBaseModel]
 
     @classmethod
     def from_api(cls, api: MockCrmApi) -> "CrmStateSnapshot":
@@ -105,6 +106,7 @@ class CrmStateSnapshot:
             contracts=_copy_store(api.contracts),
             documents=_copy_store(api.documents),
             notes=_copy_store(api.notes),
+            companies=_copy_store(api.companies),
         )
 
     @classmethod
@@ -121,6 +123,7 @@ class CrmStateSnapshot:
             contracts=_copy(backend.list_contracts()),
             documents=_copy(backend.list_documents()),
             notes=_copy(backend.list_notes()),
+            companies=_copy(backend.list_companies()),
         )
 
 
@@ -363,6 +366,278 @@ def validate_modify_opportunity(
     return ValidationResult.ok("Opportunity updated with expected fields.", {"opportunity_id": opportunity_id})
 
 
+def validate_create_new_contact(
+    pre: CrmStateSnapshot,
+    post: CrmStateSnapshot,
+    expected_payload: Mapping[str, Any],
+) -> ValidationResult:
+    new_id, result = _single_new_entity(pre.contacts, post.contacts)
+    if not result.success:
+        return result
+    contact = post.contacts[new_id]
+    expected_first = expected_payload.get("first_name")
+    expected_last = expected_payload.get("last_name")
+    expected_client = expected_payload.get("client_id")
+    if expected_first and contact.first_name != expected_first:
+        return ValidationResult.fail(f"Contact first name mismatch: expected '{expected_first}' got '{contact.first_name}'.")
+    if expected_last and contact.last_name != expected_last:
+        return ValidationResult.fail(f"Contact last name mismatch: expected '{expected_last}' got '{contact.last_name}'.")
+    if expected_client and contact.client_id != expected_client:
+        return ValidationResult.fail(f"Contact client mismatch: expected '{expected_client}' got '{contact.client_id}'.")
+    if contact.client_id not in post.clients:
+        return ValidationResult.fail(f"Contact references missing client '{contact.client_id}'.", {"missing_client": contact.client_id})
+    return ValidationResult.ok("Contact created with expected fields.", {"contact_id": new_id})
+
+
+def validate_add_note(
+    pre: CrmStateSnapshot,
+    post: CrmStateSnapshot,
+    expected_payload: Mapping[str, Any],
+) -> ValidationResult:
+    new_id, result = _single_new_entity(pre.notes, post.notes)
+    if not result.success:
+        return result
+    note = post.notes[new_id]
+    expected_type = expected_payload.get("entity_type")
+    expected_entity = expected_payload.get("entity_id")
+    expected_content = expected_payload.get("content")
+    if expected_type and note.entity_type != expected_type:
+        return ValidationResult.fail(f"Note entity type mismatch: expected '{expected_type}' got '{note.entity_type}'.")
+    if expected_entity and note.entity_id != expected_entity:
+        return ValidationResult.fail(f"Note entity ID mismatch: expected '{expected_entity}' got '{note.entity_id}'.")
+    if expected_content and note.content != expected_content:
+        return ValidationResult.fail(f"Note content mismatch: expected '{expected_content}' got '{note.content}'.")
+    return ValidationResult.ok("Note created with expected fields.", {"note_id": new_id})
+
+
+def validate_modify_client(
+    pre: CrmStateSnapshot,
+    post: CrmStateSnapshot,
+    expected_payload: Mapping[str, Any],
+    updates: Mapping[str, Any],
+) -> ValidationResult:
+    client_id = expected_payload.get("client_id")
+    if not client_id:
+        return ValidationResult.fail("Expected payload must include 'client_id'.")
+    if client_id not in pre.clients or client_id not in post.clients:
+        return ValidationResult.fail(f"Client '{client_id}' not found in state snapshots.")
+    if set(pre.clients.keys()) != set(post.clients.keys()):
+        return ValidationResult.fail("Client set changed; expected an in-place update only.")
+    before = pre.clients[client_id]
+    after = post.clients[client_id]
+    for field_name, value in updates.items():
+        after_value = getattr(after, field_name)
+        if after_value != value:
+            return ValidationResult.fail(f"Field '{field_name}' mismatch: expected '{value}' got '{after_value}'.")
+    return ValidationResult.ok("Client updated with expected fields.", {"client_id": client_id})
+
+
+def validate_modify_quote(
+    pre: CrmStateSnapshot,
+    post: CrmStateSnapshot,
+    expected_payload: Mapping[str, Any],
+    updates: Mapping[str, Any],
+) -> ValidationResult:
+    quote_id = expected_payload.get("quote_id")
+    if not quote_id:
+        return ValidationResult.fail("Expected payload must include 'quote_id'.")
+    if quote_id not in pre.quotes or quote_id not in post.quotes:
+        return ValidationResult.fail(f"Quote '{quote_id}' not found in state snapshots.")
+    if set(pre.quotes.keys()) != set(post.quotes.keys()):
+        return ValidationResult.fail("Quote set changed; expected an in-place update only.")
+    before = pre.quotes[quote_id]
+    after = post.quotes[quote_id]
+    for field_name, value in updates.items():
+        after_value = getattr(after, field_name)
+        if after_value != value:
+            return ValidationResult.fail(f"Field '{field_name}' mismatch: expected '{value}' got '{after_value}'.")
+    return ValidationResult.ok("Quote updated with expected fields.", {"quote_id": quote_id})
+
+
+def validate_modify_contact(
+    pre: CrmStateSnapshot,
+    post: CrmStateSnapshot,
+    expected_payload: Mapping[str, Any],
+    updates: Mapping[str, Any],
+) -> ValidationResult:
+    contact_id = expected_payload.get("contact_id")
+    if not contact_id:
+        return ValidationResult.fail("Expected payload must include 'contact_id'.")
+    if contact_id not in pre.contacts or contact_id not in post.contacts:
+        return ValidationResult.fail(f"Contact '{contact_id}' not found in state snapshots.")
+    if set(pre.contacts.keys()) != set(post.contacts.keys()):
+        return ValidationResult.fail("Contact set changed; expected an in-place update only.")
+    before = pre.contacts[contact_id]
+    after = post.contacts[contact_id]
+    for field_name, value in updates.items():
+        after_value = getattr(after, field_name)
+        if after_value != value:
+            return ValidationResult.fail(f"Field '{field_name}' mismatch: expected '{value}' got '{after_value}'.")
+    return ValidationResult.ok("Contact updated with expected fields.", {"contact_id": contact_id})
+
+
+def validate_delete_opportunity(
+    pre: CrmStateSnapshot,
+    post: CrmStateSnapshot,
+    expected_payload: Mapping[str, Any],
+) -> ValidationResult:
+    opportunity_id = expected_payload.get("opportunity_id")
+    if not opportunity_id:
+        return ValidationResult.fail("Expected payload must include 'opportunity_id'.")
+    if opportunity_id not in pre.opportunities:
+        return ValidationResult.fail(f"Opportunity '{opportunity_id}' not found in pre state.")
+    if opportunity_id in post.opportunities:
+        return ValidationResult.fail(f"Opportunity '{opportunity_id}' still exists in post state.")
+    return ValidationResult.ok("Opportunity deleted successfully.", {"opportunity_id": opportunity_id})
+
+
+def validate_delete_quote(
+    pre: CrmStateSnapshot,
+    post: CrmStateSnapshot,
+    expected_payload: Mapping[str, Any],
+) -> ValidationResult:
+    quote_id = expected_payload.get("quote_id")
+    if not quote_id:
+        return ValidationResult.fail("Expected payload must include 'quote_id'.")
+    if quote_id not in pre.quotes:
+        return ValidationResult.fail(f"Quote '{quote_id}' not found in pre state.")
+    if quote_id in post.quotes:
+        return ValidationResult.fail(f"Quote '{quote_id}' still exists in post state.")
+    return ValidationResult.ok("Quote deleted successfully.", {"quote_id": quote_id})
+
+
+def validate_cancel_quote(
+    pre: CrmStateSnapshot,
+    post: CrmStateSnapshot,
+    expected_payload: Mapping[str, Any],
+) -> ValidationResult:
+    quote_id = expected_payload.get("quote_id")
+    if not quote_id:
+        return ValidationResult.fail("Expected payload must include 'quote_id'.")
+    if quote_id not in post.quotes:
+        return ValidationResult.fail(f"Quote '{quote_id}' not found in post state.")
+    quote = post.quotes[quote_id]
+    if quote.status != "Canceled":
+        return ValidationResult.fail(f"Quote status is '{quote.status}', expected 'Canceled'.")
+    return ValidationResult.ok("Quote canceled successfully.", {"quote_id": quote_id})
+
+
+def validate_clone_opportunity(
+    pre: CrmStateSnapshot,
+    post: CrmStateSnapshot,
+    expected_payload: Mapping[str, Any],
+) -> ValidationResult:
+    source_id = expected_payload.get("opportunity_id")
+    if not source_id:
+        return ValidationResult.fail("Expected payload must include 'opportunity_id'.")
+    if source_id not in pre.opportunities:
+        return ValidationResult.fail(f"Source opportunity '{source_id}' not found in pre state.")
+    new_ids = set(post.opportunities.keys()) - set(pre.opportunities.keys())
+    if len(new_ids) != 1:
+        return ValidationResult.fail(f"Expected exactly one new opportunity, found {len(new_ids)}.")
+    new_id = next(iter(new_ids))
+    source = pre.opportunities[source_id]
+    cloned = post.opportunities[new_id]
+    if cloned.client_id != source.client_id:
+        return ValidationResult.fail(f"Cloned opportunity has wrong client_id.")
+    if cloned.amount != source.amount:
+        return ValidationResult.fail(f"Cloned opportunity has wrong amount.")
+    return ValidationResult.ok("Opportunity cloned successfully.", {"cloned_opportunity_id": new_id})
+
+
+def _validate_search_results(results: Any, expected_count: Optional[int] = None, entity_type: str = "entity") -> ValidationResult:
+    if not isinstance(results, list):
+        return ValidationResult.fail(f"Search results must be a list.")
+    if expected_count is not None and len(results) != expected_count:
+        return ValidationResult.fail(f"Expected {expected_count} {entity_type}(s), found {len(results)}.")
+    return ValidationResult.ok(f"Search returned {len(results)} {entity_type}(s).", {"count": len(results)})
+
+
+def validate_client_search(pre: CrmStateSnapshot, post: CrmStateSnapshot, expected_payload: Mapping[str, Any], results: Any) -> ValidationResult:
+    return _validate_search_results(results, expected_payload.get("expected_count"), "client")
+
+
+def validate_opportunity_search(pre: CrmStateSnapshot, post: CrmStateSnapshot, expected_payload: Mapping[str, Any], results: Any) -> ValidationResult:
+    return _validate_search_results(results, expected_payload.get("expected_count"), "opportunity")
+
+
+def validate_contact_search(pre: CrmStateSnapshot, post: CrmStateSnapshot, expected_payload: Mapping[str, Any], results: Any) -> ValidationResult:
+    return _validate_search_results(results, expected_payload.get("expected_count"), "contact")
+
+
+def validate_quote_search(pre: CrmStateSnapshot, post: CrmStateSnapshot, expected_payload: Mapping[str, Any], results: Any) -> ValidationResult:
+    return _validate_search_results(results, expected_payload.get("expected_count"), "quote")
+
+
+def validate_contract_search(pre: CrmStateSnapshot, post: CrmStateSnapshot, expected_payload: Mapping[str, Any], results: Any) -> ValidationResult:
+    return _validate_search_results(results, expected_payload.get("expected_count"), "contract")
+
+
+def validate_company_search(pre: CrmStateSnapshot, post: CrmStateSnapshot, expected_payload: Mapping[str, Any], results: Any) -> ValidationResult:
+    return _validate_search_results(results, expected_payload.get("expected_count"), "company")
+
+
+def validate_view_opportunity_details(pre: CrmStateSnapshot, post: CrmStateSnapshot, expected_payload: Mapping[str, Any], result: Any) -> ValidationResult:
+    opportunity_id = expected_payload.get("opportunity_id")
+    if not opportunity_id:
+        return ValidationResult.fail("Expected payload must include 'opportunity_id'.")
+    if not result:
+        return ValidationResult.fail("No opportunity returned.")
+    if result.opportunity_id != opportunity_id:
+        return ValidationResult.fail(f"Wrong opportunity returned: expected '{opportunity_id}', got '{result.opportunity_id}'.")
+    return ValidationResult.ok("Opportunity details retrieved.", {"opportunity_id": opportunity_id})
+
+
+def validate_opportunity_details(pre: CrmStateSnapshot, post: CrmStateSnapshot, expected_payload: Mapping[str, Any], result: Any) -> ValidationResult:
+    return validate_view_opportunity_details(pre, post, expected_payload, result)
+
+
+def validate_quote_details(pre: CrmStateSnapshot, post: CrmStateSnapshot, expected_payload: Mapping[str, Any], result: Any) -> ValidationResult:
+    quote_id = expected_payload.get("quote_id")
+    if not quote_id:
+        return ValidationResult.fail("Expected payload must include 'quote_id'.")
+    if not result:
+        return ValidationResult.fail("No quote returned.")
+    if result.quote_id != quote_id:
+        return ValidationResult.fail(f"Wrong quote returned: expected '{quote_id}', got '{result.quote_id}'.")
+    return ValidationResult.ok("Quote details retrieved.", {"quote_id": quote_id})
+
+
+def validate_compare_quotes(pre: CrmStateSnapshot, post: CrmStateSnapshot, expected_payload: Mapping[str, Any], results: Any) -> ValidationResult:
+    if not isinstance(results, list):
+        return ValidationResult.fail("Compare quotes must return a list.")
+    expected_count = expected_payload.get("expected_count")
+    if expected_count and len(results) != expected_count:
+        return ValidationResult.fail(f"Expected {expected_count} quotes, found {len(results)}.")
+    return ValidationResult.ok(f"Compared {len(results)} quotes.", {"count": len(results)})
+
+
+def validate_compare_quote_details(pre: CrmStateSnapshot, post: CrmStateSnapshot, expected_payload: Mapping[str, Any], result: Any) -> ValidationResult:
+    if not isinstance(result, dict):
+        return ValidationResult.fail("Compare quote details must return a dictionary.")
+    if "quotes" not in result:
+        return ValidationResult.fail("Result must include 'quotes' key.")
+    if "total_amount" not in result:
+        return ValidationResult.fail("Result must include 'total_amount' key.")
+    return ValidationResult.ok("Quote details compared.", {"quote_count": len(result.get("quotes", []))})
+
+
+def validate_summarize_opportunities(pre: CrmStateSnapshot, post: CrmStateSnapshot, expected_payload: Mapping[str, Any], result: Any) -> ValidationResult:
+    if not isinstance(result, dict):
+        return ValidationResult.fail("Summarize opportunities must return a dictionary.")
+    if "total_count" not in result:
+        return ValidationResult.fail("Result must include 'total_count' key.")
+    if "total_amount" not in result:
+        return ValidationResult.fail("Result must include 'total_amount' key.")
+    return ValidationResult.ok("Opportunities summarized.", {"count": result.get("total_count", 0)})
+
+
+def validate_quote_prefixes(pre: CrmStateSnapshot, post: CrmStateSnapshot, expected_payload: Mapping[str, Any], results: Any) -> ValidationResult:
+    if not isinstance(results, list):
+        return ValidationResult.fail("Quote prefixes must return a list.")
+    return ValidationResult.ok(f"Retrieved {len(results)} quote prefixes.", {"count": len(results)})
+
+
 __all__ = [
     "CrmStateSnapshot",
     "ValidationResult",
@@ -374,4 +649,26 @@ __all__ = [
     "validate_create_quote",
     "validate_upload_document",
     "validate_modify_opportunity",
+    "validate_create_new_contact",
+    "validate_add_note",
+    "validate_modify_client",
+    "validate_modify_quote",
+    "validate_modify_contact",
+    "validate_delete_opportunity",
+    "validate_delete_quote",
+    "validate_cancel_quote",
+    "validate_clone_opportunity",
+    "validate_client_search",
+    "validate_opportunity_search",
+    "validate_contact_search",
+    "validate_quote_search",
+    "validate_contract_search",
+    "validate_company_search",
+    "validate_view_opportunity_details",
+    "validate_opportunity_details",
+    "validate_quote_details",
+    "validate_compare_quotes",
+    "validate_compare_quote_details",
+    "validate_summarize_opportunities",
+    "validate_quote_prefixes",
 ]
