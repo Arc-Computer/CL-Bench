@@ -49,22 +49,22 @@ create_contract
 
 ## Metadata Completeness Analysis
 
-**Sample Size**: 50 scenarios
+| Entity | Total | Coverage Highlights |
+|--------|-------|---------------------|
+| Client | 64 | Owner, industry, and branded email populated for 64/64 records |
+| Contact | 46 | First/last name, title, and email populated for 46/46 records |
+| Opportunity | 52 | Stage, owner, probability, and amount populated for 52/52 records |
+| Quote | 30 | Amount and status populated for 30/30 records |
 
-### Sparse Scenarios (Sample)
+- Deterministic enrichment now derives natural names, roles, and domains from canonical scenario data.
+- Mock CRM seeding no longer relies on placeholder owners or contacts; missing metadata raises during generation.
+- Scenario tags include per-entity identifiers so chained workflows can maintain context across segments.
 
-| Scenario ID | Tool | Entity Type | Missing Fields |
-|-------------|------|-------------|----------------|
-| SC-00055 | view_opportunity_details | Opportunity | name, probability, owner |
-| SC-00452 | modify_quote | Quote | status, quote_prefix |
-| SC-00084 | cancel_quote | Quote | amount, quote_prefix |
-| SC-00356 | modify_contact | Contact | first_name, last_name, phone |
-| SC-00038 | create_new_contact | Contact | title, email, phone |
-| SC-00454 | quote_details | Quote | amount, status, quote_prefix |
-| SC-00161 | quote_details | Quote | amount, status, quote_prefix |
-| SC-00228 | compare_quotes | Quote | amount, status, quote_prefix |
-| SC-00089 | cancel_quote | Quote | amount, status, quote_prefix |
-| SC-00385 | modify_opportunity | Opportunity | name, amount, probability, owner |
+## Scenario Tagging for Chained Workflows
+
+- `ScenarioRepository.scenario_tags` surfaces intent, primary entity, stage/status, and contact roles for every scenario.
+- `ScenarioRepository.find_scenarios(expected_tool=..., tag_filters=...)` enables chaining to request specific stages (e.g., `{"opportunity_stage": "Negotiation"}`) while honoring success/failure splits.
+- `chain_conversation_generator` now forwards tag metadata to the Curator selector, so LLM-based sampling can target precise entities without manual overrides.
 
 ## Template References
 

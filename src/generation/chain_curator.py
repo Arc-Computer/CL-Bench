@@ -5,7 +5,7 @@ This module implements Curator LLM classes following Bespoke patterns:
 - ChainUtteranceGenerator: Generates user utterances for chained conversations
 """
 
-from typing import Any, Dict, List, Mapping, Sequence
+from typing import Any, Dict, List, Mapping
 
 from datasets import Dataset
 from pydantic import BaseModel, Field
@@ -91,7 +91,6 @@ Return selections as JSON following the ScenarioSelectionResponse schema."""
     def parse(self, input: Dict[str, Any], response: ScenarioSelectionResponse) -> List[Dict[str, Any]]:
         """Parse response into list of selection dictionaries."""
         workflow_category = input["workflow_category"]
-        turn_templates = input["turn_templates"]
 
         results = []
         for selection in response.selections:

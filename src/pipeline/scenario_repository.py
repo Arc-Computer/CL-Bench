@@ -12,7 +12,9 @@ import json
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, Iterator, Mapping, MutableMapping, Optional, Sequence
+from typing import Any, Callable, Dict, Iterable, Iterator, Mapping, MutableMapping, Optional, Sequence
+
+from src.pipeline.metadata_enrichment import enrich_entity_metadata
 
 
 TARGET_ENTITY_TYPES: tuple[str, ...] = ("Client", "Contact", "Opportunity", "Quote", "Contract")
@@ -29,6 +31,24 @@ TASK_NAME_OVERRIDES: Mapping[str, str] = {
     "create_new_contract": "create_contract",
 }
 
+# Tools whose expected arguments contain authoritative entity metadata (as opposed to search filters).
+TOOLS_WITH_ENTITY_PAYLOAD: frozenset[str] = frozenset(
+    {
+        "create_new_client",
+        "modify_client",
+        "create_new_contact",
+        "modify_contact",
+        "create_new_opportunity",
+        "modify_opportunity",
+        "create_quote",
+        "modify_quote",
+        "create_contract",
+        "add_note",
+        "upload_document",
+        "cancel_quote",
+    }
+)
+
 
 @dataclass(frozen=True)
 class ScenarioRecord:
@@ -36,6 +56,7 @@ class ScenarioRecord:
 
     scenario_id: str
     task: str
+    intent: str
     expected_tool: str
     expected_args: Dict[str, Any]
     setup_entities: Dict[str, Any]
@@ -65,7 +86,9 @@ class ScenarioRepository:
             self._scenarios
         )
         self._scenarios_by_id = {record.scenario_id: record for record in self._scenarios}
-        self._entity_metadata = self._build_entity_metadata(self._scenarios)
+        base_metadata = self._build_entity_metadata(self._scenarios)
+        self._entity_metadata = enrich_entity_metadata(base_metadata, self._scenarios, ENTITY_ID_KEYS)
+        self._scenario_tags = self._build_scenario_tags(self._scenarios)
         self._task_weights = self._load_task_weights(task_weights_path)
         self._task_tool_set = set(self._task_weights)
 
@@ -89,6 +112,10 @@ class ScenarioRepository:
     @property
     def entity_metadata(self) -> Mapping[str, Mapping[str, Mapping[str, Any]]]:
         return self._entity_metadata
+
+    @property
+    def scenario_tags(self) -> Mapping[str, Mapping[str, Any]]:
+        return self._scenario_tags
 
     def get_scenario(self, scenario_id: str) -> ScenarioRecord:
         try:
@@ -121,6 +148,30 @@ class ScenarioRepository:
             "unexpected_scenario_tools": tuple(self._task_coverage["unexpected_scenario_tools"]),
         }
 
+    def find_scenarios(
+        self,
+        *,
+        expected_tool: Optional[str] = None,
+        expect_success: Optional[bool] = None,
+        tag_filters: Optional[Mapping[str, Any]] = None,
+    ) -> Sequence[ScenarioRecord]:
+        """Return scenarios matching the provided filters."""
+
+        tag_filters = tag_filters or {}
+        results: list[ScenarioRecord] = []
+
+        for record in self._scenarios:
+            if expected_tool and record.expected_tool != expected_tool:
+                continue
+            if expect_success is not None and record.expect_success != expect_success:
+                continue
+            tags = self._scenario_tags.get(record.scenario_id, {})
+            if not _tags_match(tags, tag_filters):
+                continue
+            results.append(record)
+
+        return results
+
     # ------------------------------------------------------------------ loading helpers
 
     @staticmethod
@@ -144,6 +195,7 @@ class ScenarioRepository:
                     ScenarioRecord(
                         scenario_id=record["scenario_id"],
                         task=record.get("task", ""),
+                        intent=record.get("intent", ""),
                         expected_tool=record["expected_tool"],
                         expected_args=record.get("expected_args", {}) or {},
                         setup_entities=record.get("setup_entities", {}) or {},
@@ -223,7 +275,10 @@ class ScenarioRepository:
                     if id_field:
                         metadata.setdefault(id_field, entity_id)
 
-            # Enrich metadata with scenario arguments.
+            if scenario.expected_tool not in TOOLS_WITH_ENTITY_PAYLOAD:
+                continue
+
+            # Enrich metadata with scenario arguments for tools that surface authoritative values.
             for key, value in self._iter_properties(scenario.expected_args):
                 if key in ENTITY_ID_KEYS:
                     candidate_types = self._entity_properties_index.get(key, ())
@@ -237,6 +292,7 @@ class ScenarioRepository:
                         metadata = pools.setdefault(primary_entity, {}).setdefault(primary_id, {})
                         metadata[key] = value
                     continue
+
                 candidate_types = self._entity_properties_index.get(key, ())
                 if not candidate_types:
                     continue
@@ -251,6 +307,74 @@ class ScenarioRepository:
                         metadata[key] = value
 
         return pools
+
+    def _build_scenario_tags(self, scenarios: Sequence[ScenarioRecord]) -> Mapping[str, Mapping[str, Any]]:
+        tags: dict[str, dict[str, Any]] = {}
+        for record in scenarios:
+            tags[record.scenario_id] = self._derive_tags_for_scenario(record)
+        return tags
+
+    def _derive_tags_for_scenario(self, record: ScenarioRecord) -> Mapping[str, Any]:
+        entity_ids = self._collect_entity_ids(record)
+        tags: dict[str, Any] = {
+            "scenario_id": record.scenario_id,
+            "expected_tool": record.expected_tool,
+            "expect_success": record.expect_success,
+            "intent": record.intent,
+            "task": record.task,
+            "primary_entity": self._infer_primary_entity_type(record.expected_tool),
+            "tool_action": _infer_tool_action(record.expected_tool),
+            "failure_category": record.raw.get("failure_category"),
+        }
+
+        if entity_ids:
+            tags["entity_ids"] = {
+                etype: tuple(sorted(values))
+                for etype, values in entity_ids.items()
+                if values
+            }
+
+        client_meta_pool = self._entity_metadata.get("Client", {})
+        contact_meta_pool = self._entity_metadata.get("Contact", {})
+        opportunity_meta_pool = self._entity_metadata.get("Opportunity", {})
+        quote_meta_pool = self._entity_metadata.get("Quote", {})
+
+        client_ids = sorted(entity_ids.get("Client", ()))
+        for client_id in client_ids:
+            client_meta = client_meta_pool.get(client_id, {})
+            if not client_meta:
+                continue
+            tags.setdefault("client_status", client_meta.get("status"))
+            tags.setdefault("client_industry", client_meta.get("industry"))
+            tags.setdefault("client_owner", client_meta.get("owner"))
+            break
+
+        opportunity_ids = sorted(entity_ids.get("Opportunity", ()))
+        for opportunity_id in opportunity_ids:
+            opp_meta = opportunity_meta_pool.get(opportunity_id, {})
+            if not opp_meta:
+                continue
+            tags.setdefault("opportunity_stage", opp_meta.get("stage"))
+            tags.setdefault("opportunity_owner", opp_meta.get("owner"))
+            break
+
+        quote_ids = sorted(entity_ids.get("Quote", ()))
+        for quote_id in quote_ids:
+            quote_meta = quote_meta_pool.get(quote_id, {})
+            if not quote_meta:
+                continue
+            tags.setdefault("quote_status", quote_meta.get("status"))
+            break
+
+        contact_ids = sorted(entity_ids.get("Contact", ()))
+        for contact_id in contact_ids:
+            contact_meta = contact_meta_pool.get(contact_id, {})
+            if not contact_meta:
+                continue
+            tags.setdefault("contact_title", contact_meta.get("title"))
+            break
+
+        return {key: value for key, value in tags.items() if value not in (None, "", (), [])}
 
     # ------------------------------------------------------------------ validation helpers
 
@@ -379,3 +503,41 @@ class ScenarioRepository:
             schema_path=root / "data" / "fake_crm_tables_schema.json",
             task_weights_path=root / "data" / "Agent_tasks.csv",
         )
+
+
+def _infer_tool_action(expected_tool: str) -> str:
+    if expected_tool.startswith("create"):
+        return "create"
+    if expected_tool.startswith("modify") or expected_tool.startswith("update"):
+        return "modify"
+    if expected_tool.startswith("delete") or expected_tool.startswith("cancel"):
+        return "delete"
+    if expected_tool.endswith("_search"):
+        return "search"
+    if expected_tool.startswith("view") or expected_tool.endswith("_details"):
+        return "view"
+    if expected_tool.startswith("compare"):
+        return "compare"
+    if expected_tool.startswith("upload"):
+        return "upload"
+    if expected_tool.startswith("add_"):
+        return "add"
+    if expected_tool.startswith("summarize"):
+        return "summarize"
+    return "execute"
+
+
+def _tags_match(tags: Mapping[str, Any], filters: Mapping[str, Any]) -> bool:
+    for key, required in filters.items():
+        actual = tags.get(key)
+        if callable(required):
+            if not required(actual):
+                return False
+            continue
+        if isinstance(required, (set, tuple, list)):
+            if actual not in required:
+                return False
+            continue
+        if actual != required:
+            return False
+    return True

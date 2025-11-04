@@ -263,12 +263,9 @@ def _select_segment_contexts(
     segment_index: int,
     expect_success: bool,
 ) -> List[TurnGenerationContext]:
-    success_by_tool = repo.success_scenarios_by_tool
-    failure_by_tool = repo.failure_scenarios_by_tool
-
     desired_outcomes: List[bool] = [True] * len(workflow_template.turn_templates)
     if not expect_success:
-        failure_index = _select_failure_turn(workflow_template.turn_templates, failure_by_tool)
+        failure_index = _select_failure_turn(workflow_template.turn_templates, repo.failure_scenarios_by_tool)
         if failure_index is None:
             raise ValueError(
                 f"Segment {segment_index} of workflow {workflow_template.workflow_id} "
@@ -277,19 +274,22 @@ def _select_segment_contexts(
         desired_outcomes[failure_index] = False
 
     available: Dict[str, List[str]] = {}
+    candidate_ids: set[str] = set()
     for idx, turn_template in enumerate(workflow_template.turn_templates, start=1):
         tool_name = turn_template.tool_name
         turn_key = f"turn_{idx}:{tool_name}"
-        if desired_outcomes[idx - 1]:
-            pool = success_by_tool.get(tool_name, [])
-        else:
-            pool = failure_by_tool.get(tool_name, [])
+        pool = repo.find_scenarios(
+            expected_tool=tool_name,
+            expect_success=desired_outcomes[idx - 1],
+        )
         if not pool:
             outcome_str = "success" if desired_outcomes[idx - 1] else "failure"
             raise ValueError(
                 f"No {outcome_str} scenarios available for tool '{tool_name}' in segment {segment_index}."
             )
-        available[turn_key] = [record.scenario_id for record in pool]
+        scenario_ids = [record.scenario_id for record in pool]
+        available[turn_key] = scenario_ids
+        candidate_ids.update(scenario_ids)
 
     selector_input = {
         "segment_index": segment_index,
@@ -303,6 +303,10 @@ def _select_segment_contexts(
             for idx, turn_template in enumerate(workflow_template.turn_templates, start=1)
         ],
         "available_scenarios": available,
+        "scenario_tags": {
+            scenario_id: repo.scenario_tags.get(scenario_id, {})
+            for scenario_id in candidate_ids
+        },
     }
 
     selected_map = _run_scenario_selector(scenario_selector, selector_input)
