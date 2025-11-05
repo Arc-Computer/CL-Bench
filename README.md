@@ -129,6 +129,29 @@ python -m src.run_baseline \
 - `mock` - In-memory (fast, deterministic)
 - `postgres` - Real database (production-realistic)
 
+#### Response Verification
+
+The baseline harness now checks natural-language answers in addition to tool execution. To enable response grading:
+
+- Ensure each conversation turn includes an `expected_response` block, for example:
+
+  ```json
+  {
+    "turn_id": 1,
+    "expected_tool": "client_search",
+    "expected_args": {"name": "Acme Corp"},
+    "expected_response": {
+      "text": "Initiated client_search with name=Acme Corp",
+      "evaluation": "structured",
+      "answers": ["Initiated client_search with name=Acme Corp"]
+    }
+  }
+  ```
+
+- Set the conversation's `verification_mode` to `runtime_response` to trigger the response verifier.
+- Structured responses run through deterministic exact-match and token-level F1 checks. For open-ended grading, set `"evaluation": "judge"` (or `"requires_judge": true`) under `expected_response` and provide an OpenAI API key so LiteLLM can call GPT‑4.1 as the judge.
+- Baseline outputs now log `agent_response`, detailed `response_verification` telemetry, and aggregate metrics in the metadata. The CLI summary prints execution success %, response accuracy %, and the combined rate.
+
 ### Programmatic Usage
 
 ```python
@@ -176,18 +199,20 @@ The benchmark’s multi-turn conversations are built in layers so every turn sta
 
 5. **Harness validation.** `ConversationHarness` replays each conversation against a fresh CRM instance, failing fast if a success segment fails (or vice versa). The CLI (`scripts/generate_conversations.py --mode chain`) wraps this flow—smoke tests print expected vs. actual segment outcomes, while full runs validate every generated conversation before writing `chains.jsonl`.
 
-6. **Reproducible artifacts.** The chained generator exports a manifest (`artifacts/chains/manifest.json`), analytics report (`artifacts/reports/chains_baseline.md`), and a no-fallback verification pass (`scripts/verify_no_fallbacks.py`) whose output lives next to each run log (e.g., `verification_report.json`, `quality_checks.md`). The README and docs capture the exact commands, seeds, and model names used so datasets can be regenerated or scaled (e.g., new workflow chains, alternative Curator backends).
+6. **Reproducible artifacts.** The chained generator exports a manifest (`artifacts/chains/manifest.json`), analytics report (`artifacts/reports/chains_baseline.md`), and a no-fallback verification pass (`scripts/verify_no_fallbacks.py`) whose output lives next to each run log (e.g., `verification_report.json`, `quality_checks.md`). Lint coverage (`analysis/lint_chains.py`) flags duplicate utterances and entity-name conflicts so we can triage conversational drift before baselining. The README and docs capture the exact commands, seeds, and model names used so datasets can be regenerated or scaled (e.g., new workflow chains, alternative Curator backends).
 
 To scale the pipeline, define additional workflow templates/chains, run the generator with your preferred Curator model (Gemini 2.5 Flash or GPT‑5‑mini via LiteLLM), and regenerate the manifest/analytics/verification artifacts. Because every step is validated against the CRM schema (and the no-fallback audit), the resulting dataset remains production-quality without manual clean-up.
 
 ### Current Artifact Snapshot
 
 - **Single-turn scenarios** (validated 60/40 mix): `artifacts/scenarios_500/scenarios_clean.jsonl` (495 records)
-- **Chained conversations** (1,200 conversations, 40% expected failures): `artifacts/conversations_chains/chains.jsonl`
+- **Chained conversations** (1,500 conversations; 900 simple / 450 medium / 150 complex; 40% expected failures): `artifacts/conversations_chains/chains.jsonl`
 - **Manifest**: `artifacts/chains/manifest.json` (includes failure ratio/tolerance flags)
 - **Analytics report**: `artifacts/reports/chains_baseline.md`
-- **Verification log**: `artifacts/conversations_chains/20251105T142324Z/full/verification_report.json`
-- **Quality summary**: `artifacts/conversations_chains/20251105T142324Z/full/quality_checks.md`
+- **Verification log**: `artifacts/conversations_chains/20251105T144453Z/full/verification_report.json`
+- **Lint summary**: `artifacts/conversations_chains/20251105T144453Z/full/lint_report.json`
+- **Quality summary**: `artifacts/conversations_chains/20251105T144453Z/full/quality_checks.md`
+- **Offline baseline (deterministic stub)**: preserved at `artifacts/conversations_chains/20251105T142324Z/full/` for reproducibility comparisons.
 
 ## Integration with Atlas SDK
 

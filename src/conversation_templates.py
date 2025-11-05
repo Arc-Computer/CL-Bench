@@ -636,6 +636,48 @@ CHAIN_ONBOARDING_OPP_DEAL_FAILURE = WorkflowChain(
     description="Onboarding/opp/deal workflow with expected failure in deal pipeline",
 )
 
+# Chain 6 (simple): Client management spot check
+CHAIN_CLIENT_MANAGEMENT_SIMPLE_SUCCESS = WorkflowChain(
+    chain_id="CHAIN-006A",
+    workflow_sequence=["client_management"],
+    success_pattern=[True],
+    entity_handoff_rules={"client_id": "propagate"},
+    description="Single-segment client management refresh (success)",
+)
+
+CHAIN_CLIENT_MANAGEMENT_SIMPLE_FAILURE = WorkflowChain(
+    chain_id="CHAIN-006B",
+    workflow_sequence=["client_management"],
+    success_pattern=[False],
+    entity_handoff_rules={"client_id": "propagate"},
+    description="Single-segment client management refresh (expected failure)",
+)
+
+# Chain 7 (medium): Contact management followed by document workflow
+CHAIN_CONTACT_DOC_MEDIUM_SUCCESS = WorkflowChain(
+    chain_id="CHAIN-007A",
+    workflow_sequence=["contact_management", "document_workflow"],
+    success_pattern=[True, True],
+    entity_handoff_rules={
+        "client_id": "propagate",
+        "contact_id": "propagate",
+        "document_id": "propagate",
+    },
+    description="Contact creation and document workflow without failures",
+)
+
+CHAIN_CONTACT_DOC_MEDIUM_FAILURE = WorkflowChain(
+    chain_id="CHAIN-007B",
+    workflow_sequence=["contact_management", "document_workflow"],
+    success_pattern=[True, False],
+    entity_handoff_rules={
+        "client_id": "propagate",
+        "contact_id": "propagate",
+        "document_id": "propagate",
+    },
+    description="Contact/document workflow with expected document upload failure",
+)
+
 # Registry of all workflow chains
 WORKFLOW_CHAINS: Dict[str, WorkflowChain] = {
     "onboarding_pipeline_contract_success": CHAIN_ONBOARDING_PIPELINE_CONTRACT_SUCCESS,
@@ -648,6 +690,10 @@ WORKFLOW_CHAINS: Dict[str, WorkflowChain] = {
     "search_quote_review_failure": CHAIN_SEARCH_QUOTE_REVIEW_FAILURE,
     "onboarding_opp_deal_success": CHAIN_ONBOARDING_OPP_DEAL_SUCCESS,
     "onboarding_opp_deal_failure": CHAIN_ONBOARDING_OPP_DEAL_FAILURE,
+    "client_management_chain_success": CHAIN_CLIENT_MANAGEMENT_SIMPLE_SUCCESS,
+    "client_management_chain_failure": CHAIN_CLIENT_MANAGEMENT_SIMPLE_FAILURE,
+    "contact_document_medium_success": CHAIN_CONTACT_DOC_MEDIUM_SUCCESS,
+    "contact_document_medium_failure": CHAIN_CONTACT_DOC_MEDIUM_FAILURE,
 }
 
 CHAIN_ALIAS_MAP: Dict[str, List[str]] = {
@@ -670,6 +716,14 @@ CHAIN_ALIAS_MAP: Dict[str, List[str]] = {
     "onboarding_opp_deal": [
         "onboarding_opp_deal_success",
         "onboarding_opp_deal_failure",
+    ],
+    "client_management_chain": [
+        "client_management_chain_success",
+        "client_management_chain_failure",
+    ],
+    "contact_document_medium": [
+        "contact_document_medium_success",
+        "contact_document_medium_failure",
     ],
 }
 
