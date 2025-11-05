@@ -500,23 +500,22 @@ def _select_segment_contexts(
         desired_success = desired_outcomes[idx - 1]
 
         scenario_id = selected_map.get((idx, turn_template.tool_name))
+        if scenario_id is None:
+            raise RuntimeError(
+                "Scenario selector returned no scenario for turn %s (%s) in workflow %s.",
+                idx,
+                turn_template.tool_name,
+                workflow_template.workflow_id,
+            )
         if scenario_id not in candidates:
-            if scenario_id is not None:
-                logger.warning(
-                    "Scenario selector returned invalid scenario '%s' for turn %s (%s). Candidates: %s. Using deterministic fallback.",
-                    scenario_id,
-                    idx,
-                    turn_template.tool_name,
-                    candidates,
-                )
-            else:
-                logger.warning(
-                    "Scenario selector did not provide a scenario for turn %s (%s). Using deterministic fallback from candidates: %s.",
-                    idx,
-                    turn_template.tool_name,
-                    candidates,
-                )
-            scenario_id = sorted(candidates)[0]
+            raise RuntimeError(
+                "Scenario selector chose scenario '%s' for turn %s (%s) in workflow %s but it is not in the curated candidate list %s.",
+                scenario_id,
+                idx,
+                turn_template.tool_name,
+                workflow_template.workflow_id,
+                candidates,
+            )
 
         scenario = repo.get_scenario(scenario_id)
         if scenario.expect_success != desired_success:
