@@ -450,6 +450,171 @@ MULTI_ENTITY_SEARCH = WorkflowTemplate(
     entities_created=[],
 )
 
+# 9. Opportunity Summary (medium, 4 turns)
+OPPORTUNITY_SUMMARY = WorkflowTemplate(
+    workflow_id="WF-009",
+    workflow_category="Opportunity Insights",
+    complexity_level="medium",
+    description="Summarize a client's pipeline and inspect key opportunities",
+    turn_templates=[
+        TurnTemplate(
+            turn_number=1,
+            tool_name="client_search",
+            argument_template={"name": ""},
+            user_utterance_pattern="Pull up {entity_name}",
+            references_previous_turns=[],
+        ),
+        TurnTemplate(
+            turn_number=2,
+            tool_name="opportunity_search",
+            argument_template={"client_id": "{{turn_1.client_id}}", "stage": ""},
+            user_utterance_pattern="Show their opportunities in {stage}",
+            references_previous_turns=[1],
+        ),
+        TurnTemplate(
+            turn_number=3,
+            tool_name="summarize_opportunities",
+            argument_template={
+                "client_id": "{{turn_1.client_id}}",
+                "stage": "",
+                "owner": "",
+            },
+            user_utterance_pattern="Summarize those opps for {stage} owned by {owner}",
+            references_previous_turns=[1],
+        ),
+        TurnTemplate(
+            turn_number=4,
+            tool_name="view_opportunity_details",
+            argument_template={"opportunity_id": "{{turn_2.opportunity_id}}"},
+            user_utterance_pattern="Open details for {opportunity_name}",
+            references_previous_turns=[2],
+        ),
+    ],
+    required_initial_entities=["client", "opportunity"],
+    entities_created=[],
+)
+
+# 10. Quote Cleanup (medium, 3 turns)
+QUOTE_CLEANUP = WorkflowTemplate(
+    workflow_id="WF-010",
+    workflow_category="Quote Management",
+    complexity_level="medium",
+    description="Review active quotes, cancel outdated ones, and remove them",
+    turn_templates=[
+        TurnTemplate(
+            turn_number=1,
+            tool_name="quote_search",
+            argument_template={"opportunity_id": "", "status": ""},
+            user_utterance_pattern="Find quotes for {opportunity_name} in {status} status",
+            references_previous_turns=[],
+        ),
+        TurnTemplate(
+            turn_number=2,
+            tool_name="cancel_quote",
+            argument_template={"quote_id": ""},
+            user_utterance_pattern="Cancel that quote",
+            references_previous_turns=[1],
+        ),
+        TurnTemplate(
+            turn_number=3,
+            tool_name="delete_quote",
+            argument_template={"quote_id": ""},
+            user_utterance_pattern="Delete the canceled quote",
+            references_previous_turns=[1],
+        ),
+    ],
+    required_initial_entities=["quote", "opportunity"],
+    entities_created=[],
+)
+
+# 11. Contract Review (medium, 3 turns)
+CONTRACT_REVIEW = WorkflowTemplate(
+    workflow_id="WF-011",
+    workflow_category="Contract Management",
+    complexity_level="medium",
+    description="Locate contracts and attach supporting collateral or notes",
+    turn_templates=[
+        TurnTemplate(
+            turn_number=1,
+            tool_name="contract_search",
+            argument_template={"client_id": "", "status": ""},
+            user_utterance_pattern="Find contracts for {entity_name} in {status}",
+            references_previous_turns=[],
+        ),
+        TurnTemplate(
+            turn_number=2,
+            tool_name="upload_document",
+            argument_template={
+                "entity_type": "Contract",
+                "entity_id": "{{turn_1.contract_id}}",
+                "file_name": "",
+            },
+            user_utterance_pattern="Upload supporting documents to that contract",
+            references_previous_turns=[1],
+        ),
+        TurnTemplate(
+            turn_number=3,
+            tool_name="add_note",
+            argument_template={
+                "entity_type": "Contract",
+                "entity_id": "{{turn_1.contract_id}}",
+                "content": "",
+            },
+            user_utterance_pattern="Add an internal note about the contract",
+            references_previous_turns=[1],
+        ),
+    ],
+    required_initial_entities=["contract", "client"],
+    entities_created=["document"],
+)
+
+# 12. Opportunity Clone (medium, 4 turns)
+OPPORTUNITY_CLONE = WorkflowTemplate(
+    workflow_id="WF-012",
+    workflow_category="Opportunity Management",
+    complexity_level="medium",
+    description="Clone an existing opportunity and advance the duplicate",
+    turn_templates=[
+        TurnTemplate(
+            turn_number=1,
+            tool_name="opportunity_search",
+            argument_template={"client_id": "", "name": ""},
+            user_utterance_pattern="Find {opportunity_name} for {entity_name}",
+            references_previous_turns=[],
+        ),
+        TurnTemplate(
+            turn_number=2,
+            tool_name="clone_opportunity",
+            argument_template={"opportunity_id": "{{turn_1.opportunity_id}}"},
+            user_utterance_pattern="Clone that opportunity",
+            references_previous_turns=[1],
+        ),
+        TurnTemplate(
+            turn_number=3,
+            tool_name="modify_opportunity",
+            argument_template={
+                "opportunity_id": "{{turn_2.opportunity_id}}",
+                "updates": {"stage": "", "probability": 0},
+            },
+            user_utterance_pattern="Update the cloned opportunity to {stage} at {probability}%",
+            references_previous_turns=[2],
+        ),
+        TurnTemplate(
+            turn_number=4,
+            tool_name="upload_document",
+            argument_template={
+                "entity_type": "Opportunity",
+                "entity_id": "{{turn_2.opportunity_id}}",
+                "file_name": "",
+            },
+            user_utterance_pattern="Attach supporting docs to the cloned opportunity",
+            references_previous_turns=[2],
+        ),
+    ],
+    required_initial_entities=["client", "opportunity"],
+    entities_created=["opportunity", "document"],
+)
+
 
 # Registry of all workflow templates
 WORKFLOW_TEMPLATES: Dict[str, WorkflowTemplate] = {
@@ -461,6 +626,10 @@ WORKFLOW_TEMPLATES: Dict[str, WorkflowTemplate] = {
     "deal_pipeline": DEAL_PIPELINE,
     "document_workflow": DOCUMENT_WORKFLOW,
     "multi_entity_search": MULTI_ENTITY_SEARCH,
+    "opportunity_summary": OPPORTUNITY_SUMMARY,
+    "quote_cleanup": QUOTE_CLEANUP,
+    "contract_review": CONTRACT_REVIEW,
+    "opportunity_clone": OPPORTUNITY_CLONE,
 }
 
 
@@ -678,6 +847,85 @@ CHAIN_CONTACT_DOC_MEDIUM_FAILURE = WorkflowChain(
     description="Contact/document workflow with expected document upload failure",
 )
 
+# Chain 8: Quote remediation after generation
+CHAIN_QUOTE_REMEDIATION_SUCCESS = WorkflowChain(
+    chain_id="CHAIN-008A",
+    workflow_sequence=["quote_generation", "quote_cleanup"],
+    success_pattern=[True, True],
+    entity_handoff_rules={
+        "client_id": "propagate",
+        "opportunity_id": "propagate",
+        "quote_id": "propagate",
+    },
+    description="Generate quotes and clean up stale or duplicate artifacts",
+)
+
+CHAIN_QUOTE_REMEDIATION_FAILURE = WorkflowChain(
+    chain_id="CHAIN-008B",
+    workflow_sequence=["quote_generation", "quote_cleanup"],
+    success_pattern=[True, False],
+    entity_handoff_rules={
+        "client_id": "propagate",
+        "opportunity_id": "propagate",
+        "quote_id": "propagate",
+    },
+    description="Quote lifecycle with expected failure during cleanup",
+)
+
+# Chain 9: Opportunity insights followed by contract review
+CHAIN_SUMMARY_CONTRACT_SUCCESS = WorkflowChain(
+    chain_id="CHAIN-009A",
+    workflow_sequence=["opportunity_summary", "contract_review"],
+    success_pattern=[True, True],
+    entity_handoff_rules={
+        "client_id": "propagate",
+        "opportunity_id": "propagate",
+        "contract_id": "propagate",
+        "document_id": "propagate",
+    },
+    description="Summarize pipeline health then review associated contracts",
+)
+
+CHAIN_SUMMARY_CONTRACT_FAILURE = WorkflowChain(
+    chain_id="CHAIN-009B",
+    workflow_sequence=["opportunity_summary", "contract_review"],
+    success_pattern=[True, False],
+    entity_handoff_rules={
+        "client_id": "propagate",
+        "opportunity_id": "propagate",
+        "contract_id": "propagate",
+        "document_id": "propagate",
+    },
+    description="Contract review workflow with expected collateral upload failure",
+)
+
+# Chain 10: Opportunity clone and expansion
+CHAIN_CLONE_EXPANSION_SUCCESS = WorkflowChain(
+    chain_id="CHAIN-010A",
+    workflow_sequence=["opportunity_management", "opportunity_clone"],
+    success_pattern=[True, True],
+    entity_handoff_rules={
+        "client_id": "propagate",
+        "opportunity_id": "propagate",
+        "contact_id": "propagate",
+        "document_id": "propagate",
+    },
+    description="Advance an opportunity then clone and enrich the duplicate",
+)
+
+CHAIN_CLONE_EXPANSION_FAILURE = WorkflowChain(
+    chain_id="CHAIN-010B",
+    workflow_sequence=["opportunity_management", "opportunity_clone"],
+    success_pattern=[True, False],
+    entity_handoff_rules={
+        "client_id": "propagate",
+        "opportunity_id": "propagate",
+        "contact_id": "propagate",
+        "document_id": "propagate",
+    },
+    description="Opportunity clone workflow with expected failure during expansion",
+)
+
 # Registry of all workflow chains
 WORKFLOW_CHAINS: Dict[str, WorkflowChain] = {
     "onboarding_pipeline_contract_success": CHAIN_ONBOARDING_PIPELINE_CONTRACT_SUCCESS,
@@ -694,6 +942,12 @@ WORKFLOW_CHAINS: Dict[str, WorkflowChain] = {
     "client_management_chain_failure": CHAIN_CLIENT_MANAGEMENT_SIMPLE_FAILURE,
     "contact_document_medium_success": CHAIN_CONTACT_DOC_MEDIUM_SUCCESS,
     "contact_document_medium_failure": CHAIN_CONTACT_DOC_MEDIUM_FAILURE,
+    "quote_remediation_success": CHAIN_QUOTE_REMEDIATION_SUCCESS,
+    "quote_remediation_failure": CHAIN_QUOTE_REMEDIATION_FAILURE,
+    "summary_contract_success": CHAIN_SUMMARY_CONTRACT_SUCCESS,
+    "summary_contract_failure": CHAIN_SUMMARY_CONTRACT_FAILURE,
+    "clone_expansion_success": CHAIN_CLONE_EXPANSION_SUCCESS,
+    "clone_expansion_failure": CHAIN_CLONE_EXPANSION_FAILURE,
 }
 
 CHAIN_ALIAS_MAP: Dict[str, List[str]] = {
@@ -724,6 +978,18 @@ CHAIN_ALIAS_MAP: Dict[str, List[str]] = {
     "contact_document_medium": [
         "contact_document_medium_success",
         "contact_document_medium_failure",
+    ],
+    "quote_remediation": [
+        "quote_remediation_success",
+        "quote_remediation_failure",
+    ],
+    "summary_contract": [
+        "summary_contract_success",
+        "summary_contract_failure",
+    ],
+    "clone_expansion": [
+        "clone_expansion_success",
+        "clone_expansion_failure",
     ],
 }
 

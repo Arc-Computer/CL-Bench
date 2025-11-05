@@ -24,6 +24,18 @@ chain = WORKFLOW_CHAINS["onboarding_pipeline_contract_success"]
 
 Every production workflow has a paired failure-bearing variant (suffix `_failure`). When you need both, use `expand_chain_ids(["onboarding_pipeline_contract"])` to expand the legacy alias into discrete success/failure entries.
 
+### New Template Coverage (Phase 5)
+
+- **WF-009 Opportunity Summary** – surfaces `summarize_opportunities` and `view_opportunity_details` after a client/opportunity search.
+- **WF-010 Quote Cleanup** – applies `quote_search`, `cancel_quote`, and `delete_quote` to retire outdated quotes.
+- **WF-011 Contract Review** – runs `contract_search`, uploads collateral to the contract record, and captures a compliance note.
+- **WF-012 Opportunity Clone** – clones an active opportunity, advances the duplicate, and attaches supporting documents.
+
+New chain aliases pair these templates with existing flows:
+- `quote_remediation` – `quote_generation` → `quote_cleanup`
+- `summary_contract` – `opportunity_summary` → `contract_review`
+- `clone_expansion` – `opportunity_management` → `opportunity_clone`
+
 ### Curator Structured Output
 
 The chained generator exposes Bespoke Curator outputs through explicit Pydantic models:
@@ -199,7 +211,7 @@ PYTHONPATH=. python scripts/validate_chains.py \
     --smoke-test
 ```
 
-### Phase 5 Scaled Generation (1,200 conversations)
+### Phase 5 Scaled Generation (1,500 conversations)
 
 1. Export API keys stored in `.env`:
 
@@ -216,42 +228,44 @@ PYTHONPATH=. python scripts/validate_chains.py \
         --output-dir artifacts/conversations_chains/$(date -u +"%Y%m%dT%H%M%SZ")/smoke
     ```
 
-3. Launch the scaled generation. For the production dataset we run Curator online (`CURATOR_SIMPLE_DATASET=0`) in three passes to preserve the 900/450/150 complexity mix before merging:
+3. Launch the scaled generation. For the Phase 5 refresh we run Curator online (`CURATOR_SIMPLE_DATASET=0`) in three passes targeting roughly 400 simple / 600 medium / 500 complex chains while keeping the 60/40 success mix:
 
     ```bash
     export TIMESTAMP=$(date -u +"%Y%m%dT%H%M%SZ")
     mkdir -p artifacts/conversations_chains/${TIMESTAMP}/{simple,medium,complex,full}
 
-    # 900 simple (client management) conversations
+    # 400 simple (client + document hygiene) conversations
     CURATOR_SIMPLE_DATASET=0 PYTHONPATH=. python scripts/generate_conversations.py \
         --mode chain \
-        --count 900 \
-        --seed 42 \
+        --count 400 \
+        --seed 101 \
         --model-name gpt-4.1-mini \
         --chain-id client_management_chain \
+        --chain-id contact_document_note \
         --output-dir artifacts/conversations_chains/${TIMESTAMP}/simple \
         | tee artifacts/conversations_chains/${TIMESTAMP}/simple/run.log
 
-    # 450 medium (contact + document workflow) conversations
+    # 600 medium (quote remediation, pipeline insights)
     CURATOR_SIMPLE_DATASET=0 PYTHONPATH=. python scripts/generate_conversations.py \
         --mode chain \
-        --count 450 \
-        --seed 43 \
+        --count 600 \
+        --seed 102 \
         --model-name gpt-4.1-mini \
-        --chain-id contact_document_medium \
+        --chain-id client_opp_quote \
+        --chain-id search_quote_review \
+        --chain-id quote_remediation \
+        --chain-id summary_contract \
+        --chain-id clone_expansion \
         --output-dir artifacts/conversations_chains/${TIMESTAMP}/medium \
         | tee artifacts/conversations_chains/${TIMESTAMP}/medium/run.log
 
-    # 150 complex (three-segment chains) conversations
+    # 500 complex (multi-segment onboarding / deal pipeline) conversations
     CURATOR_SIMPLE_DATASET=0 PYTHONPATH=. python scripts/generate_conversations.py \
         --mode chain \
-        --count 150 \
-        --seed 44 \
+        --count 500 \
+        --seed 103 \
         --model-name gpt-4.1-mini \
         --chain-id onboarding_pipeline_contract \
-        --chain-id client_opp_quote \
-        --chain-id contact_document_note \
-        --chain-id search_quote_review \
         --chain-id onboarding_opp_deal \
         --output-dir artifacts/conversations_chains/${TIMESTAMP}/complex \
         | tee artifacts/conversations_chains/${TIMESTAMP}/complex/run.log
