@@ -176,9 +176,18 @@ The benchmark’s multi-turn conversations are built in layers so every turn sta
 
 5. **Harness validation.** `ConversationHarness` replays each conversation against a fresh CRM instance, failing fast if a success segment fails (or vice versa). The CLI (`scripts/generate_conversations.py --mode chain`) wraps this flow—smoke tests print expected vs. actual segment outcomes, while full runs validate every generated conversation before writing `chains.jsonl`.
 
-6. **Reproducible artifacts.** Phase 5 adds a manifest (`artifacts/chains/manifest.json`) plus analytics notebooks/scripts that summarize counts, success ratios, and failure categories. The README and docs capture the exact commands, seeds, and model names used so datasets can be regenerated or scaled (e.g., new workflow chains, alternative Curator backends).
+6. **Reproducible artifacts.** Phase 5 adds a manifest (`artifacts/chains/manifest.json`), analytics reports (`artifacts/reports/chains_baseline.md`), and an automated verification pass (`scripts/verify_no_fallbacks.py`) whose output lives next to each run log (e.g., `verification_report.json`, `quality_checks.md`). The README and docs capture the exact commands, seeds, and model names used so datasets can be regenerated or scaled (e.g., new workflow chains, alternative Curator backends).
 
-To scale the pipeline, define additional workflow templates/chains, run the generator with your preferred Curator model (Gemini 2.5 Flash or GPT‑5‑mini via LiteLLM), and regenerate the manifest/analytics artifacts. Because every step is validated against the CRM schema, the resulting dataset remains production-quality without manual clean-up.
+To scale the pipeline, define additional workflow templates/chains, run the generator with your preferred Curator model (Gemini 2.5 Flash or GPT‑5‑mini via LiteLLM), and regenerate the manifest/analytics/verification artifacts. Because every step is validated against the CRM schema (and the no-fallback audit), the resulting dataset remains production-quality without manual clean-up.
+
+### Current Artifact Snapshot
+
+- **Single-turn scenarios** (validated 60/40 mix): `artifacts/scenarios_500/scenarios_clean.jsonl` (494 records)
+- **Chained conversations** (200 conversations, 40 % expected failures): `artifacts/conversations_chains/chains.jsonl`
+- **Manifest**: `artifacts/chains/manifest.json` (includes failure ratio/tolerance flags)
+- **Analytics report**: `artifacts/reports/chains_baseline.md`
+- **Verification log**: `artifacts/conversations_chains/20251105T033709Z/full/verification_report.json`
+- **Quality summary**: `artifacts/conversations_chains/20251105T033709Z/full/quality_checks.md`
 
 ## Integration with Atlas SDK
 

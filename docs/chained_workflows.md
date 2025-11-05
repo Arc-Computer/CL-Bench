@@ -250,10 +250,15 @@ PYTHONPATH=. python analysis/generate_chains_report.py \
     --output artifacts/reports/chains_baseline.md \
     --seed 42 \
     --model-name gpt-4.1-mini
+
+PYTHONPATH=. python scripts/verify_no_fallbacks.py \
+    --artifacts-dir artifacts/conversations_chains/<timestamp>/full \
+    --output artifacts/conversations_chains/<timestamp>/full/verification_report.json
 ```
 
 - `analysis/chains_manifest.py` captures counts per chain, success/failure mix, average turn and segment lengths, and the workflow definitions actually sampled.
 - `analysis/generate_chains_report.py` renders the Phase 5 analytics snapshot. Append `--baseline path/to/log.jsonl` for any Phase 6 baseline runs (Claude 4.5, GPT‑4.1, etc.) once those logs exist.
+- `scripts/verify_no_fallbacks.py` enforces the no-fallback/placeholder policy across the exported JSONL files; its report and a short `quality_checks.md` summary should live beside the run log for future audits.
 
 ## Success/Failure Distribution
 
@@ -280,3 +285,14 @@ All generated conversations must:
 - No placeholder values or artificial data
 - All conversations must execute successfully
 - Offline mode mirrors the same guarantees—deterministic utterances replace Curator calls, never generic placeholders
+
+## Reference Run (2025-11-05)
+
+- Conversations: `artifacts/conversations_chains/chains.jsonl` (200 conversations, 40% expected failures)
+- Manifest: `artifacts/chains/manifest.json`
+- Report: `artifacts/reports/chains_baseline.md`
+- Run log: `artifacts/conversations_chains/20251105T033709Z/full/run.log`
+- Verification report: `artifacts/conversations_chains/20251105T033709Z/full/verification_report.json`
+- Quality summary: `artifacts/conversations_chains/20251105T033709Z/full/quality_checks.md`
+
+Use this run as the seed corpus for Phase 6 baselines and scaling exercises; the manifest guards the 60/40 split and every failure chain variant contains a deterministic failure segment validated by the harness.
