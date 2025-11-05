@@ -49,10 +49,7 @@ class ScenarioSelector(curator.LLM):
         if backend_params:
             merged_backend.update(backend_params)
 
-        default_generation = {
-            "temperature": 0.3,
-            "max_output_tokens": 1000,
-        }
+        default_generation = _default_generation_params(model_name, 1000)
         merged_generation = dict(default_generation)
         if generation_params:
             merged_generation.update(generation_params)
@@ -76,7 +73,7 @@ class ScenarioSelector(curator.LLM):
 
         turn_info: List[str] = []
         for turn in turn_templates:
-            turn_number = turn.get("turn_number")
+            turn_number = turn.turn_number
             tool_name = turn.tool_name
             desired = turn.desired_outcome
             persona = turn.persona_hint or "default persona"
@@ -140,8 +137,15 @@ class ScenarioSelector(curator.LLM):
         if not tags:
             return "  (no tag metadata provided)"
         lines: List[str] = []
-        for scenario_id, metadata in sorted(tags.items()):
+        max_lines = 20
+        for idx, (scenario_id, metadata) in enumerate(sorted(tags.items())):
+            if idx >= max_lines:
+                remaining = len(tags) - max_lines
+                lines.append(f"  ... and {remaining} more tagged scenarios")
+                break
             formatted = ", ".join(f"{key}={value}" for key, value in sorted(metadata.items()))
+            if len(formatted) > 200:
+                formatted = formatted[:197] + "..."
             lines.append(f"  {scenario_id}: {formatted or 'no tags'}")
         return "\n".join(lines)
 
@@ -167,10 +171,7 @@ class ChainUtteranceGenerator(curator.LLM):
         if backend_params:
             merged_backend.update(backend_params)
 
-        default_generation = {
-            "temperature": 0.3,
-            "max_output_tokens": 500,
-        }
+        default_generation = _default_generation_params(model_name, 500)
         merged_generation = dict(default_generation)
         if generation_params:
             merged_generation.update(generation_params)
@@ -254,3 +255,21 @@ Return utterances as JSON following the TurnUtteranceResponse schema."""
                 }
             )
         return results
+
+
+def _default_generation_params(model_name: str, max_tokens: int) -> Dict[str, Any]:
+    """Build generation params compatible with the selected model provider."""
+    normalized = model_name.lower()
+    params: Dict[str, Any] = {}
+    if not normalized.startswith("gpt-5"):
+        params["temperature"] = 0.3
+
+    if "gemini" in normalized or "claude" in normalized or "haiku" in normalized:
+        params["max_output_tokens"] = max_tokens
+    elif any(prefix in normalized for prefix in ("gpt-4.1", "gpt-4o", "gpt-5", "o1", "o3")):
+        params["max_completion_tokens"] = max_tokens
+    elif "gpt" in normalized:
+        params["max_tokens"] = max_tokens
+    else:
+        params["max_output_tokens"] = max_tokens
+    return params

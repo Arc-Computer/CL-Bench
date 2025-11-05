@@ -1,0 +1,129 @@
+{
+  "chains": {
+    "CHAIN-001": {
+      "average_segments": 3,
+      "average_turns": 15,
+      "average_turns_per_segment": 5,
+      "conversation_count": 40,
+      "description": "Full client lifecycle: onboard new client, manage deal pipeline, generate contract",
+      "failed_conversations": 0,
+      "segment_success_counts": {
+        "actual:success|expected:success": 120
+      },
+      "segment_totals": 120,
+      "success_pattern": [
+        true,
+        true,
+        true
+      ],
+      "successful_conversations": 40,
+      "workflow_sequence": [
+        "client_onboarding",
+        "deal_pipeline",
+        "quote_generation"
+      ]
+    },
+    "CHAIN-002": {
+      "average_segments": 3,
+      "average_turns": 10,
+      "average_turns_per_segment": 3.33,
+      "conversation_count": 40,
+      "description": "Manage existing client, create/modify opportunity, generate quote",
+      "failed_conversations": 0,
+      "segment_success_counts": {
+        "actual:success|expected:success": 120
+      },
+      "segment_totals": 120,
+      "success_pattern": [
+        true,
+        true,
+        true
+      ],
+      "successful_conversations": 40,
+      "workflow_sequence": [
+        "client_management",
+        "opportunity_management",
+        "quote_generation"
+      ]
+    },
+    "CHAIN-003": {
+      "average_segments": 3,
+      "average_turns": 8,
+      "average_turns_per_segment": 2.67,
+      "conversation_count": 40,
+      "description": "Manage contact, upload documents, add notes",
+      "failed_conversations": 0,
+      "segment_success_counts": {
+        "actual:success|expected:success": 120
+      },
+      "segment_totals": 120,
+      "success_pattern": [
+        true,
+        true,
+        true
+      ],
+      "successful_conversations": 40,
+      "workflow_sequence": [
+        "contact_management",
+        "document_workflow",
+        "client_management"
+      ]
+    },
+    "CHAIN-004": {
+      "average_segments": 3,
+      "average_turns": 12,
+      "average_turns_per_segment": 4,
+      "conversation_count": 40,
+      "description": "Search opportunities, generate quote, review all related entities",
+      "failed_conversations": 0,
+      "segment_success_counts": {
+        "actual:success|expected:success": 120
+      },
+      "segment_totals": 120,
+      "success_pattern": [
+        true,
+        true,
+        true
+      ],
+      "successful_conversations": 40,
+      "workflow_sequence": [
+        "multi_entity_search",
+        "quote_generation",
+        "multi_entity_search"
+      ]
+    },
+    "CHAIN-005": {
+      "average_segments": 3,
+      "average_turns": 15,
+      "average_turns_per_segment": 5,
+      "conversation_count": 40,
+      "description": "Onboard client, manage opportunities, track deal pipeline",
+      "failed_conversations": 0,
+      "segment_success_counts": {
+        "actual:success|expected:success": 120
+      },
+      "segment_totals": 120,
+      "success_pattern": [
+        true,
+        true,
+        true
+      ],
+      "successful_conversations": 40,
+      "workflow_sequence": [
+        "client_onboarding",
+        "opportunity_management",
+        "deal_pipeline"
+      ]
+    }
+  },
+  "dataset_path": "artifacts/conversations_chains/20251104T222756Z/full/chains.jsonl",
+  "failed_conversations": 0,
+  "generated_at": "2025-11-04T23:27:36.522052+00:00",
+  "model": "gpt-4.1-mini",
+  "overall_segment_outcomes": {
+    "actual:success|expected:success": 600
+  },
+  "seed": 42,
+  "successful_conversations": 200,
+  "total_conversations": 200
+}
