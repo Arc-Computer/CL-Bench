@@ -214,6 +214,8 @@ To scale the pipeline, define additional workflow templates/chains, run the gene
 - **Quality summary**: `artifacts/conversations_chains/20251105T144453Z/full/quality_checks.md`
 - **Offline baseline (deterministic stub)**: preserved at `artifacts/conversations_chains/20251105T142324Z/full/` for reproducibility comparisons.
 
+**Complexity Dimensions**: The benchmark measures two orthogonal difficulty axes. *Complex* chains test long-context tracking over 3-segment workflows (8-12 turns) with terminal failures. *Medium* chains test error recovery through mid-chain failures that require reasoning with partial context and handling template references to failed turns. Both dimensions are essential for production-robust agents.
+
 ## Integration with Atlas SDK
 
 ### Runtime Evaluation
