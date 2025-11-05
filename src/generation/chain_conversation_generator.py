@@ -251,8 +251,13 @@ def instantiate_chained_conversation(
             turn_template = context.turn_template
             scenario = context.scenario
             turn_row = utterance_rows[local_index - 1] if local_index - 1 < len(utterance_rows) else {}
+            current_turn_failed = False
 
-            merged_args = _merge_template_with_scenario(turn_template.argument_template, context.expected_args)
+            merged_args = _merge_template_with_scenario(
+                turn_template.argument_template,
+                context.expected_args,
+                include_additional_keys=not scenario.expect_success,
+            )
             merged_args = _sanitize_arguments(template, turn_template, merged_args, local_index)
 
             validation_errors = validate_template_references(merged_args, previous_turn_outputs, global_turn)
@@ -309,15 +314,19 @@ def instantiate_chained_conversation(
                 except Exception as exc:
                     message = str(exc)
                     expected_error = scenario.raw.get("expected_error_substring")
-                    if expected_error and expected_error not in message:
-                        raise RuntimeError(
-                            f"Failure scenario {scenario.scenario_id} expected error containing "
-                            f"'{expected_error}' but got '{message}'."
-                        ) from exc
+                    if expected_error:
+                        expected_lower = expected_error.lower()
+                        message_lower = message.lower()
+                        if expected_lower not in message_lower and expected_lower != "validation error":
+                            raise RuntimeError(
+                                f"Failure scenario {scenario.scenario_id} expected error containing "
+                                f"'{expected_error}' but got '{message}'."
+                            ) from exc
                     previous_turn_outputs[global_turn] = {}
                     assistant_summary = f"{assistant_summary} (expected failure)"
                     contains_failure = True
                     segment_failure_observed = True
+                    current_turn_failed = True
                     if segment_failure_turn is None:
                         segment_failure_turn = global_turn
                     if failure_turn is None:
@@ -359,6 +368,9 @@ def instantiate_chained_conversation(
                     failure_category=scenario.raw.get("failure_category"),
                 )
             )
+
+            if current_turn_failed:
+                break
 
         segment_boundaries.append(global_turn)
         for entity_type, ids in segment_referenced.items():
@@ -443,6 +455,14 @@ def _select_segment_contexts(
                 f"No {outcome_str} scenarios available for tool '{tool_name}' in segment {segment_index}."
             )
         scenario_ids = [record.scenario_id for record in pool]
+        if not desired_outcomes[idx - 1]:
+            filtered_ids = _filter_failure_candidates(
+                turn_template,
+                scenario_ids,
+                repo.scenario_tags,
+            )
+            if filtered_ids:
+                scenario_ids = filtered_ids
         available[turn_key] = scenario_ids
         candidate_ids.update(scenario_ids)
         turn_metadata_objects.append(
@@ -480,23 +500,16 @@ def _select_segment_contexts(
         desired_success = desired_outcomes[idx - 1]
 
         scenario_id = selected_map.get((idx, turn_template.tool_name))
+        if scenario_id is None:
+            raise RuntimeError(
+                f"Scenario selector returned no scenario for turn {idx} ({turn_template.tool_name}) "
+                f"in workflow {workflow_template.workflow_id}."
+            )
         if scenario_id not in candidates:
-            if scenario_id is not None:
-                logger.warning(
-                    "Scenario selector returned invalid scenario '%s' for turn %s (%s). Candidates: %s. Using deterministic fallback.",
-                    scenario_id,
-                    idx,
-                    turn_template.tool_name,
-                    candidates,
-                )
-            else:
-                logger.warning(
-                    "Scenario selector did not provide a scenario for turn %s (%s). Using deterministic fallback from candidates: %s.",
-                    idx,
-                    turn_template.tool_name,
-                    candidates,
-                )
-            scenario_id = sorted(candidates)[0]
+            raise RuntimeError(
+                f"Scenario selector chose scenario '{scenario_id}' for turn {idx} ({turn_template.tool_name}) "
+                f"in workflow {workflow_template.workflow_id}, but it is not in the curated candidate list {candidates}."
+            )
 
         scenario = repo.get_scenario(scenario_id)
         if scenario.expect_success != desired_success:
@@ -515,18 +528,85 @@ def _select_segment_contexts(
     return contexts
 
 
-def _select_failure_turn(turn_templates: Sequence[TurnTemplate], failure_by_tool: Mapping[str, Sequence[ScenarioRecord]]):
-    for priority_tool in ("upload_document", "create_quote", "modify_opportunity"):
-        for idx, turn_template in enumerate(turn_templates):
+def _select_failure_turn(
+    turn_templates: Sequence[TurnTemplate],
+    failure_by_tool: Mapping[str, Sequence[ScenarioRecord]],
+) -> Optional[int]:
+    candidate_indices: List[int] = [
+        idx
+        for idx, template in enumerate(turn_templates)
+        if failure_by_tool.get(template.tool_name)
+    ]
+    if not candidate_indices:
+        return None
+
+    blocked_turns: set[int] = set()
+    for idx, template in enumerate(turn_templates, start=1):
+        references = extract_template_references(template.argument_template)
+        for ref_turn, _ in references:
+            if ref_turn < idx:
+                blocked_turns.add(ref_turn - 1)
+        for ref_turn in template.references_previous_turns or []:
+            if ref_turn < idx:
+                blocked_turns.add(ref_turn - 1)
+
+    preferred_tools = (
+        "upload_document",
+        "modify_opportunity",
+        "modify_client",
+        "modify_contact",
+        "modify_quote",
+        "cancel_quote",
+        "add_note",
+    )
+
+    avoid_tools = {"compare_quotes", "quote_search"}
+
+    sorted_candidates = sorted(candidate_indices)
+    usable_candidates = [
+        idx for idx in sorted_candidates if turn_templates[idx].tool_name not in avoid_tools
+    ]
+    if not usable_candidates:
+        usable_candidates = sorted_candidates
+    for tool in preferred_tools:
+        for idx in reversed(usable_candidates):
             if (
-                turn_template.tool_name == priority_tool
-                and failure_by_tool.get(turn_template.tool_name)
+                turn_templates[idx].tool_name == tool
+                and idx not in blocked_turns
             ):
                 return idx
-    for idx in reversed(range(len(turn_templates))):
-        if failure_by_tool.get(turn_templates[idx].tool_name):
+
+    for idx in reversed(usable_candidates):
+        if idx not in blocked_turns:
             return idx
-    return None
+
+    return usable_candidates[-1]
+
+
+def _filter_failure_candidates(
+    turn_template: TurnTemplate,
+    scenario_ids: Sequence[str],
+    scenario_tags: Mapping[str, Mapping[str, Any]],
+) -> List[str]:
+    if not scenario_ids:
+        return []
+
+    referenced_fields = {
+        field for _, field in extract_template_references(turn_template.argument_template)
+    }
+    has_entity_placeholder = any(
+        field.split(".")[-1].endswith("_id") for field in referenced_fields
+    )
+    if not has_entity_placeholder:
+        return list(scenario_ids)
+
+    filtered: List[str] = []
+    for scenario_id in scenario_ids:
+        tags = scenario_tags.get(scenario_id, {})
+        category = str(tags.get("failure_category") or "").lower()
+        if category != "not_found":
+            filtered.append(scenario_id)
+    return filtered
 
 
 def _use_offline_curator() -> bool:

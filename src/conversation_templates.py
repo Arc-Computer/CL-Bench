@@ -9,7 +9,7 @@ realistic multi-turn interactions. Each template specifies:
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Sequence
 
 
 @dataclass
@@ -510,11 +510,11 @@ class WorkflowChain:
                 raise ValueError(f"Workflow template '{workflow_id}' not found in WORKFLOW_TEMPLATES")
 
 
-# Define 5 realistic workflow chains
+# Define realistic workflow chains (success + failure variants)
 
 # Chain 1: Client Onboarding → Deal Pipeline → Contract Review
-CHAIN_ONBOARDING_PIPELINE_CONTRACT = WorkflowChain(
-    chain_id="CHAIN-001",
+CHAIN_ONBOARDING_PIPELINE_CONTRACT_SUCCESS = WorkflowChain(
+    chain_id="CHAIN-001A",
     workflow_sequence=["client_onboarding", "deal_pipeline", "quote_generation"],
     success_pattern=[True, True, True],
     entity_handoff_rules={
@@ -525,9 +525,21 @@ CHAIN_ONBOARDING_PIPELINE_CONTRACT = WorkflowChain(
     description="Full client lifecycle: onboard new client, manage deal pipeline, generate contract",
 )
 
+CHAIN_ONBOARDING_PIPELINE_CONTRACT_FAILURE = WorkflowChain(
+    chain_id="CHAIN-001B",
+    workflow_sequence=["client_onboarding", "deal_pipeline", "quote_generation"],
+    success_pattern=[True, False, True],
+    entity_handoff_rules={
+        "client_id": "propagate",
+        "opportunity_id": "propagate",
+        "quote_id": "propagate",
+    },
+    description="Client lifecycle with expected failure during pipeline execution",
+)
+
 # Chain 2: Client Management → Opportunity Management → Quote Generation
-CHAIN_CLIENT_OPP_QUOTE = WorkflowChain(
-    chain_id="CHAIN-002",
+CHAIN_CLIENT_OPP_QUOTE_SUCCESS = WorkflowChain(
+    chain_id="CHAIN-002A",
     workflow_sequence=["client_management", "opportunity_management", "quote_generation"],
     success_pattern=[True, True, True],
     entity_handoff_rules={
@@ -537,10 +549,21 @@ CHAIN_CLIENT_OPP_QUOTE = WorkflowChain(
     description="Manage existing client, create/modify opportunity, generate quote",
 )
 
+CHAIN_CLIENT_OPP_QUOTE_FAILURE = WorkflowChain(
+    chain_id="CHAIN-002B",
+    workflow_sequence=["client_management", "opportunity_management", "quote_generation"],
+    success_pattern=[True, False, True],
+    entity_handoff_rules={
+        "client_id": "propagate",
+        "opportunity_id": "propagate",
+    },
+    description="Opportunity management chain with a deliberate failure segment",
+)
+
 # Chain 3: Contact Management → Document Workflow → Notes
 # Note: We'll need to create an add_note workflow template or use existing one
-CHAIN_CONTACT_DOCUMENT_NOTE = WorkflowChain(
-    chain_id="CHAIN-003",
+CHAIN_CONTACT_DOCUMENT_NOTE_SUCCESS = WorkflowChain(
+    chain_id="CHAIN-003A",
     workflow_sequence=["contact_management", "document_workflow", "client_management"],
     success_pattern=[True, True, True],
     entity_handoff_rules={
@@ -551,9 +574,21 @@ CHAIN_CONTACT_DOCUMENT_NOTE = WorkflowChain(
     description="Manage contact, upload documents, add notes",
 )
 
+CHAIN_CONTACT_DOCUMENT_NOTE_FAILURE = WorkflowChain(
+    chain_id="CHAIN-003B",
+    workflow_sequence=["contact_management", "document_workflow", "client_management"],
+    success_pattern=[True, False, True],
+    entity_handoff_rules={
+        "client_id": "propagate",
+        "contact_id": "propagate",
+        "document_id": "propagate",
+    },
+    description="Contact/document workflow with expected document upload failure",
+)
+
 # Chain 4: Opportunity Search → Quote Generation → Multi-Entity Search
-CHAIN_SEARCH_QUOTE_REVIEW = WorkflowChain(
-    chain_id="CHAIN-004",
+CHAIN_SEARCH_QUOTE_REVIEW_SUCCESS = WorkflowChain(
+    chain_id="CHAIN-004A",
     workflow_sequence=["multi_entity_search", "quote_generation", "multi_entity_search"],
     success_pattern=[True, True, True],
     entity_handoff_rules={
@@ -564,9 +599,21 @@ CHAIN_SEARCH_QUOTE_REVIEW = WorkflowChain(
     description="Search opportunities, generate quote, review all related entities",
 )
 
+CHAIN_SEARCH_QUOTE_REVIEW_FAILURE = WorkflowChain(
+    chain_id="CHAIN-004B",
+    workflow_sequence=["multi_entity_search", "quote_generation", "multi_entity_search"],
+    success_pattern=[True, False, True],
+    entity_handoff_rules={
+        "client_id": "propagate",
+        "opportunity_id": "propagate",
+        "quote_id": "propagate",
+    },
+    description="Search/quote workflow with expected quote segment failure",
+)
+
 # Chain 5: Client Onboarding → Opportunity Management → Deal Pipeline
-CHAIN_ONBOARDING_OPP_DEAL = WorkflowChain(
-    chain_id="CHAIN-005",
+CHAIN_ONBOARDING_OPP_DEAL_SUCCESS = WorkflowChain(
+    chain_id="CHAIN-005A",
     workflow_sequence=["client_onboarding", "opportunity_management", "deal_pipeline"],
     success_pattern=[True, True, True],
     entity_handoff_rules={
@@ -577,16 +624,80 @@ CHAIN_ONBOARDING_OPP_DEAL = WorkflowChain(
     description="Onboard client, manage opportunities, track deal pipeline",
 )
 
+CHAIN_ONBOARDING_OPP_DEAL_FAILURE = WorkflowChain(
+    chain_id="CHAIN-005B",
+    workflow_sequence=["client_onboarding", "opportunity_management", "deal_pipeline"],
+    success_pattern=[True, True, False],
+    entity_handoff_rules={
+        "client_id": "propagate",
+        "opportunity_id": "propagate",
+        "contact_id": "propagate",
+    },
+    description="Onboarding/opp/deal workflow with expected failure in deal pipeline",
+)
+
 # Registry of all workflow chains
 WORKFLOW_CHAINS: Dict[str, WorkflowChain] = {
-    "onboarding_pipeline_contract": CHAIN_ONBOARDING_PIPELINE_CONTRACT,
-    "client_opp_quote": CHAIN_CLIENT_OPP_QUOTE,
-    "contact_document_note": CHAIN_CONTACT_DOCUMENT_NOTE,
-    "search_quote_review": CHAIN_SEARCH_QUOTE_REVIEW,
-    "onboarding_opp_deal": CHAIN_ONBOARDING_OPP_DEAL,
+    "onboarding_pipeline_contract_success": CHAIN_ONBOARDING_PIPELINE_CONTRACT_SUCCESS,
+    "onboarding_pipeline_contract_failure": CHAIN_ONBOARDING_PIPELINE_CONTRACT_FAILURE,
+    "client_opp_quote_success": CHAIN_CLIENT_OPP_QUOTE_SUCCESS,
+    "client_opp_quote_failure": CHAIN_CLIENT_OPP_QUOTE_FAILURE,
+    "contact_document_note_success": CHAIN_CONTACT_DOCUMENT_NOTE_SUCCESS,
+    "contact_document_note_failure": CHAIN_CONTACT_DOCUMENT_NOTE_FAILURE,
+    "search_quote_review_success": CHAIN_SEARCH_QUOTE_REVIEW_SUCCESS,
+    "search_quote_review_failure": CHAIN_SEARCH_QUOTE_REVIEW_FAILURE,
+    "onboarding_opp_deal_success": CHAIN_ONBOARDING_OPP_DEAL_SUCCESS,
+    "onboarding_opp_deal_failure": CHAIN_ONBOARDING_OPP_DEAL_FAILURE,
+}
+
+CHAIN_ALIAS_MAP: Dict[str, List[str]] = {
+    "onboarding_pipeline_contract": [
+        "onboarding_pipeline_contract_success",
+        "onboarding_pipeline_contract_failure",
+    ],
+    "client_opp_quote": [
+        "client_opp_quote_success",
+        "client_opp_quote_failure",
+    ],
+    "contact_document_note": [
+        "contact_document_note_success",
+        "contact_document_note_failure",
+    ],
+    "search_quote_review": [
+        "search_quote_review_success",
+        "search_quote_review_failure",
+    ],
+    "onboarding_opp_deal": [
+        "onboarding_opp_deal_success",
+        "onboarding_opp_deal_failure",
+    ],
 }
 
 
 def get_workflow_chain(chain_id: str) -> Optional[WorkflowChain]:
     """Get workflow chain by ID."""
     return WORKFLOW_CHAINS.get(chain_id)
+
+
+def expand_chain_ids(requested_keys: Sequence[str]) -> List[str]:
+    """Expand legacy chain aliases into explicit success/failure variants."""
+    expanded: List[str] = []
+    for key in requested_keys:
+        variants = CHAIN_ALIAS_MAP.get(key)
+        if variants:
+            expanded.extend(variants)
+        elif key in WORKFLOW_CHAINS:
+            expanded.append(key)
+        else:
+            raise KeyError(f"Unknown workflow chain key '{key}'.")
+
+    seen: set[str] = set()
+    ordered: List[str] = []
+    for key in expanded:
+        if key not in seen:
+            seen.add(key)
+            ordered.append(key)
+    return ordered
+CHAIN_SUCCESS_RATIO: float = 0.6
+CHAIN_FAILURE_RATIO: float = 1.0 - CHAIN_SUCCESS_RATIO
+CHAIN_RATIO_TOLERANCE: float = 0.02

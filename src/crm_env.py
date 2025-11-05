@@ -444,9 +444,11 @@ class CrmEnv(gym.Env):
                 if execution_result.success:
                     validator_result = ValidationResult.fail("Negative case expected failure but tool succeeded.")
                 else:
+                    message_text = execution_result.message or ""
+                    expected_error = case.expected_error_substring
                     substring_ok = (
-                        case.expected_error_substring is None
-                        or (execution_result.message and case.expected_error_substring in execution_result.message)
+                        expected_error is None
+                        or expected_error.lower() in message_text.lower()
                     )
                     state_unchanged = self._pre_snapshot == post_snapshot
                     success = substring_ok and state_unchanged

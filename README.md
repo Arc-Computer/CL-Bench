@@ -159,6 +159,36 @@ quote = api.create_quote(
 
 All relationship and enum constraints are enforced with clear error messages.
 
+## Data Generation Pipeline
+
+The benchmark’s multi-turn conversations are built in layers so every turn stays grounded in validated data while remaining easy to reproduce and scale:
+
+1. **Validated single-turn library.** We begin with `artifacts/scenarios_500/scenarios_clean.jsonl`, a curated 60/40 success/failure set. `ScenarioRepository` indexes these records by tool/outcome and enriches them with entity metadata so downstream turns can share clients, opportunities, quotes, etc.
+
+2. **Workflow templates and chains.** `src/conversation_templates.py` defines deterministically structured workflows (e.g., onboarding, quote generation). `WorkflowChain` objects stitch templates into multi-segment journeys with explicit success/failure patterns and handoff rules, encoding the 60/40 mix at the segment level.
+
+3. **Curator-guided sampling.** Two Bespoke Curator models drive generation:
+   - `ScenarioSelector` receives turn metadata and selects compatible single-turn scenarios from the validated pool.
+   - `ChainUtteranceGenerator` writes natural-language user turns that reference the selected arguments and prior context.
+   Both emit structured Pydantic responses (`ScenarioSelectionResponse`, `TurnUtteranceResponse`) so the pipeline remains reproducible. Setting `CURATOR_SIMPLE_DATASET=1` switches to deterministic offline stubs for tests and CI.
+
+4. **Mock CRM simulation.** `src/generation/chain_conversation_generator.py` resolves cross-turn references, seeds the mock CRM (`MockCrmApi`) with required entities, executes each tool call, and captures reference payloads. Per-segment summaries (expected/actual outcome, entities created/referenced) and per-turn annotations (scenario IDs, persona hints, handoff traces) are recorded for analytics and continual-learning signals.
+
+5. **Harness validation.** `ConversationHarness` replays each conversation against a fresh CRM instance, failing fast if a success segment fails (or vice versa). The CLI (`scripts/generate_conversations.py --mode chain`) wraps this flow—smoke tests print expected vs. actual segment outcomes, while full runs validate every generated conversation before writing `chains.jsonl`.
+
+6. **Reproducible artifacts.** The chained generator exports a manifest (`artifacts/chains/manifest.json`), analytics report (`artifacts/reports/chains_baseline.md`), and a no-fallback verification pass (`scripts/verify_no_fallbacks.py`) whose output lives next to each run log (e.g., `verification_report.json`, `quality_checks.md`). The README and docs capture the exact commands, seeds, and model names used so datasets can be regenerated or scaled (e.g., new workflow chains, alternative Curator backends).
+
+To scale the pipeline, define additional workflow templates/chains, run the generator with your preferred Curator model (Gemini 2.5 Flash or GPT‑5‑mini via LiteLLM), and regenerate the manifest/analytics/verification artifacts. Because every step is validated against the CRM schema (and the no-fallback audit), the resulting dataset remains production-quality without manual clean-up.
+
+### Current Artifact Snapshot
+
+- **Single-turn scenarios** (validated 60/40 mix): `artifacts/scenarios_500/scenarios_clean.jsonl` (494 records)
+- **Chained conversations** (200 conversations, 40 % expected failures): `artifacts/conversations_chains/chains.jsonl`
+- **Manifest**: `artifacts/chains/manifest.json` (includes failure ratio/tolerance flags)
+- **Analytics report**: `artifacts/reports/chains_baseline.md`
+- **Verification log**: `artifacts/conversations_chains/20251105T033709Z/full/verification_report.json`
+- **Quality summary**: `artifacts/conversations_chains/20251105T033709Z/full/quality_checks.md`
+
 ## Integration with Atlas SDK
 
 ### Runtime Evaluation
