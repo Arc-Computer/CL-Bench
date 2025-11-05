@@ -4,20 +4,20 @@
       "average_segments": 3,
       "average_turns": 15,
       "average_turns_per_segment": 5,
-      "conversation_count": 24,
+      "conversation_count": 144,
       "description": "Full client lifecycle: onboard new client, manage deal pipeline, generate contract",
       "failed_conversations": 0,
       "failure_ratio": 0.0,
       "segment_success_counts": {
-        "actual:success|expected:success": 72
+        "actual:success|expected:success": 432
       },
-      "segment_totals": 72,
+      "segment_totals": 432,
       "success_pattern": [
         true,
         true,
         true
       ],
-      "successful_conversations": 24,
+      "successful_conversations": 144,
       "workflow_sequence": [
         "client_onboarding",
         "deal_pipeline",
@@ -28,15 +28,15 @@
       "average_segments": 3,
       "average_turns": 15,
       "average_turns_per_segment": 5,
-      "conversation_count": 16,
+      "conversation_count": 96,
       "description": "Client lifecycle with expected failure during pipeline execution",
-      "failed_conversations": 16,
+      "failed_conversations": 96,
       "failure_ratio": 1.0,
       "segment_success_counts": {
-        "actual:failure|expected:failure": 16,
-        "actual:success|expected:success": 32
+        "actual:failure|expected:failure": 96,
+        "actual:success|expected:success": 192
       },
-      "segment_totals": 48,
+      "segment_totals": 288,
       "success_pattern": [
         true,
         false,
@@ -53,20 +53,20 @@
       "average_segments": 3,
       "average_turns": 10,
       "average_turns_per_segment": 3.33,
-      "conversation_count": 24,
+      "conversation_count": 144,
       "description": "Manage existing client, create/modify opportunity, generate quote",
       "failed_conversations": 0,
       "failure_ratio": 0.0,
       "segment_success_counts": {
-        "actual:success|expected:success": 72
+        "actual:success|expected:success": 432
       },
-      "segment_totals": 72,
+      "segment_totals": 432,
       "success_pattern": [
         true,
         true,
         true
       ],
-      "successful_conversations": 24,
+      "successful_conversations": 144,
       "workflow_sequence": [
         "client_management",
         "opportunity_management",
@@ -77,15 +77,15 @@
       "average_segments": 3,
       "average_turns": 10,
       "average_turns_per_segment": 3.33,
-      "conversation_count": 16,
+      "conversation_count": 96,
       "description": "Opportunity management chain with a deliberate failure segment",
-      "failed_conversations": 16,
+      "failed_conversations": 96,
       "failure_ratio": 1.0,
       "segment_success_counts": {
-        "actual:failure|expected:failure": 16,
-        "actual:success|expected:success": 32
+        "actual:failure|expected:failure": 96,
+        "actual:success|expected:success": 192
       },
-      "segment_totals": 48,
+      "segment_totals": 288,
       "success_pattern": [
         true,
         false,
@@ -102,20 +102,20 @@
       "average_segments": 3,
       "average_turns": 8,
       "average_turns_per_segment": 2.67,
-      "conversation_count": 24,
+      "conversation_count": 144,
       "description": "Manage contact, upload documents, add notes",
       "failed_conversations": 0,
       "failure_ratio": 0.0,
       "segment_success_counts": {
-        "actual:success|expected:success": 72
+        "actual:success|expected:success": 432
       },
-      "segment_totals": 72,
+      "segment_totals": 432,
       "success_pattern": [
         true,
         true,
         true
       ],
-      "successful_conversations": 24,
+      "successful_conversations": 144,
       "workflow_sequence": [
         "contact_management",
         "document_workflow",
@@ -126,15 +126,15 @@
       "average_segments": 3,
       "average_turns": 7,
       "average_turns_per_segment": 2.33,
-      "conversation_count": 16,
+      "conversation_count": 96,
       "description": "Contact/document workflow with expected document upload failure",
-      "failed_conversations": 16,
+      "failed_conversations": 96,
       "failure_ratio": 1.0,
       "segment_success_counts": {
-        "actual:failure|expected:failure": 16,
-        "actual:success|expected:success": 32
+        "actual:failure|expected:failure": 96,
+        "actual:success|expected:success": 192
       },
-      "segment_totals": 48,
+      "segment_totals": 288,
       "success_pattern": [
         true,
         false,
@@ -151,20 +151,20 @@
       "average_segments": 3,
       "average_turns": 12,
       "average_turns_per_segment": 4,
-      "conversation_count": 24,
+      "conversation_count": 144,
       "description": "Search opportunities, generate quote, review all related entities",
       "failed_conversations": 0,
       "failure_ratio": 0.0,
       "segment_success_counts": {
-        "actual:success|expected:success": 72
+        "actual:success|expected:success": 432
       },
-      "segment_totals": 72,
+      "segment_totals": 432,
       "success_pattern": [
         true,
         true,
         true
       ],
-      "successful_conversations": 24,
+      "successful_conversations": 144,
       "workflow_sequence": [
         "multi_entity_search",
         "quote_generation",
@@ -175,15 +175,15 @@
       "average_segments": 3,
       "average_turns": 11,
       "average_turns_per_segment": 3.67,
-      "conversation_count": 16,
+      "conversation_count": 96,
       "description": "Search/quote workflow with expected quote segment failure",
-      "failed_conversations": 16,
+      "failed_conversations": 96,
       "failure_ratio": 1.0,
       "segment_success_counts": {
-        "actual:failure|expected:failure": 16,
-        "actual:success|expected:success": 32
+        "actual:failure|expected:failure": 96,
+        "actual:success|expected:success": 192
       },
-      "segment_totals": 48,
+      "segment_totals": 288,
       "success_pattern": [
         true,
         false,
@@ -200,20 +200,20 @@
       "average_segments": 3,
       "average_turns": 15,
       "average_turns_per_segment": 5,
-      "conversation_count": 24,
+      "conversation_count": 144,
       "description": "Onboard client, manage opportunities, track deal pipeline",
       "failed_conversations": 0,
       "failure_ratio": 0.0,
       "segment_success_counts": {
-        "actual:success|expected:success": 72
+        "actual:success|expected:success": 432
       },
-      "segment_totals": 72,
+      "segment_totals": 432,
       "success_pattern": [
         true,
         true,
         true
       ],
-      "successful_conversations": 24,
+      "successful_conversations": 144,
       "workflow_sequence": [
         "client_onboarding",
         "opportunity_management",
@@ -224,15 +224,15 @@
       "average_segments": 3,
       "average_turns": 15,
       "average_turns_per_segment": 5,
-      "conversation_count": 16,
+      "conversation_count": 96,
       "description": "Onboarding/opp/deal workflow with expected failure in deal pipeline",
-      "failed_conversations": 16,
+      "failed_conversations": 96,
       "failure_ratio": 1.0,
       "segment_success_counts": {
-        "actual:failure|expected:failure": 16,
-        "actual:success|expected:success": 32
+        "actual:failure|expected:failure": 96,
+        "actual:success|expected:success": 192
       },
-      "segment_totals": 48,
+      "segment_totals": 288,
       "success_pattern": [
         true,
         true,
@@ -246,21 +246,21 @@
       ]
     }
   },
-  "dataset_path": "artifacts/conversations_chains/20251105T033709Z/full/chains.jsonl",
-  "failed_conversations": 80,
+  "dataset_path": "artifacts/conversations_chains/20251105T142324Z/full/chains.jsonl",
+  "failed_conversations": 480,
   "failure_ratio": 0.4,
   "failure_ratio_deviation": 0.0,
   "failure_ratio_tolerance": 0.02,
-  "generated_at": "2025-11-05T04:07:29.276517+00:00",
+  "generated_at": "2025-11-05T14:23:42.827753+00:00",
   "model": "gpt-4.1-mini",
   "overall_segment_outcomes": {
-    "actual:failure|expected:failure": 80,
-    "actual:success|expected:success": 520
+    "actual:failure|expected:failure": 480,
+    "actual:success|expected:success": 3120
   },
   "seed": 42,
   "success_ratio": 0.6,
-  "successful_conversations": 120,
+  "successful_conversations": 720,
   "target_failure_ratio": 0.4,
-  "total_conversations": 200,
+  "total_conversations": 1200,
   "within_failure_tolerance": true
 }

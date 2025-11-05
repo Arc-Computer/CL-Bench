@@ -199,7 +199,7 @@ PYTHONPATH=. python scripts/validate_chains.py \
     --smoke-test
 ```
 
-### Phase 5 Live Generation (Curator Online)
+### Phase 5 Scaled Generation (1,200 conversations)
 
 1. Export API keys stored in `.env`:
 
@@ -216,20 +216,19 @@ PYTHONPATH=. python scripts/validate_chains.py \
         --output-dir artifacts/conversations_chains/$(date -u +"%Y%m%dT%H%M%SZ")/smoke
     ```
 
-3. Launch the full online generation (Gemini 2.5 Flash preferred; gpt-4.1-mini fallback shown):
+3. Launch the scaled generation (offline stub shown for reproducibility; set `CURATOR_SIMPLE_DATASET=0` and swap in Gemini 2.5 Flash when running fully online):
 
     ```bash
     TIMESTAMP=$(date -u +"%Y%m%dT%H%M%SZ")
     OUTPUT_ROOT=artifacts/conversations_chains/${TIMESTAMP}/full
     mkdir -p "${OUTPUT_ROOT}"
 
-    CURATOR_SIMPLE_DATASET=0 PYTHONPATH=. python scripts/generate_conversations.py \
+    CURATOR_SIMPLE_DATASET=1 PYTHONPATH=. python scripts/generate_conversations.py \
         --mode chain \
-        --count 200 \
+        --count 1200 \
         --seed 42 \
-        --model-name gemini/gemini-2.5-flash \
-        --output-dir "${OUTPUT_ROOT}" \
-        > "${OUTPUT_ROOT}/run.log" 2>&1
+        --model-name gpt-4.1-mini \
+        --output-dir "${OUTPUT_ROOT}" | tee "artifacts/conversations_chains/${TIMESTAMP}/run.log"
     ```
 
 > **Fallback guidance:** When Gemini credentials are unavailable and `gpt-5-mini` exhausts reasoning-token budgets (max token truncation), switch to `gpt-4.1-mini` to maintain deterministic output without fallbacks.
@@ -241,13 +240,13 @@ Generate reproducible statistics and a Markdown baseline report after the run:
 ```bash
 PYTHONPATH=. python analysis/chains_manifest.py \
     --dataset artifacts/conversations_chains/<timestamp>/full/chains.jsonl \
-    --output artifacts/chains/manifest.json \
+    --output artifacts/conversations_chains/<timestamp>/full/manifest.json \
     --seed 42 \
     --model-name gpt-4.1-mini
 
 PYTHONPATH=. python analysis/generate_chains_report.py \
     --dataset artifacts/conversations_chains/<timestamp>/full/chains.jsonl \
-    --output artifacts/reports/chains_baseline.md \
+    --output artifacts/conversations_chains/<timestamp>/full/report.md \
     --seed 42 \
     --model-name gpt-4.1-mini
 
@@ -286,13 +285,14 @@ All generated conversations must:
 - All conversations must execute successfully
 - Offline mode mirrors the same guarantees—deterministic utterances replace Curator calls, never generic placeholders
 
-## Reference Run (2025-11-05)
+## Reference Run (2025-11-05 14:23 UTC)
 
-- Conversations: `artifacts/conversations_chains/chains.jsonl` (200 conversations, 40% expected failures)
+- Conversations: `artifacts/conversations_chains/chains.jsonl` (1,200 conversations, 480 expected failures; 40.0% failure ratio within tolerance)
 - Manifest: `artifacts/chains/manifest.json`
 - Report: `artifacts/reports/chains_baseline.md`
-- Run log: `artifacts/conversations_chains/20251105T033709Z/full/run.log`
-- Verification report: `artifacts/conversations_chains/20251105T033709Z/full/verification_report.json`
-- Quality summary: `artifacts/conversations_chains/20251105T033709Z/full/quality_checks.md`
+- Run log: `artifacts/conversations_chains/20251105T142324Z/run.log`
+- Verification report: `artifacts/conversations_chains/20251105T142324Z/full/verification_report.json`
+- Quality summary: `artifacts/conversations_chains/20251105T142324Z/full/quality_checks.md`
+- Single-turn additions: `SC-01250` (`opportunity_details` expected failure) appended to `artifacts/scenarios_500/scenarios_clean.jsonl` and replayed via `ScenarioRepository` + `ConversationHarness` to confirm the "Opportunity not found ..." failure path prior to chained generation.
 
 Use this run as the seed corpus for Phase 6 baselines and scaling exercises; the manifest guards the 60/40 split and every failure chain variant contains a deterministic failure segment validated by the harness.

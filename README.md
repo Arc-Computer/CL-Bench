@@ -182,12 +182,12 @@ To scale the pipeline, define additional workflow templates/chains, run the gene
 
 ### Current Artifact Snapshot
 
-- **Single-turn scenarios** (validated 60/40 mix): `artifacts/scenarios_500/scenarios_clean.jsonl` (494 records)
-- **Chained conversations** (200 conversations, 40 % expected failures): `artifacts/conversations_chains/chains.jsonl`
+- **Single-turn scenarios** (validated 60/40 mix): `artifacts/scenarios_500/scenarios_clean.jsonl` (495 records)
+- **Chained conversations** (1,200 conversations, 40% expected failures): `artifacts/conversations_chains/chains.jsonl`
 - **Manifest**: `artifacts/chains/manifest.json` (includes failure ratio/tolerance flags)
 - **Analytics report**: `artifacts/reports/chains_baseline.md`
-- **Verification log**: `artifacts/conversations_chains/20251105T033709Z/full/verification_report.json`
-- **Quality summary**: `artifacts/conversations_chains/20251105T033709Z/full/quality_checks.md`
+- **Verification log**: `artifacts/conversations_chains/20251105T142324Z/full/verification_report.json`
+- **Quality summary**: `artifacts/conversations_chains/20251105T142324Z/full/quality_checks.md`
 
 ## Integration with Atlas SDK
 
