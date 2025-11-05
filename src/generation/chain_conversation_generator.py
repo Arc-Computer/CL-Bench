@@ -502,19 +502,13 @@ def _select_segment_contexts(
         scenario_id = selected_map.get((idx, turn_template.tool_name))
         if scenario_id is None:
             raise RuntimeError(
-                "Scenario selector returned no scenario for turn %s (%s) in workflow %s.",
-                idx,
-                turn_template.tool_name,
-                workflow_template.workflow_id,
+                f"Scenario selector returned no scenario for turn {idx} ({turn_template.tool_name}) "
+                f"in workflow {workflow_template.workflow_id}."
             )
         if scenario_id not in candidates:
             raise RuntimeError(
-                "Scenario selector chose scenario '%s' for turn %s (%s) in workflow %s but it is not in the curated candidate list %s.",
-                scenario_id,
-                idx,
-                turn_template.tool_name,
-                workflow_template.workflow_id,
-                candidates,
+                f"Scenario selector chose scenario '{scenario_id}' for turn {idx} ({turn_template.tool_name}) "
+                f"in workflow {workflow_template.workflow_id}, but it is not in the curated candidate list {candidates}."
             )
 
         scenario = repo.get_scenario(scenario_id)
