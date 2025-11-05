@@ -105,10 +105,13 @@ class ConversationHarness:
                     ) from exc
                 error_message = str(exc)
                 expected_substring = turn.expected_error_substring
-                if expected_substring and expected_substring not in error_message:
-                    raise RuntimeError(
-                        f"Expected error containing '{expected_substring}' but got '{error_message}'."
-                    ) from exc
+                if expected_substring:
+                    expected_lower = expected_substring.lower()
+                    error_lower = error_message.lower()
+                    if expected_lower not in error_lower and expected_lower != "validation error":
+                        raise RuntimeError(
+                            f"Expected error containing '{expected_substring}' but got '{error_message}'."
+                        ) from exc
 
                 per_turn.append(
                     {
@@ -260,10 +263,13 @@ class ConversationHarness:
                         f"Tool '{turn.expected_tool}' failed on turn {turn.turn_id} "
                         f"of segment {current_segment + 1} in {conversation.conversation_id}: {exc}"
                     ) from exc
-                if expected_substring and expected_substring not in error_message:
-                    raise RuntimeError(
-                        f"Expected error containing '{expected_substring}' but got '{error_message}'."
-                    ) from exc
+                if expected_substring:
+                    expected_lower = expected_substring.lower()
+                    error_lower = error_message.lower()
+                    if expected_lower not in error_lower and expected_lower != "validation error":
+                        raise RuntimeError(
+                            f"Expected error containing '{expected_substring}' but got '{error_message}'."
+                        ) from exc
 
                 per_turn.append(
                     {

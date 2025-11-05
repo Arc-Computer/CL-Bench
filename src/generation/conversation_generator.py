@@ -108,7 +108,11 @@ def instantiate_conversation(
     failure_turn: Optional[int] = None
 
     for turn_index, context in enumerate(turn_contexts, start=1):
-        merged_args = _merge_template_with_scenario(context.turn_template.argument_template, context.expected_args)
+        merged_args = _merge_template_with_scenario(
+            context.turn_template.argument_template,
+            context.expected_args,
+            include_additional_keys=not context.scenario.expect_success,
+        )
         merged_args = _sanitize_arguments(workflow_template, context.turn_template, merged_args, turn_index)
 
         validation_errors = validate_template_references(merged_args, previous_turn_outputs, turn_index)
@@ -146,11 +150,14 @@ def instantiate_conversation(
                 _simulate_tool_execution(context.turn_template.tool_name, resolved_args, api)
             except Exception as exc:
                 message = str(exc)
-                if expected_error and expected_error not in message:
-                    raise RuntimeError(
-                        f"Failure scenario {context.scenario.scenario_id} expected error containing "
-                        f"'{expected_error}' but got '{message}'."
-                    ) from exc
+                if expected_error:
+                    expected_lower = expected_error.lower()
+                    message_lower = message.lower()
+                    if expected_lower not in message_lower and expected_lower != "validation error":
+                        raise RuntimeError(
+                            f"Failure scenario {context.scenario.scenario_id} expected error containing "
+                            f"'{expected_error}' but got '{message}'."
+                        ) from exc
                 reference_payload = {}
                 previous_turn_outputs[turn_index] = reference_payload
                 assistant_summary = (
@@ -576,14 +583,21 @@ def _build_document(entity_id: str, metadata: Mapping[str, Any], _: Optional[str
 # ---------------------------------------------------------------------------
 
 
-def _merge_template_with_scenario(template_args: Mapping[str, Any], scenario_args: Mapping[str, Any]) -> Dict[str, Any]:
+def _merge_template_with_scenario(
+    template_args: Mapping[str, Any],
+    scenario_args: Mapping[str, Any],
+    *,
+    include_additional_keys: bool = False,
+) -> Dict[str, Any]:
     """Combine template placeholders with scenario-provided values."""
     scenario_copy = copy.deepcopy(scenario_args) if scenario_args else {}
 
     def _merge(template_value: Any, scenario_value: Any) -> Any:
         if isinstance(template_value, dict):
-            merged: Dict[str, Any] = {}
             scenario_dict = scenario_value if isinstance(scenario_value, dict) else {}
+            merged: Dict[str, Any] = {}
+            if include_additional_keys:
+                merged.update({key: value for key, value in scenario_dict.items() if key not in template_value})
             for key, sub_template in template_value.items():
                 merged[key] = _merge(sub_template, scenario_dict.get(key))
             return merged

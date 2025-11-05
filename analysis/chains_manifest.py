@@ -13,9 +13,15 @@ from statistics import mean
 from typing import Any, Dict, Iterable, List
 
 try:
-    from src.conversation_templates import WORKFLOW_CHAINS
+    from src.conversation_templates import (
+        CHAIN_FAILURE_RATIO,
+        CHAIN_RATIO_TOLERANCE,
+        WORKFLOW_CHAINS,
+    )
 except Exception:  # pragma: no cover - best effort when PYTHONPATH is missing
     WORKFLOW_CHAINS: Dict[str, Any] = {}
+    CHAIN_FAILURE_RATIO = 0.4
+    CHAIN_RATIO_TOLERANCE = 0.02
 
 CHAINS_BY_ID = {
     chain.chain_id: chain for chain in WORKFLOW_CHAINS.values()
@@ -39,6 +45,7 @@ class ChainStats:
             "conversation_count": conv_total,
             "successful_conversations": conv_total - conv_failures,
             "failed_conversations": conv_failures,
+            "failure_ratio": round(conv_failures / conv_total, 4) if conv_total else 0,
             "average_turns": round(mean(self.turn_counts), 2) if self.turn_counts else 0,
             "average_segments": round(mean(self.segment_counts), 2) if self.segment_counts else 0,
             "average_turns_per_segment": round(
@@ -144,6 +151,20 @@ def compute_manifest(
         "overall_segment_outcomes": dict(overall_segment_outcomes),
         "chains": {},
     }
+
+    failure_ratio = (total_failures / total_conversations) if total_conversations else 0.0
+    success_ratio = 1.0 - failure_ratio if total_conversations else 0.0
+    manifest.update(
+        {
+            "success_ratio": round(success_ratio, 4),
+            "failure_ratio": round(failure_ratio, 4),
+            "target_failure_ratio": CHAIN_FAILURE_RATIO,
+            "failure_ratio_tolerance": CHAIN_RATIO_TOLERANCE,
+            "within_failure_tolerance": abs(failure_ratio - CHAIN_FAILURE_RATIO)
+            <= CHAIN_RATIO_TOLERANCE,
+            "failure_ratio_deviation": round(failure_ratio - CHAIN_FAILURE_RATIO, 4),
+        }
+    )
 
     for chain_id, stats in per_chain.items():
         chain_entry = stats.summary()

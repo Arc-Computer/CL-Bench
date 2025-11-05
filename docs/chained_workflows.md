@@ -15,12 +15,14 @@ A `WorkflowChain` defines a sequence of workflow templates that form a multi-seg
 ```python
 from src.conversation_templates import WorkflowChain, WORKFLOW_CHAINS
 
-chain = WORKFLOW_CHAINS["onboarding_pipeline_contract"]
+chain = WORKFLOW_CHAINS["onboarding_pipeline_contract_success"]
 # Chain contains:
 # - workflow_sequence: ["client_onboarding", "deal_pipeline", "quote_generation"]
 # - success_pattern: [True, True, True]
 # - entity_handoff_rules: {"client_id": "propagate", ...}
 ```
+
+Every production workflow has a paired failure-bearing variant (suffix `_failure`). When you need both, use `expand_chain_ids(["onboarding_pipeline_contract"])` to expand the legacy alias into discrete success/failure entries.
 
 ### Curator Structured Output
 
@@ -88,7 +90,7 @@ scenario_selector = None if offline else ScenarioSelector(model_name="gpt-4.1-mi
 utterance_generator = None if offline else ChainUtteranceGenerator(model_name="gpt-4.1-mini")
 rng = random.Random(42)
 
-chain = WORKFLOW_CHAINS["onboarding_pipeline_contract"]
+chain = WORKFLOW_CHAINS["onboarding_pipeline_contract_success"]
 conversation = instantiate_chained_conversation(
     chain,
     repo,
@@ -97,6 +99,8 @@ conversation = instantiate_chained_conversation(
     rng,
 )
 ```
+
+`scripts/generate_conversations.py` enforces a 60/40 success-to-failure conversation mix. The generator raises if a requested chain set cannot hit the target ratio; expand aliases before calling `compute_chain_plan` to ensure both variants are present.
 
 ### Executing Chained Conversations
 
@@ -161,6 +165,9 @@ CURATOR_SIMPLE_DATASET=1 PYTHONPATH=. python scripts/generate_conversations.py \
     --count 50 \
     --seed 42 \
     --output-dir artifacts/conversations_chains
+
+# The CLI prints per-chain counts and aborts if the failure ratio moves outside the
+# configured 60/40 +/- 2% window.
 ```
 
 This command validates every generated chain on the fly; any unexpected segment failure/success aborts the run.
@@ -220,7 +227,7 @@ PYTHONPATH=. python scripts/validate_chains.py \
         --mode chain \
         --count 200 \
         --seed 42 \
-        --model-name gpt-4.1-mini \
+        --model-name gemini/gemini-2.5-flash \
         --output-dir "${OUTPUT_ROOT}" \
         > "${OUTPUT_ROOT}/run.log" 2>&1
     ```

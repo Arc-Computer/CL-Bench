@@ -15,10 +15,13 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
 
 from src.evaluation.conversation_harness import ConversationHarness
 from src.conversation_templates import (
+    CHAIN_FAILURE_RATIO,
+    CHAIN_RATIO_TOLERANCE,
     WORKFLOW_CHAINS,
     WORKFLOW_TEMPLATES,
     WorkflowChain,
     WorkflowTemplate,
+    expand_chain_ids,
 )
 from src.generation.chain_conversation_generator import instantiate_chained_conversation
 from src.generation.chain_curator import ChainUtteranceGenerator, ScenarioSelector
@@ -35,6 +38,23 @@ SMOKE_TEST_COUNT = 10
 CHAIN_BY_ID: Dict[str, WorkflowChain] = {
     chain.chain_id: chain for chain in WORKFLOW_CHAINS.values()
 }
+
+
+def _chain_contains_failure(chain: WorkflowChain) -> bool:
+    return any(not outcome for outcome in chain.success_pattern)
+
+
+def _distribute_counts(total: int, keys: Sequence[str]) -> Dict[str, int]:
+    plan = {key: 0 for key in keys}
+    if total <= 0 or not keys:
+        return plan
+    base, remainder = divmod(total, len(keys))
+    for key in keys:
+        plan[key] = base
+    for index in range(remainder):
+        key = keys[index % len(keys)]
+        plan[key] += 1
+    return plan
 
 
 class _OfflineScenarioSelector:
@@ -127,24 +147,58 @@ def compute_plan(total_count: int, smoke_test: bool) -> Dict[str, int]:
 
 
 def compute_chain_plan(total_count: int, chain_ids: Sequence[str], smoke_test: bool) -> Dict[str, int]:
-    unique_ids = list(dict.fromkeys(chain_ids))
+    expanded_ids = expand_chain_ids(chain_ids)
+    unique_ids = list(dict.fromkeys(expanded_ids))
     if not unique_ids:
         raise ValueError("At least one chain ID must be provided for chain generation.")
 
-    if smoke_test:
-        return {chain_id: 1 for chain_id in unique_ids}
+    success_keys: List[str] = []
+    failure_keys: List[str] = []
+    for chain_key in unique_ids:
+        chain = WORKFLOW_CHAINS[chain_key]
+        if _chain_contains_failure(chain):
+            failure_keys.append(chain_key)
+        else:
+            success_keys.append(chain_key)
 
-    plan = {chain_id: 0 for chain_id in unique_ids}
+    if not success_keys:
+        raise ValueError(
+            "Chain generation requires at least one success-only workflow chain to honor the target ratio."
+        )
+    if not failure_keys:
+        raise ValueError(
+            "Chain generation requires at least one failure-bearing workflow chain to honor the target ratio."
+        )
+
+    if total_count <= 0:
+        return {}
+
+    target_failure = int(round(total_count * CHAIN_FAILURE_RATIO))
+    target_success = total_count - target_failure
+
+    if total_count >= 3:
+        if target_failure == 0:
+            target_failure = 1
+            target_success = total_count - target_failure
+        if target_success == 0:
+            target_success = 1
+            target_failure = total_count - target_success
+
+    failure_distribution = _distribute_counts(target_failure, failure_keys)
+    success_distribution = _distribute_counts(target_success, success_keys)
+
+    plan: Dict[str, int] = {key: 0 for key in unique_ids}
+    for key, value in {**success_distribution, **failure_distribution}.items():
+        plan[key] = value
+
+    # Remove chains that received zero allocations to keep the plan concise.
+    plan = {key: value for key, value in plan.items() if value > 0}
 
     allocated = sum(plan.values())
-    remaining = max(0, total_count - allocated)
-
-    idx = 0
-    while remaining > 0:
-        chain_id = unique_ids[idx % len(unique_ids)]
-        plan[chain_id] += 1
-        remaining -= 1
-        idx += 1
+    if allocated != total_count:
+        raise RuntimeError(
+            f"Chain plan allocation mismatch: requested {total_count}, allocated {allocated}."
+        )
 
     return plan
 
@@ -197,7 +251,8 @@ def generate_chain_conversations(
     *,
     smoke_test: bool = False,
 ) -> List:
-    conversations = []
+    conversations: List = []
+    failure_conversations = 0
     for chain_key, desired_count in chain_plan.items():
         chain: WorkflowChain = WORKFLOW_CHAINS[chain_key]
         expected_failure = any(not outcome for outcome in chain.success_pattern)
@@ -229,6 +284,16 @@ def generate_chain_conversations(
                 _print_chain_summary(conversation, result)
 
             conversations.append(conversation)
+            if conversation.contains_failure:
+                failure_conversations += 1
+    if conversations:
+        ratio = failure_conversations / len(conversations)
+        allowed_deviation = max(CHAIN_RATIO_TOLERANCE, 1.0 / len(conversations))
+        if abs(ratio - CHAIN_FAILURE_RATIO) > allowed_deviation:
+            raise RuntimeError(
+                f"Chained generation produced failure ratio {ratio:.3f}, "
+                f"expected {CHAIN_FAILURE_RATIO:.2f}±{allowed_deviation:.2f}."
+            )
     return conversations
 
 
@@ -273,8 +338,8 @@ def main() -> None:
         summary_counts = Counter(conv.workflow_category for conv in conversations)
         failure_counts: Counter[str] = Counter()
     else:
-        chain_ids = args.chain_ids or list(WORKFLOW_CHAINS.keys())
-        plan = compute_chain_plan(total_count, chain_ids, args.smoke_test)
+        requested_chain_ids = args.chain_ids or list(WORKFLOW_CHAINS.keys())
+        plan = compute_chain_plan(total_count, requested_chain_ids, args.smoke_test)
         offline_mode = os.environ.get("CURATOR_SIMPLE_DATASET") == "1"
         scenario_selector: Optional[ScenarioSelector] = None
         chain_curator: Optional[ChainUtteranceGenerator] = None
@@ -310,6 +375,8 @@ def main() -> None:
         for category, count in summary_counts.items():
             print(f"  {category}: {count}")
     else:
+        total_conversations = len(conversations)
+        failure_total = sum(conv.contains_failure for conv in conversations)
         for chain_id, count in summary_counts.items():
             chain = CHAIN_BY_ID.get(chain_id)
             description = chain.description if chain else "Unknown chain"
@@ -320,6 +387,13 @@ def main() -> None:
             else:
                 failure_suffix = f", failures={failure_count}" if failure_count else ""
             print(f"  {chain_id}: {count} ({description}{failure_suffix})")
+        if total_conversations:
+            observed_ratio = failure_total / total_conversations
+            allowed_deviation = max(CHAIN_RATIO_TOLERANCE, 1.0 / total_conversations)
+            print(
+                f"  Failure ratio: {failure_total}/{total_conversations} "
+                f"({observed_ratio * 100:.1f}% | target {CHAIN_FAILURE_RATIO * 100:.1f}% +/- {allowed_deviation * 100:.1f}%)"
+            )
 
 
 if __name__ == "__main__":

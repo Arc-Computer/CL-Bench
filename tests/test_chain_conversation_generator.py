@@ -1,11 +1,23 @@
 """Tests for chained conversation generation."""
 
+import json
 import os
 import random
 
 import pytest
 
-from src.conversation_templates import WORKFLOW_CHAINS, WorkflowChain
+from analysis.chains_manifest import compute_manifest
+from scripts.generate_conversations import (
+    compute_chain_plan,
+    conversation_to_dict,
+    generate_chain_conversations,
+)
+from src.conversation_templates import (
+    CHAIN_FAILURE_RATIO,
+    CHAIN_RATIO_TOLERANCE,
+    WORKFLOW_CHAINS,
+    WorkflowChain,
+)
 from src.evaluation.conversation_harness import ConversationHarness
 from src.generation.chain_conversation_generator import (
     instantiate_chained_conversation,
@@ -74,7 +86,7 @@ def rng():
 
 
 def test_chain_generation_success(repo, selector, utterances, rng):
-    chain = WORKFLOW_CHAINS["client_opp_quote"]
+    chain = WORKFLOW_CHAINS["client_opp_quote_success"]
     conversation = instantiate_chained_conversation(
         chain,
         repo,
@@ -158,5 +170,28 @@ def test_offline_scenario_selection_prefers_stage_match():
 
     selections = _offline_select_scenarios(metadata, available, scenario_tags)
     assert selections[(1, "modify_opportunity")] == "SC-PROP"
+
+
+def test_chain_generation_failure_ratio_manifest(repo, selector, utterances, rng, tmp_path):
+    chain_keys = list(WORKFLOW_CHAINS.keys())
+    plan = compute_chain_plan(10, chain_keys, smoke_test=False)
+    conversations = generate_chain_conversations(plan, repo, selector, utterances, rng)
+
+    assert conversations, "expected at least one generated conversation"
+    failure_count = sum(1 for conv in conversations if conv.contains_failure)
+    failure_ratio = failure_count / len(conversations)
+    allowed_deviation = max(CHAIN_RATIO_TOLERANCE, 1.0 / len(conversations))
+    assert abs(failure_ratio - CHAIN_FAILURE_RATIO) <= allowed_deviation
+
+    output_path = tmp_path / "chains.jsonl"
+    with output_path.open("w", encoding="utf-8") as handle:
+        for conversation in conversations:
+            handle.write(json.dumps(conversation_to_dict(conversation)) + "\n")
+
+    manifest = compute_manifest(output_path, seed=123, model_name="stub-model")
+    assert manifest["within_failure_tolerance"]
+    assert abs(manifest["failure_ratio"] - CHAIN_FAILURE_RATIO) <= allowed_deviation
+    assert manifest["failed_conversations"] > 0
+    assert manifest["successful_conversations"] > 0
 
 os.environ.setdefault("CURATOR_SIMPLE_DATASET", "1")

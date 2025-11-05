@@ -18,15 +18,16 @@ def _format_percentage(numerator: int, denominator: int) -> str:
 
 def _render_chain_table(manifest: dict) -> str:
     lines = [
-        "| Chain | Conversations | Success Rate | Avg Turns | Avg Turns / Segment | Success Pattern |",
-        "| --- | ---: | ---: | ---: | ---: | --- |",
+        "| Chain | Conversations | Success % | Failure % | Avg Turns | Avg Turns / Segment | Success Pattern |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | --- |",
     ]
     for chain_id, stats in manifest["chains"].items():
         success = stats["successful_conversations"]
         total = stats["conversation_count"]
+        failure_ratio = stats.get("failure_ratio", 0.0)
         lines.append(
             f"| {chain_id} | {total} | {_format_percentage(success, total)} | "
-            f"{stats['average_turns']:.2f} | {stats['average_turns_per_segment']:.2f} | "
+            f"{failure_ratio * 100:.1f}% | {stats['average_turns']:.2f} | {stats['average_turns_per_segment']:.2f} | "
             f"{', '.join('✔' if flag else '✖' for flag in stats['success_pattern'])} |"
         )
     return "\n".join(lines)
@@ -52,6 +53,10 @@ def render_report(
     total = manifest["total_conversations"]
     success = manifest["successful_conversations"]
     failed = manifest["failed_conversations"]
+    failure_ratio = manifest.get("failure_ratio")
+    target_ratio = manifest.get("target_failure_ratio")
+    tolerance = manifest.get("failure_ratio_tolerance")
+    within_tolerance = manifest.get("within_failure_tolerance", True)
     segment_success = sum(
         count
         for key, count in manifest["overall_segment_outcomes"].items()
@@ -71,6 +76,12 @@ def render_report(
     lines.append(
         f"- Conversation success rate: {_format_percentage(success, total)}"
     )
+    if failure_ratio is not None and target_ratio is not None and tolerance is not None:
+        lines.append(
+            f"- Failure ratio: {failure_ratio * 100:.1f}% (target {target_ratio * 100:.1f}% +/- {tolerance * 100:.1f}%)"
+        )
+        if not within_tolerance:
+            lines.append("- WARNING: Failure ratio is outside the configured tolerance; regenerate the chained dataset.")
     lines.append(
         f"- Segment success rate: {_format_percentage(segment_success, segment_total)}"
     )
@@ -90,8 +101,20 @@ def render_report(
     lines.append("## Baseline Logs")
     lines.append(_render_baseline_section(baseline_paths))
     lines.append("")
-    lines.append("## Outstanding Expected-Failure Cases")
-    lines.append("- Pending enumeration; populate once failure chains are introduced.")
+    lines.append("## Expected Failure Coverage")
+    failure_summary: List[str] = []
+    for chain_id, stats in manifest["chains"].items():
+        failure_ratio = stats.get("failure_ratio", 0.0)
+        failed = stats.get("failed_conversations", 0)
+        total = stats.get("conversation_count", 0)
+        if failure_ratio > 0 and total:
+            failure_summary.append(
+                f"- {chain_id}: {failed}/{total} conversations intentionally fail"
+            )
+    if failure_summary:
+        lines.extend(failure_summary)
+    else:
+        lines.append("- No failure-bearing chains were detected; verify generator configuration.")
 
     return "\n".join(lines)
 
