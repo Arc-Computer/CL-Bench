@@ -25,13 +25,27 @@ from src.pipeline.scenario_repository import ENTITY_ID_KEYS, ScenarioRepository
 
 EntityLookup = Dict[str, Dict[str, str]]
 NameIndex = Dict[str, Dict[str, set[str]]]
+NAME_STOPWORDS = {"client", "clients", "account", "accounts", "company", "companies"}
 
 
 def _normalize(text: str) -> str:
     return re.sub(r"\s+", " ", text.strip().lower())
 
 
-def _collect_entity_names(repo: ScenarioRepository) -> Tuple[EntityLookup, NameIndex]:
+def _canonical_matches_utterance(canonical_norm: str, utterance_norm: str) -> bool:
+    if canonical_norm in utterance_norm:
+        return True
+    for delimiter in (" - ", "(", "/", ":"):
+        prefix = canonical_norm.split(delimiter, 1)[0].strip()
+        if prefix and prefix in utterance_norm:
+            return True
+    return False
+
+
+def _collect_entity_names(
+    repo: ScenarioRepository,
+    overrides: Mapping[str, Mapping[str, Mapping[str, Any]]] | None = None,
+) -> Tuple[EntityLookup, NameIndex]:
     """Return canonical entity names indexed by type and ID."""
     entity_lookup: EntityLookup = defaultdict(dict)
     name_index: NameIndex = defaultdict(lambda: defaultdict(set))
@@ -44,6 +58,20 @@ def _collect_entity_names(repo: ScenarioRepository) -> Tuple[EntityLookup, NameI
             normalized = _normalize(name)
             entity_lookup[entity_type][entity_id] = name
             name_index[entity_type][normalized].add(entity_id)
+
+    if overrides:
+        for entity_type, entity_map in overrides.items():
+            for entity_id, fields in entity_map.items():
+                name = fields.get("name")
+                if not name:
+                    continue
+                old_name = entity_lookup.get(entity_type, {}).get(entity_id)
+                if old_name:
+                    old_norm = _normalize(old_name)
+                    name_index[entity_type][old_norm].discard(entity_id)
+                normalized = _normalize(name)
+                entity_lookup[entity_type][entity_id] = name
+                name_index[entity_type][normalized].add(entity_id)
 
     return entity_lookup, name_index
 
@@ -145,7 +173,7 @@ def _detect_name_conflicts(
         if not canonical_name:
             continue
         canonical_norm = _normalize(canonical_name)
-        if canonical_norm in utterance_normalized:
+        if _canonical_matches_utterance(canonical_norm, utterance_normalized):
             continue
 
         conflicting_names = []
@@ -155,7 +183,8 @@ def _detect_name_conflicts(
             if name_norm in utterance_normalized:
                 conflicting_names.append(name_norm)
 
-        if conflicting_names:
+        filtered_names = [name for name in conflicting_names if name not in NAME_STOPWORDS]
+        if filtered_names:
             conflicts.append(
                 {
                     "conversation_id": conversation_id,
@@ -164,7 +193,7 @@ def _detect_name_conflicts(
                     "entity_type": entity_type,
                     "entity_id": entity_id,
                     "canonical_name": canonical_name,
-                    "conflicting_names": sorted(set(conflicting_names)),
+                    "conflicting_names": sorted(set(filtered_names)),
                     "user_utterance": turn.get("user_utterance"),
                 }
             )
@@ -196,6 +225,11 @@ def main() -> None:
         default=50,
         help="Maximum findings to include per check (default: 50)",
     )
+    parser.add_argument(
+        "--entity-overrides",
+        type=Path,
+        help="Optional JSON overrides mapping entity IDs to canonical fields.",
+    )
     args = parser.parse_args()
 
     conversations = _load_conversations(args.dataset)
@@ -204,7 +238,10 @@ def main() -> None:
         schema_path=Path("data/fake_crm_tables_schema.json"),
         task_weights_path=Path("data/Agent_tasks.csv"),
     )
-    entity_names, name_index = _collect_entity_names(repo)
+    overrides = None
+    if args.entity_overrides:
+        overrides = json.loads(args.entity_overrides.read_text(encoding="utf-8"))
+    entity_names, name_index = _collect_entity_names(repo, overrides)
     summary = lint_conversations(conversations, entity_names, name_index)
 
     max_findings = args.max_findings

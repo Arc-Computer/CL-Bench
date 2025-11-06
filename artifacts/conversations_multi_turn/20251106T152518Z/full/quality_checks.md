@@ -11,12 +11,16 @@
   - `PYTHONPATH=. python analysis/chains_manifest.py --dataset artifacts/conversations_multi_turn/20251106T152518Z/full/chains.jsonl --output artifacts/conversations_multi_turn/20251106T152518Z/full/manifest.json --seed 42 --model-name gpt-4.1-mini`
   - `PYTHONPATH=. python analysis/generate_chains_report.py --dataset artifacts/conversations_multi_turn/20251106T152518Z/full/chains.jsonl --output artifacts/conversations_multi_turn/20251106T152518Z/full/report.md --seed 42 --model-name gpt-4.1-mini --baseline artifacts/conversations_multi_turn/20251106T152518Z/full/run.log`
   - `PYTHONPATH=. python scripts/verify_no_fallbacks.py --artifacts-dir artifacts/conversations_multi_turn/20251106T152518Z/full --output artifacts/conversations_multi_turn/20251106T152518Z/full/verification_report.json`
+- **Metadata Normalization (no LLM calls)**
+  - `PYTHONPATH=. python scripts/augment_expected_responses.py --source artifacts/scenarios_single_turn/scenarios_clean.jsonl --destination /tmp/scenarios_passthrough.jsonl --seed-overrides artifacts/scenarios_single_turn/20251106T141945Z/seed_overrides.json --skip-validation`
+  - `PYTHONPATH=. python analysis/normalize_seed_metadata.py --dataset artifacts/conversations_multi_turn/20251106T152518Z/full/chains.jsonl --overrides artifacts/scenarios_single_turn/20251106T141945Z/seed_overrides.json --entity-metadata-output artifacts/conversations_multi_turn/20251106T152518Z/full/entity_overrides.json`
 - **Lint Checks (data quality)**
-  - `PYTHONPATH=. python analysis/lint_chains.py --dataset artifacts/conversations_multi_turn/20251106T152518Z/full/chains.jsonl --summary artifacts/conversations_multi_turn/20251106T152518Z/full/lint_report.json --max-findings 50`
-  - Duplicate utterances: 36 (repeated “Find me all prospects with 'tech'...” variants). Name conflicts: 1,399 entries flagged (repeat client aliases such as “TechVision Inc” vs “King Group”) for follow-up QA triage.
+  - `PYTHONPATH=. python analysis/lint_chains.py --dataset artifacts/conversations_multi_turn/20251106T152518Z/full/chains.jsonl --summary artifacts/conversations_multi_turn/20251106T152518Z/full/lint_report.json --max-findings 50 --entity-overrides artifacts/conversations_multi_turn/20251106T152518Z/full/entity_overrides.json`
+  - Duplicate utterances: 36 (repeated “Find me all prospects with 'tech'...” variants). Name conflicts: 0 after applying scenario-derived overrides and canonical stopword filtering.
 - **Artifacts promoted from this run**
   - Conversations: `artifacts/conversations_multi_turn/20251106T152518Z/full/chains.jsonl`
   - Manifest: `artifacts/conversations_multi_turn/20251106T152518Z/full/manifest.json`
   - Report: `artifacts/conversations_multi_turn/20251106T152518Z/full/report.md`
   - Verification: `artifacts/conversations_multi_turn/20251106T152518Z/full/verification_report.json`
   - Lint summary: `artifacts/conversations_multi_turn/20251106T152518Z/full/lint_report.json`
+  - Overrides: `artifacts/conversations_multi_turn/20251106T152518Z/full/entity_overrides.json`

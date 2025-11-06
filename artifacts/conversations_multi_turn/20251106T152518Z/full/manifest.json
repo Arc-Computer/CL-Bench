@@ -426,7 +426,7 @@
   "failure_ratio": 0.4,
   "failure_ratio_deviation": 0.0,
   "failure_ratio_tolerance": 0.02,
-  "generated_at": "2025-11-06T18:18:01.884824+00:00",
+  "generated_at": "2025-11-06T18:42:06.918433+00:00",
   "model": "gpt-4.1-mini",
   "overall_segment_outcomes": {
     "actual:failure|expected:failure": 600,

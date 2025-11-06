@@ -1,0 +1,1173 @@
+{
+  "SC-00004": {
+    "Opportunity": {
+      "amount": 215000,
+      "probability": 70,
+      "stage": "Negotiation"
+    }
+  },
+  "SC-00005": {
+    "Contact": {
+      "email": "lauren.nguyen@quantumsoft.com"
+    }
+  },
+  "SC-00011": {
+    "Opportunity": {
+      "amount": 200000
+    }
+  },
+  "SC-00015": {
+    "Contact": {
+      "first_name": "Michelle",
+      "last_name": "Rodriguez"
+    }
+  },
+  "SC-00017": {
+    "Client": {
+      "email": "steve@techvision.com",
+      "name": "TechVision Inc",
+      "primary_contact_email": "steve@techvision.com",
+      "status": "Active"
+    }
+  },
+  "SC-00020": {
+    "Client": {
+      "email": "john.smith@acme.com"
+    }
+  },
+  "SC-00021": {
+    "Client": {
+      "name": "TechVision Inc - Enterprise License (60%)"
+    }
+  },
+  "SC-00022": {
+    "Client": {
+      "name": "AI pilot (65% prob)"
+    }
+  },
+  "SC-00024": {
+    "Opportunity": {
+      "name": "Jessica Davis"
+    }
+  },
+  "SC-00025": {
+    "Opportunity": {
+      "amount": 324000,
+      "probability": 65,
+      "stage": "Negotiation"
+    }
+  },
+  "SC-00026": {},
+  "SC-00030": {
+    "Opportunity": {
+      "amount": 388000,
+      "name": "Stellar Group - Training Program",
+      "stage": "Negotiation"
+    }
+  },
+  "SC-00031": {
+    "Opportunity": {
+      "amount": 86000,
+      "stage": "Qualification"
+    }
+  },
+  "SC-00032": {
+    "Opportunity": {
+      "amount": 215000
+    }
+  },
+  "SC-00034": {
+    "Client": {
+      "name": "Momentum Corp",
+      "notes": "Converted after Q3 mtg; follow-up in 2w",
+      "primary_contact_id": "312b60cb-3aed-4721-aa85-25188b78c59a",
+      "status": "Active"
+    }
+  },
+  "SC-00037": {},
+  "SC-00038": {},
+  "SC-00041": {},
+  "SC-00042": {
+    "Contact": {
+      "email": "lauren.nguyen@quantumsoft.com"
+    }
+  },
+  "SC-00044": {
+    "Client": {
+      "name": "Edge Systems - Security Assessment (Prob 45%)"
+    }
+  },
+  "SC-00047": {
+    "Quote": {
+      "amount": 388000,
+      "status": "Sent"
+    }
+  },
+  "SC-00048": {
+    "Client": {
+      "name": "TechVision Inc - Expansion Deal (Prob: 60%)"
+    }
+  },
+  "SC-00049": {
+    "Client": {
+      "email": "jake.matthews@acme.com"
+    }
+  },
+  "SC-00053": {
+    "Quote": {
+      "amount": 373000,
+      "name": "CloudScale Enterprises - Expansion Deal"
+    }
+  },
+  "SC-00054": {
+    "Opportunity": {
+      "amount": 293000,
+      "name": "Prism Analytics",
+      "stage": "Qualification"
+    }
+  },
+  "SC-00058": {
+    "Client": {
+      "name": "TechVision Inc - Expansion Deal (65% prob)"
+    }
+  },
+  "SC-00059": {
+    "Contact": {
+      "email": "m.rodriguez@primesolutions.com",
+      "phone": "415-555-0199",
+      "title": "Head of Consulting"
+    }
+  },
+  "SC-00063": {
+    "Opportunity": {
+      "amount": 388000,
+      "name": "Stellar Group - Training Program",
+      "stage": "Closed-Won"
+    }
+  },
+  "SC-00064": {
+    "Quote": {
+      "amount": 388000,
+      "name": "Stellar Group - Training Program"
+    }
+  },
+  "SC-00065": {
+    "Client": {
+      "name": "Keystone Industries - Compliance Audit"
+    }
+  },
+  "SC-00067": {
+    "Opportunity": {
+      "amount": 388000,
+      "probability": 70,
+      "stage": "Negotiation"
+    }
+  },
+  "SC-00069": {
+    "Quote": {
+      "amount": 215000,
+      "name": "Pulse Digital - Cloud Infra Quote",
+      "status": "Sent"
+    }
+  },
+  "SC-00070": {
+    "Contact": {
+      "email": "jessica.davis@stellargroup.com",
+      "first_name": "Jessica",
+      "last_name": "Davis"
+    }
+  },
+  "SC-00072": {},
+  "SC-00073": {
+    "Opportunity": {
+      "probability": 30
+    }
+  },
+  "SC-00074": {
+    "Client": {
+      "name": "Acme Corp - Cloud Migration"
+    }
+  },
+  "SC-00075": {
+    "Opportunity": {
+      "amount": 215000,
+      "probability": 20
+    }
+  },
+  "SC-00077": {},
+  "SC-00078": {
+    "Opportunity": {
+      "amount": 215000,
+      "probability": 60,
+      "stage": "Qualification"
+    }
+  },
+  "SC-00079": {
+    "Opportunity": {
+      "amount": 409000,
+      "name": "Momentum Corporation",
+      "stage": "Prospecting"
+    }
+  },
+  "SC-00080": {},
+  "SC-00081": {
+    "Client": {
+      "name": "TechVision Inc - Expansion Deal"
+    }
+  },
+  "SC-00082": {},
+  "SC-00084": {
+    "Quote": {
+      "status": "Canceled"
+    }
+  },
+  "SC-00087": {
+    "Opportunity": {
+      "amount": 34000.0,
+      "name": "Prime Solutions - Digital Transformation Quote",
+      "probability": 75
+    }
+  },
+  "SC-00089": {
+    "Quote": {
+      "status": "Canceled"
+    }
+  },
+  "SC-00090": {
+    "Client": {
+      "name": "TechVision Inc - Expansion Deal"
+    }
+  },
+  "SC-00091": {
+    "Quote": {
+      "amount": 220000
+    }
+  },
+  "SC-00093": {
+    "Contact": {
+      "email": "m.rodriguez@primesol.com",
+      "title": "VP Sales"
+    }
+  },
+  "SC-00094": {
+    "Contact": {
+      "email": "lauren.nguyen@quantumsoftware.com"
+    }
+  },
+  "SC-00096": {
+    "Opportunity": {
+      "amount": 390000,
+      "probability": 65,
+      "stage": "Negotiation"
+    }
+  },
+  "SC-00097": {},
+  "SC-00099": {
+    "Client": {
+      "name": "TechVision Inc - Expansion Deal"
+    }
+  },
+  "SC-00100": {},
+  "SC-00101": {},
+  "SC-00102": {
+    "Client": {
+      "owner": "alex.reynolds@salescorp.com"
+    }
+  },
+  "SC-00105": {
+    "Client": {
+      "name": "Keystone Cloud Migration"
+    }
+  },
+  "SC-00106": {
+    "Client": {
+      "name": "Digital Migration"
+    }
+  },
+  "SC-00107": {
+    "Client": {
+      "name": "Edge Security Pilot"
+    }
+  },
+  "SC-00109": {
+    "Client": {
+      "name": "TechVision Inc - Cloud Migration"
+    }
+  },
+  "SC-00110": {
+    "Client": {
+      "name": "Managed Security Services"
+    }
+  },
+  "SC-00111": {},
+  "SC-00112": {},
+  "SC-00115": {
+    "Opportunity": {
+      "amount": 350000.0
+    }
+  },
+  "SC-00116": {},
+  "SC-00118": {},
+  "SC-00119": {
+    "Client": {
+      "name": "Apex Consulting - FY26 Expansion"
+    }
+  },
+  "SC-00120": {
+    "Opportunity": {
+      "amount": 376000.0
+    }
+  },
+  "SC-00121": {
+    "Opportunity": {
+      "amount": 349000.0
+    }
+  },
+  "SC-00123": {},
+  "SC-00124": {
+    "Client": {
+      "name": "Delta Partners - Advanced Analytics"
+    }
+  },
+  "SC-00125": {
+    "Client": {
+      "name": "Keystone Industries - Security Assessment"
+    }
+  },
+  "SC-00126": {},
+  "SC-00128": {},
+  "SC-00129": {},
+  "SC-00130": {
+    "Client": {
+      "email": "emily.carter@novasystems.com",
+      "industry": "Telecommunications",
+      "name": "Nova Systems Ltd",
+      "notes": "Client record updated per request",
+      "owner": "Emily Carter",
+      "status": "Active"
+    }
+  },
+  "SC-00131": {},
+  "SC-00132": {},
+  "SC-00133": {
+    "Client": {
+      "owner": "Samantha Lee"
+    }
+  },
+  "SC-00134": {
+    "Client": {
+      "name": "Keystone Industries - Cloud migration"
+    }
+  },
+  "SC-00135": {},
+  "SC-00137": {
+    "Client": {
+      "email": "michelle.taylor@endeavortech.com"
+    }
+  },
+  "SC-00139": {},
+  "SC-00142": {
+    "Client": {
+      "owner": "Emily Carter"
+    }
+  },
+  "SC-00146": {
+    "Client": {
+      "name": "Keystone Industries - IoT platform rollout"
+    }
+  },
+  "SC-00148": {},
+  "SC-00149": {
+    "Client": {
+      "name": "Keystone Industries - Edge Security Add-on"
+    }
+  },
+  "SC-00150": {},
+  "SC-00152": {
+    "Client": {
+      "name": "Acme Corporation - Cloud migration"
+    }
+  },
+  "SC-00153": {},
+  "SC-00154": {
+    "Client": {
+      "name": "Keystone Industries - Security Assessment"
+    }
+  },
+  "SC-00155": {
+    "Opportunity": {
+      "amount": 247000.0
+    }
+  },
+  "SC-00156": {
+    "Client": {
+      "email": "michelle.taylor@endeavortech.com"
+    }
+  },
+  "SC-00157": {
+    "Client": {
+      "name": "Managed Cloud Migration"
+    }
+  },
+  "SC-00158": {
+    "Client": {
+      "owner": "Alex Kim"
+    }
+  },
+  "SC-00159": {},
+  "SC-00160": {},
+  "SC-00161": {},
+  "SC-00162": {
+    "Client": {
+      "name": "Keystone Industries - Cloud Migration"
+    }
+  },
+  "SC-00164": {},
+  "SC-00167": {
+    "Client": {
+      "name": "Analytics platform pilot"
+    }
+  },
+  "SC-00168": {
+    "Client": {
+      "name": "Acme Corporation - Expansion Deal"
+    }
+  },
+  "SC-00170": {
+    "Client": {
+      "email": "john.carter@techvision.com"
+    }
+  },
+  "SC-00171": {
+    "Client": {
+      "name": "Zenith Corporation - Premium Features"
+    }
+  },
+  "SC-00172": {},
+  "SC-00173": {
+    "Quote": {
+      "amount": 310000,
+      "name": "Advanced Firewall",
+      "total": 10000
+    }
+  },
+  "SC-00174": {
+    "Client": {
+      "email": "michael.davis@cloudscale.com"
+    }
+  },
+  "SC-00175": {},
+  "SC-00176": {},
+  "SC-00178": {},
+  "SC-00183": {
+    "Client": {
+      "name": "TechVision Inc - Digital Transformation"
+    }
+  },
+  "SC-00184": {},
+  "SC-00186": {},
+  "SC-00187": {},
+  "SC-00189": {
+    "Client": {
+      "email": "michelle.taylor@endeavortech.com"
+    }
+  },
+  "SC-00190": {
+    "Contact": {
+      "email": "michelle.taylor@endeavortech.com"
+    }
+  },
+  "SC-00191": {
+    "Opportunity": {
+      "amount": 350000.0
+    }
+  },
+  "SC-00192": {
+    "Opportunity": {
+      "amount": 350000.0
+    }
+  },
+  "SC-00193": {
+    "Opportunity": {
+      "amount": 350000.0
+    }
+  },
+  "SC-00195": {
+    "Opportunity": {
+      "amount": 350000.0
+    }
+  },
+  "SC-00197": {
+    "Opportunity": {
+      "amount": 350000.0
+    }
+  },
+  "SC-00198": {
+    "Client": {
+      "owner": "Samantha Lee"
+    }
+  },
+  "SC-00199": {
+    "Client": {
+      "email": "lena.ortiz@novasys.com",
+      "industry": "Telecommunications",
+      "name": "Nova Systems Inc",
+      "owner": "Jason Wong",
+      "status": "Active"
+    }
+  },
+  "SC-00200": {},
+  "SC-00201": {
+    "Client": {
+      "name": "Edge Security Pilot"
+    }
+  },
+  "SC-00202": {},
+  "SC-00203": {
+    "Client": {
+      "name": "Digital Security Pilot"
+    }
+  },
+  "SC-00205": {
+    "Client": {
+      "email": "michael.davis@cloudscale.com"
+    }
+  },
+  "SC-00207": {},
+  "SC-00208": {
+    "Client": {
+      "name": "Keystone Industries - Cloud Migration"
+    }
+  },
+  "SC-00210": {
+    "Client": {
+      "name": "Apex Consulting Group - AI Integration Pilot"
+    }
+  },
+  "SC-00211": {},
+  "SC-00212": {
+    "Client": {
+      "name": "Apex Consulting Group - Multi-cloud Migration",
+      "owner": "Michael Reynolds"
+    }
+  },
+  "SC-00214": {
+    "Client": {
+      "name": "Keystone Industries - Platform Migration"
+    }
+  },
+  "SC-00215": {},
+  "SC-00216": {
+    "Client": {
+      "name": "Keystone Industries - Cloud Infrastructure"
+    }
+  },
+  "SC-00217": {
+    "Opportunity": {
+      "amount": 350000.0
+    }
+  },
+  "SC-00219": {},
+  "SC-00220": {
+    "Client": {
+      "name": "Keystone Industries - Integration Services"
+    }
+  },
+  "SC-00221": {
+    "Client": {
+      "owner": "Alex Patel"
+    }
+  },
+  "SC-00224": {
+    "Client": {
+      "owner": "Sam Patel"
+    }
+  },
+  "SC-00225": {
+    "Client": {
+      "name": "Apex Consulting Group - Managed Cloud Expansion"
+    }
+  },
+  "SC-00226": {
+    "Client": {
+      "name": "TechVision Inc - Data Lake Deployment"
+    }
+  },
+  "SC-00227": {
+    "Client": {
+      "name": "Edge Cloud Migration"
+    }
+  },
+  "SC-00228": {},
+  "SC-00229": {
+    "Client": {
+      "name": "Q4 Analytics Rollout"
+    }
+  },
+  "SC-00230": {
+    "Opportunity": {
+      "amount": 432000.0
+    }
+  },
+  "SC-00231": {
+    "Client": {
+      "owner": "Samir Patel"
+    }
+  },
+  "SC-00233": {
+    "Client": {
+      "owner": "Alex Kim"
+    }
+  },
+  "SC-00235": {},
+  "SC-00236": {},
+  "SC-00237": {
+    "Opportunity": {
+      "amount": 350000.0
+    }
+  },
+  "SC-00239": {
+    "Client": {
+      "name": "Keystone Industries - Cloud Migration"
+    }
+  },
+  "SC-00240": {
+    "Opportunity": {
+      "amount": 350000.0
+    }
+  },
+  "SC-00242": {
+    "Client": {
+      "name": "Advanced Analytics Suite"
+    }
+  },
+  "SC-00244": {},
+  "SC-00246": {},
+  "SC-00248": {},
+  "SC-00252": {
+    "Client": {
+      "name": "TechVision Inc - Digital Transformation"
+    }
+  },
+  "SC-00253": {},
+  "SC-00254": {},
+  "SC-00255": {},
+  "SC-00256": {
+    "Contact": {
+      "email": "michelle.taylor@endeavortech.com",
+      "title": "Tech Lead"
+    }
+  },
+  "SC-00257": {
+    "Contact": {
+      "email": "m.davis@cloudscale.com",
+      "title": "VP Eng"
+    }
+  },
+  "SC-00258": {},
+  "SC-00260": {},
+  "SC-00263": {},
+  "SC-00265": {},
+  "SC-00269": {
+    "Quote": {
+      "status": "Canceled"
+    }
+  },
+  "SC-00271": {
+    "Contact": {
+      "email": "michelle.taylor@endeavortech.com",
+      "phone": "+1-415-555-0132",
+      "title": "Sr. IT Manager"
+    }
+  },
+  "SC-00275": {
+    "Opportunity": {
+      "amount": 350000,
+      "owner": "Michael Davis",
+      "stage": "Negotiation"
+    }
+  },
+  "SC-00277": {},
+  "SC-00278": {
+    "Client": {
+      "notes": "Move to pilot - tech review next Wed",
+      "owner": "James Carter",
+      "status": "Active"
+    },
+    "Contact": {
+      "email": "michelle.taylor@endeavortech.com",
+      "first_name": "Michelle",
+      "last_name": "Taylor"
+    }
+  },
+  "SC-00279": {},
+  "SC-00286": {},
+  "SC-00289": {
+    "Opportunity": {
+      "amount": 350000,
+      "owner": "Rohit Singh",
+      "stage": "Negotiation"
+    }
+  },
+  "SC-00295": {
+    "Opportunity": {
+      "amount": 350000,
+      "owner": "Mark Evans",
+      "stage": "Negotiation"
+    }
+  },
+  "SC-00297": {
+    "Contact": {
+      "email": "michelle.taylor@endeavortech.com"
+    }
+  },
+  "SC-00303": {
+    "Client": {
+      "email": "s.hernandez@nextgen.com",
+      "industry": "Technology",
+      "notes": "Priority for FY26 renewal",
+      "owner": "Ava Martinez",
+      "status": "Prospect"
+    }
+  },
+  "SC-00305": {},
+  "SC-00308": {},
+  "SC-00310": {
+    "Contact": {
+      "email": "michelle.taylor@endeavortech.com"
+    }
+  },
+  "SC-00317": {
+    "Contact": {
+      "email": "michelle.taylor@endeavortech.com"
+    }
+  },
+  "SC-00321": {},
+  "SC-00322": {
+    "Client": {
+      "name": "Delta Partners LLC",
+      "owner": "Alex Martinez",
+      "status": "Active"
+    },
+    "Contact": {
+      "email": "daniel.king@deltapartners.com",
+      "first_name": "Daniel",
+      "last_name": "King"
+    }
+  },
+  "SC-00331": {},
+  "SC-00333": {},
+  "SC-00338": {
+    "Contact": {
+      "email": "michael.davis@cloudscale.com"
+    }
+  },
+  "SC-00342": {},
+  "SC-00344": {
+    "Quote": {
+      "amount": 350000
+    }
+  },
+  "SC-00346": {
+    "Quote": {
+      "amount": 306000
+    }
+  },
+  "SC-00347": {
+    "Client": {
+      "notes": "Schedule onboarding call next week",
+      "owner": "Sam Patel",
+      "primary_contact_email": "michelle.taylor@endeavortech.com",
+      "primary_contact_id": "d1952607-5044-4fa1-bea5-bcb796261bf3",
+      "status": "Active"
+    }
+  },
+  "SC-00348": {},
+  "SC-00353": {
+    "Client": {
+      "industry": "Telecommunications",
+      "name": "Endeavor Technologies",
+      "owner": "Alex Rivera",
+      "status": "Active"
+    },
+    "Contact": {
+      "email": "michelle.taylor@endeavortech.com",
+      "first_name": "Michelle",
+      "last_name": "Taylor"
+    },
+    "Opportunity": {
+      "amount": 306000,
+      "stage": "Negotiation"
+    }
+  },
+  "SC-00356": {
+    "Contact": {
+      "email": "j.robinson@spectrumcorp.com",
+      "title": "Sr. IT Manager"
+    }
+  },
+  "SC-00360": {},
+  "SC-00361": {
+    "Contact": {
+      "email": "michael.davis@cloudscale.com"
+    }
+  },
+  "SC-00369": {
+    "Client": {
+      "industry": "Technology",
+      "owner": "Alex Morgan",
+      "status": "Active"
+    }
+  },
+  "SC-00378": {
+    "Quote": {
+      "status": "Canceled"
+    }
+  },
+  "SC-00379": {
+    "Client": {
+      "owner": "Aman Miller",
+      "primary_contact_email": "dan.king@deltapartners.com",
+      "primary_contact_id": "7708dcb8-4267-4d2c-9a85-d62bdd781fb0",
+      "status": "Active"
+    }
+  },
+  "SC-00380": {
+    "Opportunity": {
+      "amount": 350000,
+      "owner": "Alex Kim",
+      "stage": "Negotiation"
+    }
+  },
+  "SC-00384": {
+    "Quote": {
+      "name": "Base Security Platform"
+    }
+  },
+  "SC-00385": {},
+  "SC-00386": {},
+  "SC-00387": {
+    "Opportunity": {
+      "amount": 432000,
+      "name": "Daniel Wilson",
+      "stage": "Negotiation"
+    }
+  },
+  "SC-00390": {},
+  "SC-00394": {
+    "Quote": {
+      "status": "Sent"
+    }
+  },
+  "SC-00395": {
+    "Quote": {
+      "amount": 306000,
+      "status": "Sent"
+    }
+  },
+  "SC-00401": {
+    "Client": {
+      "name": "CloudScale Enterprises - Managed Backup"
+    }
+  },
+  "SC-00402": {},
+  "SC-00403": {},
+  "SC-00405": {},
+  "SC-00407": {
+    "Client": {
+      "name": "Keystone Industries - Cloud Migration"
+    }
+  },
+  "SC-00408": {
+    "Client": {
+      "owner": "Jordan Blake"
+    }
+  },
+  "SC-00409": {},
+  "SC-00411": {
+    "Client": {
+      "name": "Keystone Industries - Platform Migration"
+    }
+  },
+  "SC-00413": {
+    "Opportunity": {
+      "amount": 376000.0
+    }
+  },
+  "SC-00414": {
+    "Client": {
+      "owner": "Olivia Martinez"
+    }
+  },
+  "SC-00416": {
+    "Client": {
+      "name": "TechVision Inc - Cloud Migration"
+    }
+  },
+  "SC-00417": {
+    "Opportunity": {
+      "amount": 350000.0
+    }
+  },
+  "SC-00418": {
+    "Client": {
+      "owner": "Alex Carter"
+    }
+  },
+  "SC-00419": {},
+  "SC-00420": {
+    "Client": {
+      "email": "john.blake@techvision.com"
+    }
+  },
+  "SC-00421": {
+    "Client": {
+      "email": "jordan.lee@techvision.com"
+    }
+  },
+  "SC-00422": {
+    "Client": {
+      "name": "Acme Corporation - IoT pilot"
+    }
+  },
+  "SC-00423": {
+    "Client": {
+      "email": "michelle.taylor@endeavortech.com"
+    }
+  },
+  "SC-00424": {
+    "Client": {
+      "status": "Active"
+    }
+  },
+  "SC-00429": {},
+  "SC-00434": {
+    "Client": {
+      "name": "TechVision Inc - Cloud Migration"
+    }
+  },
+  "SC-00435": {},
+  "SC-00436": {
+    "Client": {
+      "name": "Cloud migration - TechVision Inc"
+    }
+  },
+  "SC-00437": {},
+  "SC-00438": {
+    "Client": {
+      "email": "michelle.taylor@endeavortech.com"
+    }
+  },
+  "SC-00440": {
+    "Client": {
+      "name": "Keystone Industries - Cloud Migration"
+    }
+  },
+  "SC-00441": {
+    "Client": {
+      "name": "TechVision Inc - Edge AI pilot"
+    }
+  },
+  "SC-00443": {
+    "Client": {
+      "name": "CloudScale Enterprises - AI platform pilot"
+    }
+  },
+  "SC-00445": {
+    "Client": {
+      "name": "Keystone Industries - IoT Platform Upgrade"
+    }
+  },
+  "SC-00446": {
+    "Client": {
+      "name": "Keystone Industries - Cloud migration"
+    }
+  },
+  "SC-00447": {
+    "Opportunity": {
+      "amount": 432000.0
+    }
+  },
+  "SC-00448": {
+    "Client": {
+      "owner": "Michael Lee"
+    }
+  },
+  "SC-00449": {
+    "Client": {
+      "name": "TechVision Inc - Managed Security Suite"
+    }
+  },
+  "SC-00454": {},
+  "SC-00455": {},
+  "SC-00456": {
+    "Opportunity": {
+      "amount": 350000.0
+    }
+  },
+  "SC-00457": {
+    "Opportunity": {
+      "amount": 350000.0
+    }
+  },
+  "SC-00460": {
+    "Client": {
+      "name": "TechVision Inc - Mobile App Development"
+    }
+  },
+  "SC-00462": {
+    "Opportunity": {
+      "amount": 350000.0
+    }
+  },
+  "SC-00463": {},
+  "SC-00464": {
+    "Client": {
+      "email": "michelle.taylor@endeavortech.com"
+    }
+  },
+  "SC-00466": {
+    "Client": {
+      "name": "Apex Consulting Group - Cloud Migration"
+    }
+  },
+  "SC-00469": {
+    "Opportunity": {
+      "amount": 376000.0
+    }
+  },
+  "SC-00473": {},
+  "SC-00475": {
+    "Client": {
+      "name": "Keystone Industries - Cloud Migration"
+    }
+  },
+  "SC-00476": {
+    "Client": {
+      "name": "Apex Consulting Group - Data migration pkg"
+    }
+  },
+  "SC-00478": {
+    "Opportunity": {
+      "amount": 350000.0
+    }
+  },
+  "SC-00479": {
+    "Contact": {
+      "email": "j.robinson@spectrum.edu",
+      "title": "IT Dir"
+    }
+  },
+  "SC-00481": {},
+  "SC-00482": {
+    "Client": {
+      "email": "john.mercer@techvision.com"
+    }
+  },
+  "SC-00486": {},
+  "SC-00487": {
+    "Client": {
+      "name": "TechVision Inc - Cloud Migration"
+    }
+  },
+  "SC-00488": {
+    "Client": {
+      "name": "Digital Analytics Pilot"
+    }
+  },
+  "SC-00489": {
+    "Client": {
+      "name": "Lab Data Integration"
+    }
+  },
+  "SC-00490": {
+    "Client": {
+      "name": "NextGen - API Expansion"
+    }
+  },
+  "SC-00491": {
+    "Client": {
+      "name": "Managed Services Renewal"
+    }
+  },
+  "SC-00492": {
+    "Client": {
+      "owner": "Jordan Lee"
+    }
+  },
+  "SC-01001": {},
+  "SC-01002": {},
+  "SC-01003": {},
+  "SC-01004": {},
+  "SC-01005": {},
+  "SC-01006": {},
+  "SC-0103DEBA": {},
+  "SC-01050": {},
+  "SC-01051": {},
+  "SC-01052": {},
+  "SC-01053": {},
+  "SC-01054": {},
+  "SC-01055": {
+    "Client": {
+      "status": "Active"
+    }
+  },
+  "SC-01057": {},
+  "SC-01058": {},
+  "SC-01059": {},
+  "SC-01060": {},
+  "SC-01250": {},
+  "SC-07155541": {},
+  "SC-2690B256": {
+    "Client": {
+      "email": "emily@example.com",
+      "name": "Emily"
+    }
+  },
+  "SC-2A1BB3CE": {},
+  "SC-325CCE1A": {},
+  "SC-4F0E4A6D": {},
+  "SC-52DFA120": {},
+  "SC-6E91D309": {},
+  "SC-8B230CC7": {},
+  "SC-B72C3908": {},
+  "SC-B939413A": {},
+  "SC-F084B5E1": {},
+  "SC-F8B54EE7": {},
+  "SC-F9712A92": {},
+  "SC-MANUAL-CL-F01": {},
+  "SC-MANUAL-CL-F02": {},
+  "SC-MANUAL-CL-F03": {},
+  "SC-MANUAL-CL-F04": {},
+  "SC-MANUAL-CL-F05": {},
+  "SC-MANUAL-CL-F06": {},
+  "SC-MANUAL-CL-F07": {},
+  "SC-MANUAL-CL-F08": {},
+  "SC-MANUAL-CL-F09": {},
+  "SC-MANUAL-CL-F10": {},
+  "SC-MANUAL-CL-F11": {},
+  "SC-MANUAL-CL-F12": {},
+  "SC-MANUAL-CL-F13": {},
+  "SC-MANUAL-CL-F14": {},
+  "SC-MANUAL-CL-F15": {},
+  "SC-MANUAL-CL-F16": {},
+  "SC-MANUAL-CL-F17": {},
+  "SC-MANUAL-CL-F18": {},
+  "SC-MANUAL-CL-F19": {},
+  "SC-MANUAL-CL-F20": {},
+  "SC-MANUAL-CL-F21": {},
+  "SC-MANUAL-CL-F22": {},
+  "SC-MANUAL-CL-F23": {},
+  "SC-MANUAL-CL-F24": {},
+  "SC-MANUAL-CL-F25": {},
+  "SC-MANUAL-CL-S01": {},
+  "SC-MANUAL-CL-S02": {},
+  "SC-MANUAL-CL-S03": {},
+  "SC-MANUAL-CL-S04": {},
+  "SC-MANUAL-CL-S05": {},
+  "SC-MANUAL-CO-F01": {},
+  "SC-MANUAL-CO-F02": {},
+  "SC-MANUAL-CO-F03": {},
+  "SC-MANUAL-CO-S01": {},
+  "SC-MANUAL-CQ-F01": {}
+}
