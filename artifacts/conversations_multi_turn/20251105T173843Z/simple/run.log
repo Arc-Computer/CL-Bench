@@ -1,6 +1,0 @@
-Wrote 400 conversations to artifacts/conversations_multi_turn/20251105T173843Z/simple/chains.jsonl
-  CHAIN-006A: 120 (Single-segment client management refresh (success))
-  CHAIN-006B: 80 (Single-segment client management refresh (expected failure), failures=80 (expected failure))
-  CHAIN-003A: 120 (Manage contact, upload documents, add notes)
-  CHAIN-003B: 80 (Contact/document workflow with expected document upload failure, failures=80 (expected failure))
-  Failure ratio: 160/400 (40.0% | target 40.0% +/- 2.0%)
