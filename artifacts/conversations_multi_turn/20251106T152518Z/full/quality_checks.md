@@ -1,0 +1,22 @@
+# Quality Checks – Chained Dataset (20251106T152518Z)
+
+- **Generation (Curator online, GPT-4.1-mini)**
+  - `CURATOR_SIMPLE_DATASET=0 PYTHONPATH=. python scripts/generate_conversations.py --mode chain --count 900 --seed 42 --model-name gpt-4.1-mini --chain-id client_management_chain --chain-id contact_document_note --output-dir artifacts/conversations_multi_turn/20251106T152518Z/simple`
+  - `CURATOR_SIMPLE_DATASET=0 PYTHONPATH=. python scripts/generate_conversations.py --mode chain --count 450 --seed 43 --model-name gpt-4.1-mini --chain-id client_opp_quote --chain-id search_quote_review --chain-id quote_remediation --chain-id summary_contract --chain-id clone_expansion --output-dir artifacts/conversations_multi_turn/20251106T152518Z/medium`
+  - `CURATOR_SIMPLE_DATASET=0 PYTHONPATH=. python scripts/generate_conversations.py --mode chain --count 150 --seed 44 --model-name gpt-4.1-mini --chain-id onboarding_pipeline_contract --chain-id onboarding_opp_deal --output-dir artifacts/conversations_multi_turn/20251106T152518Z/complex`
+  - `PYTHONPATH=. python scripts/merge_chain_runs.py --input artifacts/conversations_multi_turn/20251106T152518Z/simple/chains.jsonl --input artifacts/conversations_multi_turn/20251106T152518Z/medium/chains.jsonl --input artifacts/conversations_multi_turn/20251106T152518Z/complex/chains.jsonl --output artifacts/conversations_multi_turn/20251106T152518Z/full/chains.jsonl`
+  - `cat artifacts/conversations_multi_turn/20251106T152518Z/simple/run.log artifacts/conversations_multi_turn/20251106T152518Z/medium/run.log artifacts/conversations_multi_turn/20251106T152518Z/complex/run.log > artifacts/conversations_multi_turn/20251106T152518Z/full/run.log`
+  - Final mix: 900 simple / 450 medium / 150 complex conversations; overall failure ratio 600/1500 (40.0%).
+- **Analytics & Verification**
+  - `PYTHONPATH=. python analysis/chains_manifest.py --dataset artifacts/conversations_multi_turn/20251106T152518Z/full/chains.jsonl --output artifacts/conversations_multi_turn/20251106T152518Z/full/manifest.json --seed 42 --model-name gpt-4.1-mini`
+  - `PYTHONPATH=. python analysis/generate_chains_report.py --dataset artifacts/conversations_multi_turn/20251106T152518Z/full/chains.jsonl --output artifacts/conversations_multi_turn/20251106T152518Z/full/report.md --seed 42 --model-name gpt-4.1-mini --baseline artifacts/conversations_multi_turn/20251106T152518Z/full/run.log`
+  - `PYTHONPATH=. python scripts/verify_no_fallbacks.py --artifacts-dir artifacts/conversations_multi_turn/20251106T152518Z/full --output artifacts/conversations_multi_turn/20251106T152518Z/full/verification_report.json`
+- **Lint Checks (data quality)**
+  - `PYTHONPATH=. python analysis/lint_chains.py --dataset artifacts/conversations_multi_turn/20251106T152518Z/full/chains.jsonl --summary artifacts/conversations_multi_turn/20251106T152518Z/full/lint_report.json --max-findings 50`
+  - Duplicate utterances: 36 (repeated “Find me all prospects with 'tech'...” variants). Name conflicts: 1,399 entries flagged (repeat client aliases such as “TechVision Inc” vs “King Group”) for follow-up QA triage.
+- **Artifacts promoted from this run**
+  - Conversations: `artifacts/conversations_multi_turn/20251106T152518Z/full/chains.jsonl`
+  - Manifest: `artifacts/conversations_multi_turn/20251106T152518Z/full/manifest.json`
+  - Report: `artifacts/conversations_multi_turn/20251106T152518Z/full/report.md`
+  - Verification: `artifacts/conversations_multi_turn/20251106T152518Z/full/verification_report.json`
+  - Lint summary: `artifacts/conversations_multi_turn/20251106T152518Z/full/lint_report.json`

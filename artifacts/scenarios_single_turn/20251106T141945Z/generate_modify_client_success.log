@@ -1,0 +1,316 @@
+[11/06/25 10:39:26] INFO     Getting     litellm_online_request_processor.py:213
+                             rate limits                                        
+                             for model:                                         
+                             gpt-4.1-min                                        
+                             i                                                  
+                    INFO     Test call   litellm_online_request_processor.py:199
+                             headers:                                           
+                             {'x-ratelim                                        
+                             it-limit-re                                        
+                             quests':                                           
+                             '30000',                                           
+                             'x-ratelimi                                        
+                             t-remaining                                        
+                             -requests':                                        
+                              '29999',                                          
+                             'x-ratelimi                                        
+                             t-limit-tok                                        
+                             ens':                                              
+                             '150000000'                                        
+                             ,                                                  
+                             'x-ratelimi                                        
+                             t-remaining                                        
+                             -tokens':                                          
+                             '149999997'                                        
+                             ,                                                  
+                             'llm_provid                                        
+                             er-date':                                          
+                             'Thu, 06                                           
+                             Nov 2025                                           
+                             15:39:26                                           
+                             GMT',                                              
+                             'llm_provid                                        
+                             er-content-                                        
+                             type':                                             
+                             'applicatio                                        
+                             n/json',                                           
+                             'llm_provid                                        
+                             er-transfer                                        
+                             -encoding':                                        
+                              'chunked',                                        
+                             'llm_provid                                        
+                             er-connecti                                        
+                             on':                                               
+                             'keep-alive                                        
+                             ',                                                 
+                             'llm_provid                                        
+                             er-access-c                                        
+                             ontrol-expo                                        
+                             se-headers'                                        
+                             :                                                  
+                             'X-Request-                                        
+                             ID',                                               
+                             'llm_provid                                        
+                             er-openai-o                                        
+                             rganization                                        
+                             ':                                                 
+                             'user-flypb                                        
+                             m7mvpbahaxd                                        
+                             sesibwqs',                                         
+                             'llm_provid                                        
+                             er-openai-p                                        
+                             rocessing-m                                        
+                             s': '447',                                         
+                             'llm_provid                                        
+                             er-openai-p                                        
+                             roject':                                           
+                             'proj_ZwAER                                        
+                             MOMKvOiVOif                                        
+                             prWAcaKo',                                         
+                             'llm_provid                                        
+                             er-openai-v                                        
+                             ersion':                                           
+                             '2020-10-01                                        
+                             ',                                                 
+                             'llm_provid                                        
+                             er-x-envoy-                                        
+                             upstream-se                                        
+                             rvice-time'                                        
+                             : '483',                                           
+                             'llm_provid                                        
+                             er-x-rateli                                        
+                             mit-limit-r                                        
+                             equests':                                          
+                             '30000',                                           
+                             'llm_provid                                        
+                             er-x-rateli                                        
+                             mit-limit-t                                        
+                             okens':                                            
+                             '150000000'                                        
+                             ,                                                  
+                             'llm_provid                                        
+                             er-x-rateli                                        
+                             mit-remaini                                        
+                             ng-requests                                        
+                             ': '29999',                                        
+                             'llm_provid                                        
+                             er-x-rateli                                        
+                             mit-remaini                                        
+                             ng-tokens':                                        
+                                                                                
+                             '149999997'                                        
+                             ,                                                  
+                             'llm_provid                                        
+                             er-x-rateli                                        
+                             mit-reset-r                                        
+                             equests':                                          
+                             '2ms',                                             
+                             'llm_provid                                        
+                             er-x-rateli                                        
+                             mit-reset-t                                        
+                             okens':                                            
+                             '0s',                                              
+                             'llm_provid                                        
+                             er-x-reques                                        
+                             t-id':                                             
+                             'req_19e5ea                                        
+                             ec4c4245328                                        
+                             b32b4a9fc74                                        
+                             310e',                                             
+                             'llm_provid                                        
+                             er-x-openai                                        
+                             -proxy-wasm                                        
+                             ': 'v0.1',                                         
+                             'llm_provid                                        
+                             er-cf-cache                                        
+                             -status':                                          
+                             'DYNAMIC',                                         
+                             'llm_provid                                        
+                             er-set-cook                                        
+                             ie':                                               
+                             '__cf_bm=dO                                        
+                             qA5T3njTv3N                                        
+                             rAIjp5zWctN                                        
+                             .D3my5LbtgN                                        
+                             7Ebk.Ojw-17                                        
+                             62443566-1.                                        
+                             0.1.1-FY4Cj                                        
+                             _9efQQ_tkPG                                        
+                             QD9HNZVlWH9                                        
+                             ub4It4jroG2                                        
+                             3qe8ORcikW3                                        
+                             pcROIrWEegg                                        
+                             bLSs_1zAg8f                                        
+                             DXo5dAIgAqo                                        
+                             aDRNvfgtVhI                                        
+                             g3irxm5WrGW                                        
+                             LvE;                                               
+                             path=/;                                            
+                             expires=Thu                                        
+                             , 06-Nov-25                                        
+                             16:09:26                                           
+                             GMT;                                               
+                             domain=.api                                        
+                             .openai.com                                        
+                             ; HttpOnly;                                        
+                             Secure;                                            
+                             SameSite=No                                        
+                             ne,                                                
+                             _cfuvid=S6g                                        
+                             zbwLwVDF2o4                                        
+                             evVpOpvvuPF                                        
+                             FeEtW4zPQv5                                        
+                             EVC67bw-176                                        
+                             2443566865-                                        
+                             0.0.1.1-604                                        
+                             800000;                                            
+                             path=/;                                            
+                             domain=.api                                        
+                             .openai.com                                        
+                             ; HttpOnly;                                        
+                             Secure;                                            
+                             SameSite=No                                        
+                             ne',                                               
+                             'llm_provid                                        
+                             er-strict-t                                        
+                             ransport-se                                        
+                             curity':                                           
+                             'max-age=31                                        
+                             536000;                                            
+                             includeSubD                                        
+                             omains;                                            
+                             preload',                                          
+                             'llm_provid                                        
+                             er-x-conten                                        
+                             t-type-opti                                        
+                             ons':                                              
+                             'nosniff',                                         
+                             'llm_provid                                        
+                             er-server':                                        
+                                                                                
+                             'cloudflare                                        
+                             ',                                                 
+                             'llm_provid                                        
+                             er-cf-ray':                                        
+                                                                                
+                             '99a5af0169                                        
+                             f7da48-EWR'                                        
+                             ,                                                  
+                             'llm_provid                                        
+                             er-content-                                        
+                             encoding':                                         
+                             'br',                                              
+                             'llm_provid                                        
+                             er-alt-svc'                                        
+                             :                                                  
+                             'h3=":443";                                        
+                             ma=86400'}                                         
+                    INFO     Running               base_request_processor.py:133
+                             LiteLLMOnlineRequestP                              
+                             rocessor completions                               
+                             with model:                                        
+                             gpt-4.1-mini                                       
+                    INFO     Preparing request     base_request_processor.py:233
+                             file(s) in                                         
+                             /Users/jarrodbarnes/.                              
+                             cache/curator/3d82ead                              
+                             35b2cee7e                                          
+                    INFO     Wrote 1 requests to   base_request_processor.py:315
+                             /Users/jarrodbarnes/.                              
+                             cache/curator/3d82ead                              
+                             35b2cee7e/requests_0.                              
+                             jsonl.                                             
+                    INFO     Manually set   base_online_request_processor.py:191
+                             max_requests_p                                     
+                             er_minute to                                       
+                             200                                                
+                    INFO     Manually set   base_online_request_processor.py:210
+                             max_tokens_per                                     
+                             _minute to                                         
+                             60000                                              
+━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100% • Time Elapsed 0:00:17 • Time Remaining 0:00:00
+Curator Viewer: Disabled                                                        
+Set CURATOR_VIEWER=1 to view your data live at https://curator.bespokelabs.ai   
+Requests: Total: 1 • Cached: 0✓ • Success: 1✓ • Failed: 0✗ • In Progress: 0⋯ • …
+Tokens: Avg Input: 382 • Input TPM: 1315 • Avg Output: 624 • Output TPM: 2148   
+Cost: Current: $0.001 • Est. Total: $0.001 ($0.000 remaining) • Rate: $0.004/min
+Rate Limits: RPM: 200 • TPM: 60000 • TPM Strategy: TokenLimitStrategy.combined …
+Model: Name: gpt-4.1-mini                                                       
+Model Pricing: Per 1M tokens: Input: $0.400 • Output: $1.600                    
+          Final Curator Statistics           
+╭────────────────────────────┬──────────────╮
+│ Section/Metric             │ Value        │
+├────────────────────────────┼──────────────┤
+│ Model                      │              │
+│ Name                       │ gpt-4.1-mini │
+│ Rate Limit (RPM)           │ 200          │
+│ Rate Limit (TPM)           │ 60000        │
+│ Requests                   │              │
+│ Total Processed            │ 1            │
+│ Successful                 │ 1            │
+│ Failed                     │ 0            │
+│ Tokens                     │              │
+│ Total Tokens Used          │ 1,006        │
+│ Total Input Tokens         │ 382          │
+│ Total Output Tokens        │ 624          │
+│ Average Tokens per Request │ 1006         │
+│ Average Input Tokens       │ 382          │
+│ Average Output Tokens      │ 624          │
+│ Costs                      │              │
+│ Total Cost                 │ $0.001       │
+│ Average Cost per Request   │ $0.001       │
+│ Input Cost per 1M Tokens   │ $0.400       │
+│ Output Cost per 1M Tokens  │ $1.600       │
+│ Performance                │              │
+│ Total Time                 │ 17.43s       │
+│ Average Time per Request   │ 17.43s       │
+│ Requests per Minute        │ 3.4          │
+│ Responses per Minute       │ 3.4          │
+│ Max Concurrent Requests    │ 1            │
+│ Input Tokens per Minute    │ 1315.0       │
+│ Output Tokens per Minute   │ 2148.1       │
+╰────────────────────────────┴──────────────╯
+[11/06/25 10:39:44] INFO     Processing     base_online_request_processor.py:459
+                             complete.                                          
+                             Results saved                                      
+                             to                                                 
+                             /Users/jarrodb                                     
+                             arnes/.cache/c                                     
+                             urator/3d82ead                                     
+                             35b2cee7e/resp                                     
+                             onses_0.jsonl                                      
+                    INFO     Status         base_online_request_processor.py:460
+                             tracker: Tasks                                     
+                             - Started: 1,                                      
+                             In Progress:                                       
+                             0, Succeeded:                                      
+                             1, Failed: 0,                                      
+                             Already                                            
+                             Completed: 0                                       
+                             Errors - API:                                      
+                             0, Rate Limit:                                     
+                             0, Other: 0,                                       
+                             Total: 0                                           
+                    INFO     Read 1 responses.     base_request_processor.py:444
+                    INFO     Finalizing writer     base_request_processor.py:453
+                    INFO     Creating a file with  base_request_processor.py:462
+                             all failed requests                                
+                    INFO     Created file with     base_request_processor.py:490
+                             failed requests at                                 
+                             /Users/jarrodbarnes/.                              
+                             cache/curator/3d82ead                              
+                             35b2cee7e/failed_requ                              
+                             ests.jsonl                                         
+Generating 6 success scenarios for modify_client...
+Validating scenarios...
+  ✓ SC-B033110D
+  ✓ SC-CA6566E1
+  ✓ SC-FC3332ED
+  ✓ SC-D0FB915C
+  ✗ SC-5D19C02E - validation failed
+  ✓ SC-44ACFAAD
+
+✅ Generated 5 valid scenarios (6 success, 0 failure)
+
+Appending 5 scenarios to artifacts/scenarios_single_turn/scenarios_clean.jsonl...
+✅ Successfully appended 5 scenarios

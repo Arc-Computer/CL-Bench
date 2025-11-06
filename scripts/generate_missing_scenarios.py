@@ -68,10 +68,14 @@ class ScenarioGenerator(curator.LLM):
         if backend_params:
             merged_backend.update(backend_params)
 
-        default_generation = {
-            "temperature": 0.7,
-            "max_output_tokens": 2000,
-        }
+        normalized_model = model_name.lower()
+        default_generation: Dict[str, Any] = {"temperature": 0.7}
+        if any(prefix in normalized_model for prefix in ("gpt-4.1", "gpt-4o", "gpt-5", "o1", "o3")):
+            default_generation["max_completion_tokens"] = 2000
+        elif "gpt" in normalized_model:
+            default_generation["max_tokens"] = 2000
+        else:
+            default_generation["max_output_tokens"] = 2000
         merged_generation = dict(default_generation)
         if generation_params:
             merged_generation.update(generation_params)
@@ -261,20 +265,24 @@ def main() -> None:
     generator = ScenarioGenerator(model_name=args.model_name)
 
     # Generate success scenarios
-    print(f"Generating {args.success_count} success scenarios for {args.tool}...")
-    success_dataset = Dataset.from_list([
-        {"tool_name": args.tool, "count": args.success_count, "success_type": "success"}
-    ])
-    success_result = generator(success_dataset)
-    success_scenarios = list(success_result.dataset)
+    success_scenarios = []
+    if args.success_count > 0:
+        print(f"Generating {args.success_count} success scenarios for {args.tool}...")
+        success_dataset = Dataset.from_list([
+            {"tool_name": args.tool, "count": args.success_count, "success_type": "success"}
+        ])
+        success_result = generator(success_dataset)
+        success_scenarios = list(success_result.dataset)
 
     # Generate failure scenarios
-    print(f"Generating {args.failure_count} failure scenarios for {args.tool}...")
-    failure_dataset = Dataset.from_list([
-        {"tool_name": args.tool, "count": args.failure_count, "success_type": "failure"}
-    ])
-    failure_result = generator(failure_dataset)
-    failure_scenarios = list(failure_result.dataset)
+    failure_scenarios = []
+    if args.failure_count > 0:
+        print(f"Generating {args.failure_count} failure scenarios for {args.tool}...")
+        failure_dataset = Dataset.from_list([
+            {"tool_name": args.tool, "count": args.failure_count, "success_type": "failure"}
+        ])
+        failure_result = generator(failure_dataset)
+        failure_scenarios = list(failure_result.dataset)
 
     # Validate scenarios
     print("Validating scenarios...")
