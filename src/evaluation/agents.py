@@ -138,6 +138,7 @@ class AgentToolCall:
     raw_response: Optional[str] = None
     token_usage: Dict[str, int] = field(default_factory=dict)
     reasoning: Optional[str] = None
+    response_text: Optional[str] = None
 
 
 @dataclass
@@ -167,9 +168,13 @@ class MockAgent(ConversationAgent):
 
     def tool_call(self, context: AgentTurnContext) -> AgentToolCall:
         turn = context.turn
+        response_text = None
+        if turn.expected_response:
+            response_text = turn.expected_response.text
         return AgentToolCall(
             tool_name=turn.expected_tool,
             arguments=context.expected_arguments,
+            response_text=response_text,
         )
 
 
@@ -324,12 +329,18 @@ class LiteLLMChatAgent(ConversationAgent):
 
         token_usage = self._normalise_token_usage(response.get("usage", {}))
 
+        response_text = None
+        candidate_response = payload.get("response_text") or payload.get("response") or payload.get("assistant_response")
+        if isinstance(candidate_response, str):
+            response_text = candidate_response.strip()
+
         return AgentToolCall(
             tool_name=tool_name.strip(),
             arguments=arguments,
             raw_response=text_content,
             token_usage=token_usage,
             reasoning=reasoning_text,
+            response_text=response_text,
         )
 
     @staticmethod

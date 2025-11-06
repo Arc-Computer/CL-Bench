@@ -9,7 +9,7 @@ import argparse
 import json
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Mapping, Optional
 
 from datasets import Dataset
 from pydantic import BaseModel, Field
@@ -38,6 +38,7 @@ class Scenario(BaseModel):
     expected_error_substring: str | None = Field(
         default=None, description="Expected error substring if expect_success=False"
     )
+    expected_response: Dict[str, Any] = Field(default_factory=dict, description="Expected assistant response metadata")
 
 
 class ScenariosResponse(BaseModel):
@@ -98,6 +99,9 @@ Each scenario must include:
 - setup_entities: Pre-existing entities needed (e.g., {{"client_id": "..."}})
 - expect_success: {success_type == "success"}
 - expected_error_substring: Error substring if failure scenario
+- expected_response: {{ "text": "...", "evaluation": "structured" or "judge", "answers": ["..."], "requires_judge": false }}
+  * For success scenarios, provide a clear acknowledgment that reflects the tool result.
+  * For failure scenarios, explain the error surfaced to the user.
 
 For upload_document tool, expected_args should include:
 - entity_type: "Client", "Contact", "Opportunity", "Quote", or "Contract"
@@ -116,8 +120,62 @@ Return scenarios as JSON following the ScenariosResponse schema."""
             scenario_dict["expected_tool"] = tool_name  # Ensure tool name matches
             scenario_dict["verification_mode"] = "database"
             scenario_dict["failure_category"] = None if scenario_dict["expect_success"] else "validation"
+            _normalise_expected_response(scenario_dict)
             scenarios.append(scenario_dict)
         return scenarios
+
+
+def _summarize_expected_response(
+    tool_name: str,
+    expected_args: Mapping[str, Any],
+    expect_success: bool,
+    expected_error: Optional[str],
+) -> str:
+    """Create a concise natural-language summary for the tool outcome."""
+    arg_items: List[str] = []
+    for key, value in list(expected_args.items())[:3]:
+        if isinstance(value, Mapping):
+            arg_items.append(f"{key}=…")
+        else:
+            arg_items.append(f"{key}={value}")
+    argument_summary = ", ".join(arg_items)
+    if expect_success:
+        if argument_summary:
+            return f"Completed {tool_name} with {argument_summary}"
+        return f"Completed {tool_name} successfully"
+    error_text = expected_error or "validation error"
+    return f"{tool_name} failed as expected: {error_text}"
+
+
+def _normalise_expected_response(scenario: Dict[str, Any]) -> None:
+    """Ensure every scenario carries a well-formed expected_response stanza."""
+    payload = scenario.get("expected_response") or {}
+    expect_success = bool(scenario.get("expect_success", True))
+    expected_args = scenario.get("expected_args", {}) or {}
+    expected_error = scenario.get("expected_error_substring")
+
+    requires_judge = bool(payload.get("requires_judge", False))
+    evaluation = str(payload.get("evaluation", "judge" if requires_judge else "structured")).lower()
+    if requires_judge:
+        evaluation = "judge"
+    elif evaluation not in {"structured", "judge"}:
+        evaluation = "structured"
+
+    text = str(payload.get("text", "")).strip()
+    if not text:
+        text = _summarize_expected_response(scenario.get("expected_tool", ""), expected_args, expect_success, expected_error)
+
+    answers = payload.get("answers") or []
+    normalised_answers = [str(answer).strip() for answer in answers if str(answer).strip()]
+    if evaluation == "structured" and not normalised_answers:
+        normalised_answers = [text]
+
+    scenario["expected_response"] = {
+        "text": text,
+        "evaluation": evaluation,
+        "answers": normalised_answers,
+        "requires_judge": evaluation == "judge" or requires_judge,
+    }
 
 
 def validate_scenario(scenario: Dict[str, Any]) -> bool:
@@ -130,6 +188,7 @@ def validate_scenario(scenario: Dict[str, Any]) -> bool:
             expected_tool=scenario["expected_tool"],
             expected_args=scenario.get("expected_args", {}),
             expect_success=scenario.get("expect_success", True),
+            expected_response=scenario.get("expected_response"),
         )
 
         conversation = Conversation(
@@ -148,11 +207,16 @@ def validate_scenario(scenario: Dict[str, Any]) -> bool:
             return False
 
         result = results[0]
+        per_turn = (result.per_turn_results or [None])[0] or {}
+
         if scenario.get("expect_success", True):
-            return result.overall_success
-        else:
-            # For failure scenarios, check that execution failed appropriately
-            return not result.overall_success or result.failed_at_turn == 1
+            return bool(per_turn.get("tool_success")) and bool(per_turn.get("response_success"))
+
+        return (
+            not result.overall_success
+            and per_turn.get("verification") == "expected_failure_diagnostic"
+            and bool(per_turn.get("tool_success"))
+        )
 
     except Exception as exc:
         print(f"  Validation failed: {exc}")

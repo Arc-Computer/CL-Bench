@@ -82,6 +82,15 @@ def _arguments_match_semantically(
     return True, None
 
 
+def _normalise_response_text(text: Any) -> str:
+    """Normalize response strings for structured comparison."""
+    if text is None:
+        return ""
+    if not isinstance(text, str):
+        text = str(text)
+    return " ".join(text.split()).strip().lower()
+
+
 class ConversationHarness:
     """Execute conversations against the mock CRM backend."""
 
@@ -173,9 +182,13 @@ class ConversationHarness:
         success_path_turns = [t for t in per_turn if t.get("expect_success", True)]
         expected_failure_turns = [t for t in per_turn if not t.get("expect_success", True)]
         successful_success_turns = sum(1 for t in success_path_turns if t.get("success", False))
+        tool_successful_turns = sum(1 for t in success_path_turns if t.get("tool_success", False))
+        response_successful_turns = sum(1 for t in success_path_turns if t.get("response_success", False))
         total_success_path = len(success_path_turns)
         overall_success = (total_success_path == 0) or (successful_success_turns == total_success_path)
         reward_signal = (successful_success_turns / total_success_path) if total_success_path > 0 else 1.0
+        tool_success_rate = (tool_successful_turns / total_success_path) if total_success_path > 0 else 1.0
+        response_success_rate = (response_successful_turns / total_success_path) if total_success_path > 0 else 1.0
         observed_expected_failure = any(
             (not turn.get("expect_success", True)) and (not turn.get("success", True)) for turn in per_turn
         )
@@ -197,11 +210,16 @@ class ConversationHarness:
             "success_path_turns": total_success_path,
             "success_path_succeeded": successful_success_turns,
             "task_success_rate": reward_signal,
+            "tool_success_rate": tool_success_rate,
+            "response_success_rate": response_success_rate,
+            "combined_success_rate": reward_signal,
             "expected_failure_turns": len(expected_failure_turns),
             "total_turns": len(per_turn),
             "exact_match_count": sum(1 for t in per_turn if t.get("verification") == "exact_match"),
             "judge_evaluated_count": sum(1 for t in per_turn if t.get("judge_used", False)),
             "judge_approved_count": sum(1 for t in per_turn if t.get("judge_pass", False)),
+            "response_judge_evaluated_count": sum(1 for t in per_turn if t.get("response_judge_used", False)),
+            "response_judge_approved_count": sum(1 for t in per_turn if t.get("response_judge_pass", False)),
             "agent": {
                 "provider": self._agent.provider_name,
                 "model": self._agent.model_name,
@@ -340,9 +358,13 @@ class ConversationHarness:
         success_path_turns = [t for t in per_turn if t.get("expect_success", True)]
         expected_failure_turns = [t for t in per_turn if not t.get("expect_success", True)]
         successful_success_turns = sum(1 for t in success_path_turns if t.get("success", False))
+        tool_successful_turns = sum(1 for t in success_path_turns if t.get("tool_success", False))
+        response_successful_turns = sum(1 for t in success_path_turns if t.get("response_success", False))
         total_success_path = len(success_path_turns)
         overall_success = (total_success_path == 0) or (successful_success_turns == total_success_path)
         reward_signal = (successful_success_turns / total_success_path) if total_success_path > 0 else 1.0
+        tool_success_rate = (tool_successful_turns / total_success_path) if total_success_path > 0 else 1.0
+        response_success_rate = (response_successful_turns / total_success_path) if total_success_path > 0 else 1.0
         chain_success = all(
             segment["actual_outcome"] == segment["expected_outcome"] for segment in per_segment
         )
@@ -369,12 +391,17 @@ class ConversationHarness:
             "success_path_turns": total_success_path,
             "success_path_succeeded": successful_success_turns,
             "task_success_rate": reward_signal,
+            "tool_success_rate": tool_success_rate,
+            "response_success_rate": response_success_rate,
+            "combined_success_rate": reward_signal,
             "expected_failure_turns": len(expected_failure_turns),
             "total_turns": len(per_turn),
             "segments": len(segment_boundaries),
             "exact_match_count": sum(1 for t in per_turn if t.get("verification") == "exact_match"),
             "judge_evaluated_count": sum(1 for t in per_turn if t.get("judge_used", False)),
             "judge_approved_count": sum(1 for t in per_turn if t.get("judge_pass", False)),
+            "response_judge_evaluated_count": sum(1 for t in per_turn if t.get("response_judge_used", False)),
+            "response_judge_approved_count": sum(1 for t in per_turn if t.get("response_judge_pass", False)),
             "agent": {
                 "provider": self._agent.provider_name,
                 "model": self._agent.model_name,
@@ -442,6 +469,8 @@ class ConversationHarness:
                 "success": False,
                 "error": f"Agent error: {exc}",
                 "verification": "agent_error",
+                "tool_success": False,
+                "response_success": False,
             }
             if segment_number is not None:
                 record["segment_number"] = segment_number
@@ -478,7 +507,11 @@ class ConversationHarness:
                 "error": error_message,
                 "verification": "tool_not_found",
                 "judge_used": False,
+                "tool_success": False,
+                "response_success": False,
             }
+            if agent_call.response_text:
+                record["agent_response_text"] = agent_call.response_text
             if segment_number is not None:
                 record["segment_number"] = segment_number
             return TurnProcessOutcome(
@@ -511,6 +544,18 @@ class ConversationHarness:
             record["reasoning"] = agent_call.reasoning
         if agent_call.raw_response:
             record["raw_agent_response"] = agent_call.raw_response
+        if agent_call.response_text:
+            record["agent_response_text"] = agent_call.response_text
+        if turn.expected_response:
+            record["expected_response"] = turn.expected_response.to_dict()
+            record["response_evaluation"] = turn.expected_response.evaluation
+        else:
+            record["response_evaluation"] = "structured"
+        record["tool_success"] = False
+        record["response_success"] = False
+        record["judge_used"] = False
+        record["response_judge_used"] = False
+        record["response_judge_pass"] = False
 
         if isinstance(resolved_expected_args, Mapping):
             arg_match, mismatch_reason = _arguments_match_semantically(arguments, resolved_expected_args)
@@ -545,9 +590,10 @@ class ConversationHarness:
                     if expected_lower not in error_lower and expected_lower != "validation error":
                         record["expected_error_mismatch"] = expected_substring
 
-                record["success"] = False
                 record["verification"] = "expected_failure_diagnostic"
-                record["judge_used"] = False
+                record["tool_success"] = True
+                record["response_success"] = False
+                record["success"] = False
                 return TurnProcessOutcome(
                     record=record,
                     success=False,
@@ -563,9 +609,10 @@ class ConversationHarness:
                 "success": True,
             }
             previous_turn_outputs[turn.turn_id] = record.get("result", {})
-            record["success"] = False
             record["verification"] = "unexpected_success"
-            record["judge_used"] = False
+            record["tool_success"] = False
+            record["response_success"] = False
+            record["success"] = False
             record["error"] = (
                 f"Tool '{tool_name}' succeeded but failure was expected for "
                 f"turn {turn.turn_id} of {conversation.conversation_id}."
@@ -593,13 +640,11 @@ class ConversationHarness:
                 "success": False,
             }
 
-        if record["matches_expected_tool"] and arg_match and execution_success:
-            record["success"] = True
-            record["verification"] = "exact_match"
-            record["judge_used"] = False
-            return TurnProcessOutcome(record=record, success=True)
+        tool_exact_match = record["matches_expected_tool"] and arg_match and execution_success
+        tool_success = bool(tool_exact_match)
+        record["verification"] = "exact_match" if tool_exact_match else "failed"
 
-        if self._judge and (not record["matches_expected_tool"] or not arg_match or not execution_success):
+        if not tool_success and self._judge:
             judge_result = self._judge.judge_turn(
                 user_utterance=turn.user_utterance,
                 agent_tool=tool_name,
@@ -616,18 +661,61 @@ class ConversationHarness:
             record["judge_score"] = judge_result["score"]
             record["judge_rationale"] = judge_result["rationale"]
             record["judge_pass"] = judge_result["pass"]
-            record["success"] = judge_result["pass"]
             record["token_usage"]["judge"] = judge_result["token_usage"]
-            return TurnProcessOutcome(record=record, success=record["success"])
+            tool_success = bool(judge_result["pass"])
 
-        record["success"] = False
-        record["verification"] = "failed"
-        record["judge_used"] = False
-        return TurnProcessOutcome(
-            record=record,
-            success=False,
-            error_message=record.get("error"),
-        )
+        record["tool_success"] = tool_success
+
+        expected_response = turn.expected_response
+        agent_response_text = (agent_call.response_text or "").strip()
+        if agent_response_text:
+            record["agent_response_text"] = agent_response_text
+
+        response_success = True
+        if expected_response:
+            record["response_evaluation"] = expected_response.evaluation
+            record["response_verification"] = expected_response.evaluation
+            if not expected_response.answers and not expected_response.text:
+                response_success = tool_success
+                record["response_verification"] = "unspecified"
+            elif expected_response.requires_judge or expected_response.evaluation == "judge":
+                if self._judge:
+                    judge_response = self._judge.judge_response(
+                        user_utterance=turn.user_utterance,
+                        expected_response=expected_response.to_dict(),
+                        agent_response=agent_response_text,
+                        tool_result=record.get("result"),
+                        conversation_history=conversation_history[-3:],
+                    )
+                    record["response_judge_used"] = True
+                    record["response_judge_score"] = judge_response["score"]
+                    record["response_judge_rationale"] = judge_response["rationale"]
+                    record["response_judge_pass"] = judge_response["pass"]
+                    record["token_usage"]["judge_response"] = judge_response["token_usage"]
+                    response_success = bool(judge_response["pass"])
+                else:
+                    record["response_judge_used"] = False
+                    record["response_judge_reason"] = "judge_unavailable"
+                    response_success = tool_success
+                    record["response_judge_pass"] = response_success
+            else:
+                allowed = { _normalise_response_text(answer) for answer in expected_response.answers }
+                if expected_response.text:
+                    allowed.add(_normalise_response_text(expected_response.text))
+                normalized_agent = _normalise_response_text(agent_response_text)
+                response_success = bool(agent_response_text) and normalized_agent in allowed
+                record["response_expected_answers"] = list(expected_response.answers or [])
+        else:
+            record["response_verification"] = "structured"
+            response_success = tool_success
+
+        record["response_success"] = response_success
+
+        combined_success = bool(tool_success and response_success)
+        record["success"] = combined_success
+        if not combined_success and record.get("verification") == "exact_match":
+            record["verification"] = "failed"
+        return TurnProcessOutcome(record=record, success=combined_success)
 
     # ------------------------------------------------------------------
     @staticmethod
@@ -696,6 +784,7 @@ def load_conversations_from_jsonl(path: Path) -> List[Conversation]:
                     expect_success=turn.get("expect_success", True),
                     expected_error_substring=turn.get("expected_error_substring"),
                     failure_category=turn.get("failure_category"),
+                    expected_response=turn.get("expected_response"),
                 )
                 for turn in payload.get("turns", [])
             ]

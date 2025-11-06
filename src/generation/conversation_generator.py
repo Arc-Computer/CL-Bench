@@ -140,11 +140,15 @@ def instantiate_conversation(
             raise RuntimeError(f"Curator returned empty utterance for {conversation_id} turn {turn_index}.")
 
         expected_error = context.scenario.raw.get("expected_error_substring")
+        expected_response_payload = context.scenario.raw.get("expected_response") or {}
         if context.scenario.expect_success:
             tool_result = _simulate_tool_execution(context.turn_template.tool_name, resolved_args, api)
             reference_payload = _extract_reference_payload(tool_result)
             previous_turn_outputs[turn_index] = reference_payload
-            assistant_summary = _summarize_tool_execution(context.turn_template.tool_name, resolved_args)
+            assistant_summary = expected_response_payload.get("text") or _summarize_tool_execution(
+                context.turn_template.tool_name,
+                resolved_args,
+            )
         else:
             try:
                 _simulate_tool_execution(context.turn_template.tool_name, resolved_args, api)
@@ -160,7 +164,7 @@ def instantiate_conversation(
                         ) from exc
                 reference_payload = {}
                 previous_turn_outputs[turn_index] = reference_payload
-                assistant_summary = (
+                assistant_summary = expected_response_payload.get("text") or (
                     _summarize_tool_execution(context.turn_template.tool_name, resolved_args)
                     + " (expected failure)"
                 )
@@ -191,6 +195,7 @@ def instantiate_conversation(
                 expect_success=context.scenario.expect_success,
                 expected_error_substring=context.scenario.raw.get("expected_error_substring"),
                 failure_category=context.scenario.raw.get("failure_category"),
+                expected_response=expected_response_payload,
             )
         )
         if not context.scenario.expect_success and not contains_failure:

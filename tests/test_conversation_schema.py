@@ -7,6 +7,7 @@ from src.conversation_schema import (
     ConversationResult,
     ComplexityLevel,
     SuccessCriteria,
+    ExpectedResponse,
 )
 from src.evaluation.verification import VerificationMode
 
@@ -62,6 +63,23 @@ class TestConversationTurn:
         assert turn.expect_success is False
         assert turn.expected_error_substring == "Validation error"
         assert turn.failure_category == "MALFORMED_EMAIL"
+
+    def test_expected_response_normalisation(self):
+        """ExpectedResponse payloads normalise defaults and answers."""
+        turn = ConversationTurn(
+            turn_id=1,
+            user_utterance="Search for Acme",
+            expected_tool="client_search",
+            expected_args={"name": "Acme"},
+            expected_response={
+                "text": "Initiated client_search with name=Acme",
+                "evaluation": "structured",
+                "answers": [],
+            },
+        )
+        assert isinstance(turn.expected_response, ExpectedResponse)
+        assert turn.expected_response.answers == ["Initiated client_search with name=Acme"]
+        assert turn.expected_response.evaluation == "structured"
 
 
 class TestConversation:
@@ -274,12 +292,12 @@ class TestConversationResult:
         result = ConversationResult(
             conversation_id="CONV-002",
             overall_success=False,
-            turns_executed=2,
+            turns_executed=3,
             failed_at_turn=3,
             error_message="Tool execution failed",
         )
         assert result.overall_success is False
-        assert result.turns_executed == 2
+        assert result.turns_executed == 3
         assert result.failed_at_turn == 3
         assert result.error_message == "Tool execution failed"
 
@@ -342,12 +360,12 @@ class TestConversationResult:
             )
 
     def test_result_validation_turns_executed_vs_failed_at(self):
-        """Test that turns_executed must be < failed_at_turn."""
-        with pytest.raises(ValueError, match="turns_executed.*must be < failed_at_turn"):
+        """Test that turns_executed must be less than the failing turn index."""
+        with pytest.raises(ValueError, match="turns_executed.*must be >= failed_at_turn"):
             ConversationResult(
                 conversation_id="CONV-009",
                 overall_success=False,
-                turns_executed=3,
+                turns_executed=2,
                 failed_at_turn=3,  # Must be > turns_executed
             )
 

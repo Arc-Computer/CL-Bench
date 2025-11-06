@@ -161,6 +161,8 @@ The harness can grade natural-language responses alongside tool execution when c
 
 Set `expected_response.evaluation` to `"judge"` (or `"requires_judge": true`) to delegate grading to GPT‑4.1 via LiteLLM. The baseline log records execution accuracy, response accuracy, and the blended metric so teams can track regression over time.
 
+Each per-turn harness record now includes `tool_success`, `response_success`, and the legacy `success` field (the conjunction of both). Conversation metadata publishes `tool_success_rate`, `response_success_rate`, and `combined_success_rate` alongside the historical `task_success_rate`, enabling Issue 42 Stage 1 reports to distinguish tool execution fidelity from response quality.
+
 ### Programmatic Usage
 
 ```python

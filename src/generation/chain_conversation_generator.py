@@ -252,6 +252,7 @@ def instantiate_chained_conversation(
             scenario = context.scenario
             turn_row = utterance_rows[local_index - 1] if local_index - 1 < len(utterance_rows) else {}
             current_turn_failed = False
+            expected_response_payload = scenario.raw.get("expected_response") or {}
 
             merged_args = _merge_template_with_scenario(
                 turn_template.argument_template,
@@ -281,7 +282,10 @@ def instantiate_chained_conversation(
             if not user_utterance:
                 user_utterance = f"User request for {template.workflow_category} turn {local_index}"
 
-            assistant_summary = _summarize_tool_execution(turn_template.tool_name, resolved_args)
+            assistant_summary = expected_response_payload.get("text") or _summarize_tool_execution(
+                turn_template.tool_name,
+                resolved_args,
+            )
 
             if scenario.expect_success:
                 _prepare_api_state_for_turn(api, turn_template, scenario, resolved_args)
@@ -324,7 +328,7 @@ def instantiate_chained_conversation(
                                 f"'{expected_error}' but got '{message}'."
                             ) from exc
                     previous_turn_outputs[global_turn] = {}
-                    assistant_summary = f"{assistant_summary} (expected failure)"
+                    assistant_summary = expected_response_payload.get("text") or f"{assistant_summary} (expected failure)"
                     contains_failure = True
                     segment_failure_observed = True
                     current_turn_failed = True
@@ -364,11 +368,12 @@ def instantiate_chained_conversation(
                     expected_tool=turn_template.tool_name,
                     expected_args=resolved_args,
                     references_previous_turns=list(turn_template.references_previous_turns or []),
-                    expect_success=scenario.expect_success,
-                    expected_error_substring=scenario.raw.get("expected_error_substring"),
-                    failure_category=scenario.raw.get("failure_category"),
-                )
+                expect_success=scenario.expect_success,
+                expected_error_substring=scenario.raw.get("expected_error_substring"),
+                failure_category=scenario.raw.get("failure_category"),
+                expected_response=expected_response_payload,
             )
+        )
 
             if current_turn_failed:
                 break

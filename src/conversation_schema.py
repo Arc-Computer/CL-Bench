@@ -12,7 +12,7 @@ Key features:
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Mapping, Optional, Union
 from enum import Enum
 
 from src.evaluation.verification import VerificationMode
@@ -33,6 +33,51 @@ class SuccessCriteria(str, Enum):
 
 
 @dataclass
+class ExpectedResponse:
+    """Ground-truth assistant response associated with a turn."""
+
+    text: str
+    evaluation: Literal["structured", "judge"] = "structured"
+    answers: List[str] = field(default_factory=list)
+    requires_judge: bool = False
+
+    def __post_init__(self) -> None:
+        self.text = (self.text or "").strip()
+        if not self.evaluation:
+            self.evaluation = "structured"
+        self.evaluation = self.evaluation.lower()
+        if self.requires_judge:
+            self.evaluation = "judge"
+        if self.evaluation == "structured" and not self.answers and self.text:
+            self.answers.append(self.text)
+        self.answers = [str(answer).strip() for answer in self.answers if str(answer).strip()]
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Return a JSON-serialisable representation."""
+        return {
+            "text": self.text,
+            "evaluation": self.evaluation,
+            "answers": list(self.answers),
+            "requires_judge": self.requires_judge,
+        }
+
+    @classmethod
+    def from_payload(cls, payload: Optional[Union["ExpectedResponse", Mapping[str, Any]]]) -> Optional["ExpectedResponse"]:
+        if payload is None:
+            return None
+        if isinstance(payload, ExpectedResponse):
+            return payload
+        if not isinstance(payload, dict):
+            raise TypeError(f"ExpectedResponse payload must be dict, got {type(payload)}")
+        return cls(
+            text=str(payload.get("text", "")),
+            evaluation=str(payload.get("evaluation", "structured")),
+            answers=list(payload.get("answers") or []),
+            requires_judge=bool(payload.get("requires_judge", False)),
+        )
+
+
+@dataclass
 class ConversationTurn:
     """Single turn in a conversation.
     
@@ -45,6 +90,7 @@ class ConversationTurn:
         expect_success: Whether this turn is expected to succeed (True) or fail (False)
         expected_error_substring: If expect_success=False, substring to match in error message
         failure_category: Category of failure if this is a failure scenario
+        expected_response: Structured description of the agent's natural-language reply
     """
     turn_id: int
     user_utterance: str
@@ -54,6 +100,11 @@ class ConversationTurn:
     expect_success: bool = True
     expected_error_substring: Optional[str] = None
     failure_category: Optional[str] = None
+    expected_response: Optional[ExpectedResponse] = None
+
+    def __post_init__(self) -> None:
+        if self.expected_response is not None and not isinstance(self.expected_response, ExpectedResponse):
+            self.expected_response = ExpectedResponse.from_payload(self.expected_response)
 
 
 @dataclass

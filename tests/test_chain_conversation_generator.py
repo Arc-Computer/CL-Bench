@@ -118,6 +118,9 @@ def test_chain_generation_success(repo, selector, utterances, rng):
     assert result.overall_success
     assert result.chain_success
     assert len(result.per_segment_results) == len(chain.workflow_sequence)
+    for turn in result.per_turn_results:
+        assert turn.get("tool_success") is True
+        assert turn.get("response_success") is True
     for segment in result.per_segment_results:
         assert segment["success"], f"segment {segment['segment_number']} should succeed"
         assert segment["expected_outcome"] == "success"
@@ -149,6 +152,9 @@ def test_chain_generation_failure_segment(repo, selector, utterances, rng):
     assert result.metadata.get("expected_failure")
     assert result.per_segment_results[-1]["actual_outcome"] == "failure"
     assert result.per_segment_results[-1]["expected_outcome"] == "failure"
+    failing_turn = next(turn for turn in result.per_turn_results if not turn.get("expect_success", True))
+    assert failing_turn.get("tool_success") is True
+    assert failing_turn.get("response_success") is False
 
 
 def test_offline_scenario_selection_prefers_stage_match():
