@@ -408,7 +408,7 @@ class LiteLLMClaudeAgent(LiteLLMChatAgent):
         schema_path: Optional[Path] = None,
         tasks_path: Optional[Path] = None,
     ) -> None:
-        default_model = os.getenv("CRM_BASELINE_CLAUDE_MODEL", "claude-3.5-sonnet")
+        default_model = os.getenv("CRM_BASELINE_CLAUDE_MODEL", "claude-sonnet-4-5-20250929")
         super().__init__(
             model_name=model_name or default_model,
             provider_name="anthropic",

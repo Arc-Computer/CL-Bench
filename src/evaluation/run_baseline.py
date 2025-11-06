@@ -43,6 +43,11 @@ def parse_args() -> argparse.Namespace:
         default=800,
         help="Maximum tokens returned by the model per turn (ignored for mock).",
     )
+    parser.add_argument(
+        "--no-judge",
+        action="store_true",
+        help="Disable the LLM judge (semantic validation only).",
+    )
     return parser.parse_args()
 
 
@@ -79,7 +84,12 @@ def main() -> int:
     else:  # pragma: no cover - defensive guard for CLI choices
         raise ValueError(f"Unsupported agent option '{args.agent}'.")
 
-    harness = ConversationHarness(conversations, output_path=args.output, agent=agent)
+    harness = ConversationHarness(
+        conversations,
+        output_path=args.output,
+        agent=agent,
+        use_llm_judge=not args.no_judge,
+    )
     results = harness.run()
     successes = sum(1 for result in results if result.overall_success)
     print(f"Executed {len(results)} conversations; successes: {successes}")
