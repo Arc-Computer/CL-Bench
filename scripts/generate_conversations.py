@@ -8,7 +8,7 @@ import os
 import json
 import math
 import random
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
@@ -31,14 +31,9 @@ from src.pipeline.scenario_repository import ScenarioRepository
 
 
 DEFAULT_OUTPUT_DIR = Path("artifacts/conversations_multiturn")
-DEFAULT_CHAIN_OUTPUT_DIR = Path("artifacts/conversations_chains")
+DEFAULT_CHAIN_OUTPUT_DIR = Path("artifacts/conversations_multi_turn")
 DEFAULT_COUNT = 1000
 SMOKE_TEST_COUNT = 10
-
-CHAIN_BY_ID: Dict[str, WorkflowChain] = {
-    chain.chain_id: chain for chain in WORKFLOW_CHAINS.values()
-}
-
 
 def _chain_contains_failure(chain: WorkflowChain) -> bool:
     return any(not outcome for outcome in chain.success_pattern)
@@ -74,20 +69,42 @@ class _OfflineUtteranceGenerator:
 
 
 WORKFLOW_WEIGHTS: Mapping[str, float] = {
-    "client_management": 0.12,
-    "contact_management": 0.1,
-    "opportunity_management": 0.23,
-    "quote_generation": 0.18,
-    "client_onboarding": 0.12,
-    "deal_pipeline": 0.15,
+    "client_management": 0.09,
+    "contact_management": 0.08,
+    "opportunity_management": 0.18,
+    "quote_generation": 0.14,
+    "client_onboarding": 0.1,
+    "deal_pipeline": 0.12,
     "document_workflow": 0.05,
-    "multi_entity_search": 0.05,
+    "multi_entity_search": 0.04,
+    "opportunity_summary": 0.08,
+    "quote_cleanup": 0.06,
+    "contract_review": 0.03,
+    "opportunity_clone": 0.03,
+}
+
+COMPLEXITY_ORDER: Mapping[str, int] = {"simple": 0, "medium": 1, "complex": 2}
+CHAIN_COMPLEXITY_TARGETS: Mapping[str, float] = {
+    "simple": 0.27,
+    "medium": 0.4,
+    "complex": 0.33,
+}
+
+CHAIN_BY_ID: Dict[str, WorkflowChain] = {
+    chain.chain_id: chain for chain in WORKFLOW_CHAINS.values()
+}
+CHAIN_COMPLEXITY_BY_KEY: Dict[str, str] = {
+    key: max(
+        (WORKFLOW_TEMPLATES[workflow_id].complexity_level for workflow_id in chain.workflow_sequence),
+        key=lambda level: COMPLEXITY_ORDER[level],
+    )
+    for key, chain in WORKFLOW_CHAINS.items()
 }
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--single-turn-scenarios", type=Path, default=Path("artifacts/scenarios_500/scenarios_clean.jsonl"), help="Path to validated single-turn scenarios")
+    parser.add_argument("--single-turn-scenarios", type=Path, default=Path("artifacts/scenarios_single_turn/scenarios_clean.jsonl"), help="Path to validated single-turn scenarios")
     parser.add_argument("--count", type=int, default=DEFAULT_COUNT, help="Number of multi-turn conversations to generate")
     parser.add_argument("--seed", type=int, default=17, help="Random seed for deterministic sampling")
     parser.add_argument(
@@ -151,54 +168,120 @@ def compute_chain_plan(total_count: int, chain_ids: Sequence[str], smoke_test: b
     unique_ids = list(dict.fromkeys(expanded_ids))
     if not unique_ids:
         raise ValueError("At least one chain ID must be provided for chain generation.")
-
-    success_keys: List[str] = []
-    failure_keys: List[str] = []
-    for chain_key in unique_ids:
-        chain = WORKFLOW_CHAINS[chain_key]
-        if _chain_contains_failure(chain):
-            failure_keys.append(chain_key)
-        else:
-            success_keys.append(chain_key)
-
-    if not success_keys:
-        raise ValueError(
-            "Chain generation requires at least one success-only workflow chain to honor the target ratio."
-        )
-    if not failure_keys:
-        raise ValueError(
-            "Chain generation requires at least one failure-bearing workflow chain to honor the target ratio."
-        )
-
     if total_count <= 0:
         return {}
 
-    target_failure = int(round(total_count * CHAIN_FAILURE_RATIO))
-    target_success = total_count - target_failure
+    def _allocate_totals(amount: int, ratios: Mapping[str, float]) -> Dict[str, int]:
+        totals: Dict[str, int] = {comp: int(amount * ratios[comp]) for comp in ratios}
+        assigned = sum(totals.values())
+        remainder = amount - assigned
+        if remainder > 0:
+            for comp in sorted(ratios, key=ratios.get, reverse=True):
+                if remainder == 0:
+                    break
+                totals[comp] += 1
+                remainder -= 1
+        elif remainder < 0:
+            for comp in sorted(ratios, key=ratios.get):
+                if remainder == 0:
+                    break
+                if totals[comp] > 0:
+                    totals[comp] -= 1
+                    remainder += 1
+        return totals
 
-    if total_count >= 3:
-        if target_failure == 0:
-            target_failure = 1
-            target_success = total_count - target_failure
-        if target_success == 0:
-            target_success = 1
-            target_failure = total_count - target_success
+    success_by_complexity: Dict[str, List[str]] = defaultdict(list)
+    failure_by_complexity: Dict[str, List[str]] = defaultdict(list)
+    for chain_key in unique_ids:
+        chain = WORKFLOW_CHAINS[chain_key]
+        complexity = CHAIN_COMPLEXITY_BY_KEY.get(chain_key)
+        if complexity is None:
+            raise KeyError(f"Unknown complexity mapping for chain '{chain_key}'.")
+        if _chain_contains_failure(chain):
+            failure_by_complexity[complexity].append(chain_key)
+        else:
+            success_by_complexity[complexity].append(chain_key)
 
-    failure_distribution = _distribute_counts(target_failure, failure_keys)
-    success_distribution = _distribute_counts(target_success, success_keys)
+    available_complexities = [
+        comp
+        for comp in CHAIN_COMPLEXITY_TARGETS
+        if success_by_complexity.get(comp) or failure_by_complexity.get(comp)
+    ]
+    if not available_complexities:
+        raise ValueError("No available chains match the requested identifiers.")
+
+    ratio_total = sum(CHAIN_COMPLEXITY_TARGETS[comp] for comp in available_complexities)
+    if ratio_total <= 0:
+        raise ValueError("Chain complexity targets must sum to a positive value.")
+    normalized_ratios = {comp: CHAIN_COMPLEXITY_TARGETS[comp] / ratio_total for comp in available_complexities}
+    totals_by_complexity = _allocate_totals(total_count, normalized_ratios)
 
     plan: Dict[str, int] = {key: 0 for key in unique_ids}
-    for key, value in {**success_distribution, **failure_distribution}.items():
-        plan[key] = value
 
-    # Remove chains that received zero allocations to keep the plan concise.
-    plan = {key: value for key, value in plan.items() if value > 0}
+    for complexity in available_complexities:
+        allocation = totals_by_complexity.get(complexity, 0)
+        if allocation == 0:
+            continue
+
+        failure_keys = failure_by_complexity.get(complexity, [])
+        success_keys = success_by_complexity.get(complexity, [])
+
+        if not failure_keys and not success_keys:
+            continue
+
+        if not failure_keys:
+            failure_count = 0
+            success_count = allocation
+        elif not success_keys:
+            failure_count = allocation
+            success_count = 0
+        else:
+            failure_count = int(round(allocation * CHAIN_FAILURE_RATIO))
+            failure_count = min(failure_count, allocation)
+            if allocation >= 3 and failure_count == 0:
+                failure_count = 1
+            success_count = allocation - failure_count
+            if allocation >= 3 and success_count == 0:
+                success_count = 1
+                failure_count = allocation - success_count
+
+        if failure_count:
+            failure_distribution = _distribute_counts(failure_count, failure_keys)
+            for key, value in failure_distribution.items():
+                plan[key] += value
+        if success_count:
+            success_distribution = _distribute_counts(success_count, success_keys)
+            for key, value in success_distribution.items():
+                plan[key] += value
 
     allocated = sum(plan.values())
     if allocated != total_count:
-        raise RuntimeError(
-            f"Chain plan allocation mismatch: requested {total_count}, allocated {allocated}."
+        difference = total_count - allocated
+        ordered_complexities = sorted(
+            available_complexities, key=lambda comp: normalized_ratios.get(comp, 0), reverse=True
         )
+        adjust_keys = [
+            success_by_complexity.get(comp, []) or failure_by_complexity.get(comp, [])
+            for comp in ordered_complexities
+        ]
+        adjust_keys = [keys for keys in adjust_keys if keys]
+        index = 0
+        while difference != 0 and adjust_keys:
+            keys = adjust_keys[index % len(adjust_keys)]
+            target_key = keys[0]
+            if difference > 0:
+                plan[target_key] += 1
+                difference -= 1
+            else:
+                if plan[target_key] > 0:
+                    plan[target_key] -= 1
+                    difference += 1
+            index += 1
+
+    plan = {key: value for key, value in plan.items() if value > 0}
+
+    if not plan:
+        raise RuntimeError("Chain plan allocation failed; no chains received assignments.")
 
     return plan
 

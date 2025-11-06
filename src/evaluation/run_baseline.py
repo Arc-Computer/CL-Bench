@@ -9,7 +9,8 @@ from typing import List
 
 from dotenv import load_dotenv
 
-from .conversation_harness import ConversationHarness, MockAgent, load_conversations_from_jsonl
+from .agents import LiteLLMClaudeAgent, LiteLLMGPT4Agent, MockAgent
+from .conversation_harness import ConversationHarness, load_conversations_from_jsonl
 
 load_dotenv()
 
@@ -26,6 +27,27 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sample", type=int, help="Optional number of conversations to sample")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for sampling")
     parser.add_argument("--output", type=Path, required=True, help="Path to write baseline results JSONL")
+    parser.add_argument(
+        "--model",
+        help="Override the default model identifier when running GPT-4.1 or Claude baselines.",
+    )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=0.0,
+        help="Sampling temperature for LLM agents (ignored for mock).",
+    )
+    parser.add_argument(
+        "--max-output-tokens",
+        type=int,
+        default=800,
+        help="Maximum tokens returned by the model per turn (ignored for mock).",
+    )
+    parser.add_argument(
+        "--no-judge",
+        action="store_true",
+        help="Disable the LLM judge (semantic validation only).",
+    )
     return parser.parse_args()
 
 
@@ -45,13 +67,29 @@ def main() -> int:
         rng = random.Random(args.seed)
         conversations = rng.sample(conversations, args.sample)
 
-    if args.agent != "mock":
-        raise NotImplementedError(
-            f"Agent '{args.agent}' is not yet integrated with the lean harness. "
-            "Use --agent mock or extend src/evaluation/run_baseline.py with the desired provider."
+    if args.agent == "mock":
+        agent = MockAgent()
+    elif args.agent == "gpt4.1":
+        agent = LiteLLMGPT4Agent(
+            model_name=args.model,
+            temperature=args.temperature,
+            max_output_tokens=args.max_output_tokens,
         )
+    elif args.agent == "claude":
+        agent = LiteLLMClaudeAgent(
+            model_name=args.model,
+            temperature=args.temperature,
+            max_output_tokens=args.max_output_tokens,
+        )
+    else:  # pragma: no cover - defensive guard for CLI choices
+        raise ValueError(f"Unsupported agent option '{args.agent}'.")
 
-    harness = ConversationHarness(conversations, output_path=args.output, agent=MockAgent())
+    harness = ConversationHarness(
+        conversations,
+        output_path=args.output,
+        agent=agent,
+        use_llm_judge=not args.no_judge,
+    )
     results = harness.run()
     successes = sum(1 for result in results if result.overall_success)
     print(f"Executed {len(results)} conversations; successes: {successes}")

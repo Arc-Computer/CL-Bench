@@ -95,6 +95,12 @@ def resolve_template(
                     return match.group(0)  # Leave unresolved
                 
                 turn_result = previous_turns[turn_num]
+
+                # Handle empty turn results (failed turns) - leave template unresolved
+                if not turn_result:
+                    return match.group(0)
+
+                # Check if field exists in non-empty turn result
                 if field_name not in turn_result:
                     if strict:
                         raise TemplateResolutionError(
@@ -103,7 +109,7 @@ def resolve_template(
                             f"Available fields: {list(turn_result.keys())}"
                         )
                     return match.group(0)  # Leave unresolved
-                
+
                 return str(turn_result[field_name])
             
             return TEMPLATE_PATTERN.sub(_replace_template, value)
@@ -154,7 +160,9 @@ def validate_template_references(
         
         # Check field exists
         turn_result = previous_turns[turn_num]
-        if field_name not in turn_result:
+        # Skip field validation for empty turn results (failed turns)
+        # Allow resolution to handle missing fields gracefully
+        if turn_result and field_name not in turn_result:
             errors.append(
                 f"Template {{turn_{turn_num}.{field_name}}} references "
                 f"field '{field_name}' which doesn't exist in turn {turn_num}. "

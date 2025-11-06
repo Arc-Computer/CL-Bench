@@ -182,7 +182,7 @@ def main() -> None:
     parser.add_argument(
         "--scenarios-file",
         type=Path,
-        default=Path("artifacts/scenarios_500/scenarios_clean.jsonl"),
+        default=Path("artifacts/scenarios_single_turn/scenarios_clean.jsonl"),
         help="Path to scenarios JSONL file to append to",
     )
     parser.add_argument(

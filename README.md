@@ -76,8 +76,9 @@ data/
   Agent tasks.csv             # Task frequency weights for generation
 tests/                        # Pytest suite
 artifacts/
-  generated_scenarios/        # Curator-generated scenarios (JSONL)
-  baseline_*.jsonl            # Baseline evaluation results
+  scenarios_single_turn/      # Validated single-turn scenario library
+  conversations_multi_turn/   # Production multi-turn datasets (simple/medium/complex mix)
+  baselines/                  # Evaluation logs and JSONL outputs
 ```
 
 ## Quick Start
@@ -105,29 +106,60 @@ Default credentials are in `.env.example` (safe for local development).
 ### Run Baseline Evaluation
 
 ```bash
-# Set API keys in .env
-ANTHROPIC_API_KEY=your_key
-OPENAI_API_KEY=your_key
+# Load API keys (at minimum OPENAI_API_KEY or ANTHROPIC_API_KEY for the model you plan to exercise)
+set -a; source .env; set +a
 
-# Run evaluation
-python -m src.run_baseline \
-    --mode scenario \
-    --scenarios artifacts/generated_scenarios/scenarios.jsonl \
-    --agent claude \
-    --backend mock \
-    --sample 10 \
-    --output artifacts/baseline_results.jsonl
+# Example: run GPT-4.1 on the full multi-turn dataset with the LLM judge enabled
+python -m src.evaluation.run_baseline \
+    --conversations artifacts/conversations_multi_turn/20251105T144453Z/full/chains.jsonl \
+    --agent gpt4.1 \
+    --model gpt-4.1 \
+    --seed 42 \
+    --output artifacts/baselines/20251106_gpt4.1_full.jsonl
 ```
 
-**Available agents:**
-- `claude` - Claude 4.5 Sonnet
-- `gpt4.1` - GPT-4.1
-- `gpt4` - GPT-4
-- `mock` - Ground truth (for validation)
+Helpful variations:
 
-**Available backends:**
-- `mock` - In-memory (fast, deterministic)
-- `postgres` - Real database (production-realistic)
+- Evaluate a quick medium-only smoke sample (e.g., 20 conversations):
+
+  ```bash
+  python -m src.evaluation.run_baseline \
+      --conversations artifacts/conversations_multi_turn/20251105T144453Z/full/chains.jsonl \
+      --agent claude \
+      --model claude-sonnet-4-5-20250929 \
+      --sample 20 \
+      --seed 123 \
+      --output artifacts/baselines/20251106_claude_sample.jsonl
+  ```
+
+- Disable the LLM judge (tool execution only) by passing `--no-judge`.
+
+The CLI accepts the following agent flags:
+- `gpt4.1` – OpenAI GPT-4.1 (model overridden via `--model`)
+- `claude` – Claude Sonnet 4.5 (override with `--model`)
+- `mock` – deterministic replay of the ground-truth tool call (useful for harness validation)
+
+Baseline outputs include per-conversation JSONL logs and the captured token usage / judge decisions. Store logs under `artifacts/baselines/` for reproducibility.
+
+#### Response Verification
+
+The harness can grade natural-language responses alongside tool execution when conversations include an `expected_response` stanza. Example turn payload:
+
+```json
+{
+  "turn_id": 1,
+  "expected_tool": "client_search",
+  "expected_args": {"name": "Acme Corp"},
+  "expected_response": {
+    "text": "Initiated client_search with name=Acme Corp",
+    "evaluation": "structured",
+    "answers": ["Initiated client_search with name=Acme Corp"]
+  },
+  "verification_mode": "runtime_response"
+}
+```
+
+Set `expected_response.evaluation` to `"judge"` (or `"requires_judge": true`) to delegate grading to GPT‑4.1 via LiteLLM. The baseline log records execution accuracy, response accuracy, and the blended metric so teams can track regression over time.
 
 ### Programmatic Usage
 
@@ -163,7 +195,7 @@ All relationship and enum constraints are enforced with clear error messages.
 
 The benchmark’s multi-turn conversations are built in layers so every turn stays grounded in validated data while remaining easy to reproduce and scale:
 
-1. **Validated single-turn library.** We begin with `artifacts/scenarios_500/scenarios_clean.jsonl`, a curated 60/40 success/failure set. `ScenarioRepository` indexes these records by tool/outcome and enriches them with entity metadata so downstream turns can share clients, opportunities, quotes, etc.
+1. **Validated single-turn library.** We begin with `artifacts/scenarios_single_turn/scenarios_clean.jsonl`, a curated 60/40 success/failure set. `ScenarioRepository` indexes these records by tool/outcome and enriches them with entity metadata so downstream turns can share clients, opportunities, quotes, etc.
 
 2. **Workflow templates and chains.** `src/conversation_templates.py` defines deterministically structured workflows (e.g., onboarding, quote generation). `WorkflowChain` objects stitch templates into multi-segment journeys with explicit success/failure patterns and handoff rules, encoding the 60/40 mix at the segment level.
 
@@ -176,18 +208,120 @@ The benchmark’s multi-turn conversations are built in layers so every turn sta
 
 5. **Harness validation.** `ConversationHarness` replays each conversation against a fresh CRM instance, failing fast if a success segment fails (or vice versa). The CLI (`scripts/generate_conversations.py --mode chain`) wraps this flow—smoke tests print expected vs. actual segment outcomes, while full runs validate every generated conversation before writing `chains.jsonl`.
 
-6. **Reproducible artifacts.** The chained generator exports a manifest (`artifacts/chains/manifest.json`), analytics report (`artifacts/reports/chains_baseline.md`), and a no-fallback verification pass (`scripts/verify_no_fallbacks.py`) whose output lives next to each run log (e.g., `verification_report.json`, `quality_checks.md`). The README and docs capture the exact commands, seeds, and model names used so datasets can be regenerated or scaled (e.g., new workflow chains, alternative Curator backends).
+6. **Reproducible artifacts.** The chained generator exports a manifest and analytics report alongside the dataset (`artifacts/conversations_multi_turn/20251105T144453Z/full/manifest.json` and `report.md`), plus a no-fallback verification pass (`verification_report.json`, `quality_checks.md`) and lint summary (`lint_report.json`). The docs capture the exact commands, seeds, and model names used so datasets can be regenerated or scaled (e.g., new workflow chains, alternative Curator backends).
 
 To scale the pipeline, define additional workflow templates/chains, run the generator with your preferred Curator model (Gemini 2.5 Flash or GPT‑5‑mini via LiteLLM), and regenerate the manifest/analytics/verification artifacts. Because every step is validated against the CRM schema (and the no-fallback audit), the resulting dataset remains production-quality without manual clean-up.
 
 ### Current Artifact Snapshot
 
-- **Single-turn scenarios** (validated 60/40 mix): `artifacts/scenarios_500/scenarios_clean.jsonl` (494 records)
-- **Chained conversations** (200 conversations, 40 % expected failures): `artifacts/conversations_chains/chains.jsonl`
-- **Manifest**: `artifacts/chains/manifest.json` (includes failure ratio/tolerance flags)
-- **Analytics report**: `artifacts/reports/chains_baseline.md`
-- **Verification log**: `artifacts/conversations_chains/20251105T033709Z/full/verification_report.json`
-- **Quality summary**: `artifacts/conversations_chains/20251105T033709Z/full/quality_checks.md`
+- **Single-turn scenarios** (validated 60/40 mix): `artifacts/scenarios_single_turn/scenarios_clean.jsonl` (495 records)
+- **Chained conversations** (1,500 conversations; 900 simple / 450 medium / 150 complex; 40% expected failures): `artifacts/conversations_multi_turn/chains.jsonl`
+- **Manifest**: `artifacts/conversations_multi_turn/20251105T144453Z/full/manifest.json`
+- **Analytics report**: `artifacts/conversations_multi_turn/20251105T144453Z/full/report.md`
+- **Verification log**: `artifacts/conversations_multi_turn/20251105T144453Z/full/verification_report.json`
+- **Lint summary**: `artifacts/conversations_multi_turn/20251105T144453Z/full/lint_report.json`
+- **Quality summary**: `artifacts/conversations_multi_turn/20251105T144453Z/full/quality_checks.md`
+
+**Complexity Dimensions**: The benchmark measures two orthogonal difficulty axes. *Complex* chains test long-context tracking over 3-segment workflows (8-12 turns) with terminal failures. *Medium* chains test error recovery through mid-chain failures that require reasoning with partial context and handling template references to failed turns. Both dimensions are essential for production-robust agents.
+
+## Reproducing the Datasets
+
+### Single-Turn Scenario Library
+
+The repository includes a curated library (`artifacts/scenarios_single_turn/scenarios_clean.jsonl`). To add fresh Curator-generated scenarios for a specific tool, run:
+
+```bash
+# Example: regenerate upload_document scenarios (60% success / 40% failure)
+PYTHONPATH=. python scripts/generate_missing_scenarios.py \
+    --tool upload_document \
+    --success-count 10 \
+    --failure-count 7 \
+    --scenarios-file artifacts/scenarios_single_turn/scenarios_clean.jsonl
+```
+
+The script validates each scenario using `ConversationHarness` before appending it. Repeat for any additional tools that need more coverage. To audit coverage across the library:
+
+```bash
+PYTHONPATH=. python scripts/analyze_scenario_coverage.py \
+    --scenarios artifacts/scenarios_single_turn/scenarios_clean.jsonl
+```
+
+### Multi-Turn Conversation Sets
+
+The production dataset was created in three passes (simple / medium / complex) and merged into a single JSONL file. Replace `${TIMESTAMP}` with a fresh UTC stamp when regenerating.
+
+```bash
+export TIMESTAMP=$(date -u +"%Y%m%dT%H%M%SZ")
+mkdir -p artifacts/conversations_multi_turn/${TIMESTAMP}/{simple,medium,complex,full}
+
+# Simple chains (900 conversations)
+CURATOR_SIMPLE_DATASET=0 PYTHONPATH=. python scripts/generate_conversations.py \
+    --mode chain \
+    --count 900 \
+    --seed 42 \
+    --model-name gpt-4.1-mini \
+    --chain-id client_management_chain \
+    --chain-id contact_document_note \
+    --output-dir artifacts/conversations_multi_turn/${TIMESTAMP}/simple \
+    | tee artifacts/conversations_multi_turn/${TIMESTAMP}/simple/run.log
+
+# Medium chains (450 conversations)
+CURATOR_SIMPLE_DATASET=0 PYTHONPATH=. python scripts/generate_conversations.py \
+    --mode chain \
+    --count 450 \
+    --seed 43 \
+    --model-name gpt-4.1-mini \
+    --chain-id client_opp_quote \
+    --chain-id search_quote_review \
+    --chain-id quote_remediation \
+    --chain-id summary_contract \
+    --chain-id clone_expansion \
+    --output-dir artifacts/conversations_multi_turn/${TIMESTAMP}/medium \
+    | tee artifacts/conversations_multi_turn/${TIMESTAMP}/medium/run.log
+
+# Complex chains (150 conversations)
+CURATOR_SIMPLE_DATASET=0 PYTHONPATH=. python scripts/generate_conversations.py \
+    --mode chain \
+    --count 150 \
+    --seed 44 \
+    --model-name gpt-4.1-mini \
+    --chain-id onboarding_pipeline_contract \
+    --chain-id onboarding_opp_deal \
+    --output-dir artifacts/conversations_multi_turn/${TIMESTAMP}/complex \
+    | tee artifacts/conversations_multi_turn/${TIMESTAMP}/complex/run.log
+
+# Merge and produce a single dataset
+PYTHONPATH=. python scripts/merge_chain_runs.py \
+    --input artifacts/conversations_multi_turn/${TIMESTAMP}/simple/chains.jsonl \
+    --input artifacts/conversations_multi_turn/${TIMESTAMP}/medium/chains.jsonl \
+    --input artifacts/conversations_multi_turn/${TIMESTAMP}/complex/chains.jsonl \
+    --output artifacts/conversations_multi_turn/${TIMESTAMP}/full/chains.jsonl
+
+# Analytics + verification
+PYTHONPATH=. python analysis/chains_manifest.py \
+    --dataset artifacts/conversations_multi_turn/${TIMESTAMP}/full/chains.jsonl \
+    --output artifacts/conversations_multi_turn/${TIMESTAMP}/full/manifest.json \
+    --seed 42 \
+    --model-name gpt-4.1-mini
+
+PYTHONPATH=. python analysis/generate_chains_report.py \
+    --dataset artifacts/conversations_multi_turn/${TIMESTAMP}/full/chains.jsonl \
+    --output artifacts/conversations_multi_turn/${TIMESTAMP}/full/report.md \
+    --seed 42 \
+    --model-name gpt-4.1-mini \
+    --baseline artifacts/conversations_multi_turn/${TIMESTAMP}/full/run.log
+
+PYTHONPATH=. python scripts/verify_no_fallbacks.py \
+    --artifacts-dir artifacts/conversations_multi_turn/${TIMESTAMP}/full \
+    --output artifacts/conversations_multi_turn/${TIMESTAMP}/full/verification_report.json
+
+PYTHONPATH=. python analysis/lint_chains.py \
+    --dataset artifacts/conversations_multi_turn/${TIMESTAMP}/full/chains.jsonl \
+    --summary artifacts/conversations_multi_turn/${TIMESTAMP}/full/lint_report.json \
+    --max-findings 50
+```
+
+Copy the resulting `full/` directory to `artifacts/conversations_multi_turn/` (replacing the existing timestamp) and update `chains.jsonl` if you are promoting a new dataset.
 
 ## Integration with Atlas SDK
 
@@ -200,7 +334,7 @@ from src.crm_backend import DatabaseConfig
 from src.scenario_harness import load_scenarios_from_jsonl
 
 # Load curated scenarios
-scenarios = load_scenarios_from_jsonl("artifacts/generated_scenarios/scenarios.jsonl")
+scenarios = load_scenarios_from_jsonl("artifacts/scenarios_single_turn/scenarios_clean.jsonl")
 
 # Configure agent via Atlas SDK (Teacher + Student)
 agent = Agent.from_config("configs/atlas_teacher_student.yaml")
@@ -227,7 +361,7 @@ from src.harness import ClaudeAgent
 from src.scenario_harness import load_scenarios_from_jsonl
 
 agent = ClaudeAgent(model_name="claude-sonnet-4.5")
-scenarios = load_scenarios_from_jsonl("artifacts/generated_scenarios/scenarios.jsonl")
+scenarios = load_scenarios_from_jsonl("artifacts/scenarios_single_turn/scenarios_clean.jsonl")
 
 result = atlas_run(
     agent=agent,

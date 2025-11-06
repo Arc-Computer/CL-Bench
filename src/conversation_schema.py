@@ -175,7 +175,8 @@ class ConversationResult:
                 f"reward_signal must be between 0.0 and 1.0, got {self.reward_signal}"
             )
         
-        if self.failed_at_turn is not None and self.turns_executed >= self.failed_at_turn:
+        if self.failed_at_turn is not None and self.turns_executed < self.failed_at_turn:
             raise ValueError(
-                f"turns_executed ({self.turns_executed}) must be < failed_at_turn ({self.failed_at_turn})"
+                f"turns_executed ({self.turns_executed}) must be >= failed_at_turn ({self.failed_at_turn}) "
+                "when continuing through all turns"
             )

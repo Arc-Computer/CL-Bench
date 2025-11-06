@@ -102,3 +102,36 @@ class CrmStateSnapshot:
             notes=_copy_store(api.notes),
             companies=_copy_store(api.companies),
         )
+
+    @classmethod
+    def from_backend(cls, backend: Any) -> "CrmStateSnapshot":
+        """Create a snapshot from a Postgres-backed repository."""
+        if hasattr(backend, "clients"):
+            return cls.from_api(backend)
+
+        required = (
+            "list_clients",
+            "list_contacts",
+            "list_opportunities",
+            "list_quotes",
+            "list_contracts",
+            "list_documents",
+            "list_notes",
+            "list_companies",
+        )
+        missing = [name for name in required if not callable(getattr(backend, name, None))]
+        if missing:
+            raise AttributeError(
+                f"Backend does not implement snapshot helpers: {', '.join(missing)}"
+            )
+
+        return cls(
+            clients=_copy_store(backend.list_clients()),
+            contacts=_copy_store(backend.list_contacts()),
+            opportunities=_copy_store(backend.list_opportunities()),
+            quotes=_copy_store(backend.list_quotes()),
+            contracts=_copy_store(backend.list_contracts()),
+            documents=_copy_store(backend.list_documents()),
+            notes=_copy_store(backend.list_notes()),
+            companies=_copy_store(backend.list_companies()),
+        )

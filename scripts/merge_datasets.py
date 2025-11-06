@@ -20,7 +20,7 @@ OUTPUT_DEFAULT = Path("artifacts/conversations_final")
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--single-turn-path", type=Path, default=Path("artifacts/scenarios_500/scenarios_clean.jsonl"))
+    parser.add_argument("--single-turn-path", type=Path, default=Path("artifacts/scenarios_single_turn/scenarios_clean.jsonl"))
     parser.add_argument("--multi-turn-path", type=Path, default=MULTI_TURN_DEFAULT)
     parser.add_argument("--output-dir", type=Path, default=OUTPUT_DEFAULT)
     return parser.parse_args()
