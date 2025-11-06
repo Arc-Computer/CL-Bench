@@ -186,7 +186,7 @@ All relationship and enum constraints are enforced with clear error messages.
 
 The benchmark’s multi-turn conversations are built in layers so every turn stays grounded in validated data while remaining easy to reproduce and scale:
 
-1. **Validated single-turn library.** We begin with `artifacts/scenarios_500/scenarios_clean.jsonl`, a curated 60/40 success/failure set. `ScenarioRepository` indexes these records by tool/outcome and enriches them with entity metadata so downstream turns can share clients, opportunities, quotes, etc.
+1. **Validated single-turn library.** We begin with `artifacts/scenarios_single_turn/scenarios_clean.jsonl`, a curated 60/40 success/failure set. `ScenarioRepository` indexes these records by tool/outcome and enriches them with entity metadata so downstream turns can share clients, opportunities, quotes, etc.
 
 2. **Workflow templates and chains.** `src/conversation_templates.py` defines deterministically structured workflows (e.g., onboarding, quote generation). `WorkflowChain` objects stitch templates into multi-segment journeys with explicit success/failure patterns and handoff rules, encoding the 60/40 mix at the segment level.
 
@@ -205,14 +205,14 @@ To scale the pipeline, define additional workflow templates/chains, run the gene
 
 ### Current Artifact Snapshot
 
-- **Single-turn scenarios** (validated 60/40 mix): `artifacts/scenarios_500/scenarios_clean.jsonl` (495 records)
-- **Chained conversations** (1,500 conversations; 900 simple / 450 medium / 150 complex; 40% expected failures): `artifacts/conversations_chains/chains.jsonl`
+- **Single-turn scenarios** (validated 60/40 mix): `artifacts/scenarios_single_turn/scenarios_clean.jsonl` (495 records)
+- **Chained conversations** (1,500 conversations; 900 simple / 450 medium / 150 complex; 40% expected failures): `artifacts/conversations_multi_turn/chains.jsonl`
 - **Manifest**: `artifacts/chains/manifest.json` (includes failure ratio/tolerance flags)
 - **Analytics report**: `artifacts/reports/chains_baseline.md`
-- **Verification log**: `artifacts/conversations_chains/20251105T144453Z/full/verification_report.json`
-- **Lint summary**: `artifacts/conversations_chains/20251105T144453Z/full/lint_report.json`
-- **Quality summary**: `artifacts/conversations_chains/20251105T144453Z/full/quality_checks.md`
-- **Offline baseline (deterministic stub)**: preserved at `artifacts/conversations_chains/20251105T142324Z/full/` for reproducibility comparisons.
+- **Verification log**: `artifacts/conversations_multi_turn/20251105T144453Z/full/verification_report.json`
+- **Lint summary**: `artifacts/conversations_multi_turn/20251105T144453Z/full/lint_report.json`
+- **Quality summary**: `artifacts/conversations_multi_turn/20251105T144453Z/full/quality_checks.md`
+- **Offline baseline (deterministic stub)**: preserved at `artifacts/conversations_multi_turn/20251105T142324Z/full/` for reproducibility comparisons.
 
 **Complexity Dimensions**: The benchmark measures two orthogonal difficulty axes. *Complex* chains test long-context tracking over 3-segment workflows (8-12 turns) with terminal failures. *Medium* chains test error recovery through mid-chain failures that require reasoning with partial context and handling template references to failed turns. Both dimensions are essential for production-robust agents.
 

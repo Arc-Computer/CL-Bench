@@ -1,7 +1,7 @@
 # Chained Dataset Baseline Report
 
 ## Dataset Summary
-- Source: `artifacts/conversations_chains/20251105T144453Z/full/chains.jsonl` (seed=42, model=gpt-4.1-mini)
+- Source: `artifacts/conversations_multi_turn/20251105T144453Z/full/chains.jsonl` (seed=42, model=gpt-4.1-mini)
 - Conversations: 1500 (success=900, failed=600)
 - Conversation success rate: 60.0%
 - Failure ratio: 40.0% (target 40.0% +/- 2.0%)
@@ -29,7 +29,7 @@
 - See manifest for aggregated failure signatures.
 
 ## Baseline Logs
-- `artifacts/conversations_chains/20251105T144453Z/full/run.log` (available)
+- `artifacts/conversations_multi_turn/20251105T144453Z/full/run.log` (available)
 
 ## Expected Failure Coverage
 - CHAIN-006B: 360/360 conversations intentionally fail

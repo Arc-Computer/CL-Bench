@@ -7,8 +7,8 @@ Detects recurring data quality issues:
 
 Usage:
     PYTHONPATH=. python analysis/lint_chains.py \
-        --dataset artifacts/conversations_chains/<timestamp>/full/chains.jsonl \
-        --summary artifacts/conversations_chains/<timestamp>/full/lint_report.json
+        --dataset artifacts/conversations_multi_turn/<timestamp>/full/chains.jsonl \
+        --summary artifacts/conversations_multi_turn/<timestamp>/full/lint_report.json
 """
 
 from __future__ import annotations
@@ -200,7 +200,7 @@ def main() -> None:
 
     conversations = _load_conversations(args.dataset)
     repo = ScenarioRepository(
-        scenario_path=Path("artifacts/scenarios_500/scenarios_clean.jsonl"),
+        scenario_path=Path("artifacts/scenarios_single_turn/scenarios_clean.jsonl"),
         schema_path=Path("data/fake_crm_tables_schema.json"),
         task_weights_path=Path("data/Agent_tasks.csv"),
     )

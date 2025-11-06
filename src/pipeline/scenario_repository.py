@@ -499,7 +499,7 @@ class ScenarioRepository:
     def from_default_paths(cls) -> "ScenarioRepository":
         root = Path(__file__).resolve().parents[2]
         return cls(
-            scenario_path=root / "artifacts" / "scenarios_500" / "scenarios_clean.jsonl",
+            scenario_path=root / "artifacts" / "scenarios_single_turn" / "scenarios_clean.jsonl",
             schema_path=root / "data" / "fake_crm_tables_schema.json",
             task_weights_path=root / "data" / "Agent_tasks.csv",
         )

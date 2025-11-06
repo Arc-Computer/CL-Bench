@@ -31,7 +31,7 @@ from src.pipeline.scenario_repository import ScenarioRepository
 
 
 DEFAULT_OUTPUT_DIR = Path("artifacts/conversations_multiturn")
-DEFAULT_CHAIN_OUTPUT_DIR = Path("artifacts/conversations_chains")
+DEFAULT_CHAIN_OUTPUT_DIR = Path("artifacts/conversations_multi_turn")
 DEFAULT_COUNT = 1000
 SMOKE_TEST_COUNT = 10
 
@@ -104,7 +104,7 @@ CHAIN_COMPLEXITY_BY_KEY: Dict[str, str] = {
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--single-turn-scenarios", type=Path, default=Path("artifacts/scenarios_500/scenarios_clean.jsonl"), help="Path to validated single-turn scenarios")
+    parser.add_argument("--single-turn-scenarios", type=Path, default=Path("artifacts/scenarios_single_turn/scenarios_clean.jsonl"), help="Path to validated single-turn scenarios")
     parser.add_argument("--count", type=int, default=DEFAULT_COUNT, help="Number of multi-turn conversations to generate")
     parser.add_argument("--seed", type=int, default=17, help="Random seed for deterministic sampling")
     parser.add_argument(

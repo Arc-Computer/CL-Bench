@@ -331,7 +331,7 @@
       ]
     }
   },
-  "dataset_path": "artifacts/conversations_chains/20251105T144453Z/full/chains.jsonl",
+  "dataset_path": "artifacts/conversations_multi_turn/20251105T144453Z/full/chains.jsonl",
   "failed_conversations": 600,
   "failure_ratio": 0.4,
   "failure_ratio_deviation": 0.0,

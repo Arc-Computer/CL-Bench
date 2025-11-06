@@ -176,7 +176,7 @@ CURATOR_SIMPLE_DATASET=1 PYTHONPATH=. python scripts/generate_conversations.py \
     --chain-id client_opp_quote \
     --count 50 \
     --seed 42 \
-    --output-dir artifacts/conversations_chains
+    --output-dir artifacts/conversations_multi_turn
 
 # The CLI prints per-chain counts and aborts if the failure ratio moves outside the
 # configured 60/40 +/- 2% window.
@@ -190,7 +190,7 @@ This command validates every generated chain on the fly; any unexpected segment 
 CURATOR_SIMPLE_DATASET=1 PYTHONPATH=. python scripts/generate_conversations.py \
     --mode chain \
     --smoke-test \
-    --output-dir artifacts/conversations_chains/smoke
+    --output-dir artifacts/conversations_multi_turn/smoke
 ```
 
 The smoke run prints one conversation per chain with per-segment expected vs actual outcomes and exits on mismatches.
@@ -198,7 +198,7 @@ The smoke run prints one conversation per chain with per-segment expected vs act
 After a full run, inspect a sample JSON row to confirm metadata fields:
 
 ```bash
-head -n 1 artifacts/conversations_chains/chains.jsonl | jq
+head -n 1 artifacts/conversations_multi_turn/chains.jsonl | jq
 ```
 
 The `cumulative_context.segment_summaries` and `turn_annotations` blocks should match the segment logs printed during generation.
@@ -225,14 +225,14 @@ PYTHONPATH=. python scripts/validate_chains.py \
     CURATOR_SIMPLE_DATASET=1 PYTHONPATH=. python scripts/generate_conversations.py \
         --mode chain \
         --smoke-test \
-        --output-dir artifacts/conversations_chains/$(date -u +"%Y%m%dT%H%M%SZ")/smoke
+        --output-dir artifacts/conversations_multi_turn/$(date -u +"%Y%m%dT%H%M%SZ")/smoke
     ```
 
 3. Launch the scaled generation. For the Phase 5 refresh we run Curator online (`CURATOR_SIMPLE_DATASET=0`) in three passes targeting roughly 400 simple / 600 medium / 500 complex chains while keeping the 60/40 success mix:
 
     ```bash
     export TIMESTAMP=$(date -u +"%Y%m%dT%H%M%SZ")
-    mkdir -p artifacts/conversations_chains/${TIMESTAMP}/{simple,medium,complex,full}
+    mkdir -p artifacts/conversations_multi_turn/${TIMESTAMP}/{simple,medium,complex,full}
 
     # 400 simple (client + document hygiene) conversations
     CURATOR_SIMPLE_DATASET=0 PYTHONPATH=. python scripts/generate_conversations.py \
@@ -242,8 +242,8 @@ PYTHONPATH=. python scripts/validate_chains.py \
         --model-name gpt-4.1-mini \
         --chain-id client_management_chain \
         --chain-id contact_document_note \
-        --output-dir artifacts/conversations_chains/${TIMESTAMP}/simple \
-        | tee artifacts/conversations_chains/${TIMESTAMP}/simple/run.log
+        --output-dir artifacts/conversations_multi_turn/${TIMESTAMP}/simple \
+        | tee artifacts/conversations_multi_turn/${TIMESTAMP}/simple/run.log
 
     # 600 medium (quote remediation, pipeline insights)
     CURATOR_SIMPLE_DATASET=0 PYTHONPATH=. python scripts/generate_conversations.py \
@@ -256,8 +256,8 @@ PYTHONPATH=. python scripts/validate_chains.py \
         --chain-id quote_remediation \
         --chain-id summary_contract \
         --chain-id clone_expansion \
-        --output-dir artifacts/conversations_chains/${TIMESTAMP}/medium \
-        | tee artifacts/conversations_chains/${TIMESTAMP}/medium/run.log
+        --output-dir artifacts/conversations_multi_turn/${TIMESTAMP}/medium \
+        | tee artifacts/conversations_multi_turn/${TIMESTAMP}/medium/run.log
 
     # 500 complex (multi-segment onboarding / deal pipeline) conversations
     CURATOR_SIMPLE_DATASET=0 PYTHONPATH=. python scripts/generate_conversations.py \
@@ -267,20 +267,20 @@ PYTHONPATH=. python scripts/validate_chains.py \
         --model-name gpt-4.1-mini \
         --chain-id onboarding_pipeline_contract \
         --chain-id onboarding_opp_deal \
-        --output-dir artifacts/conversations_chains/${TIMESTAMP}/complex \
-        | tee artifacts/conversations_chains/${TIMESTAMP}/complex/run.log
+        --output-dir artifacts/conversations_multi_turn/${TIMESTAMP}/complex \
+        | tee artifacts/conversations_multi_turn/${TIMESTAMP}/complex/run.log
 
     # Merge the three runs and build a consolidated log
     PYTHONPATH=. python scripts/merge_chain_runs.py \
-        --input artifacts/conversations_chains/${TIMESTAMP}/simple/chains.jsonl \
-        --input artifacts/conversations_chains/${TIMESTAMP}/medium/chains.jsonl \
-        --input artifacts/conversations_chains/${TIMESTAMP}/complex/chains.jsonl \
-        --output artifacts/conversations_chains/${TIMESTAMP}/full/chains.jsonl
+        --input artifacts/conversations_multi_turn/${TIMESTAMP}/simple/chains.jsonl \
+        --input artifacts/conversations_multi_turn/${TIMESTAMP}/medium/chains.jsonl \
+        --input artifacts/conversations_multi_turn/${TIMESTAMP}/complex/chains.jsonl \
+        --output artifacts/conversations_multi_turn/${TIMESTAMP}/full/chains.jsonl
 
-    cat artifacts/conversations_chains/${TIMESTAMP}/simple/run.log \
-        artifacts/conversations_chains/${TIMESTAMP}/medium/run.log \
-        artifacts/conversations_chains/${TIMESTAMP}/complex/run.log \
-        > artifacts/conversations_chains/${TIMESTAMP}/full/run.log
+    cat artifacts/conversations_multi_turn/${TIMESTAMP}/simple/run.log \
+        artifacts/conversations_multi_turn/${TIMESTAMP}/medium/run.log \
+        artifacts/conversations_multi_turn/${TIMESTAMP}/complex/run.log \
+        > artifacts/conversations_multi_turn/${TIMESTAMP}/full/run.log
     ```
 
 > **Fallback guidance:** When Gemini credentials are unavailable and `gpt-5-mini` exhausts reasoning-token budgets (max token truncation), switch to `gpt-4.1-mini` (as above) to maintain deterministic output without fallbacks. The earlier offline stub run (20251105T142324Z) remains checked in for reproducibility comparisons.
@@ -291,24 +291,24 @@ Generate reproducible statistics and a Markdown baseline report after the run:
 
 ```bash
 PYTHONPATH=. python analysis/chains_manifest.py \
-    --dataset artifacts/conversations_chains/<timestamp>/full/chains.jsonl \
-    --output artifacts/conversations_chains/<timestamp>/full/manifest.json \
+    --dataset artifacts/conversations_multi_turn/<timestamp>/full/chains.jsonl \
+    --output artifacts/conversations_multi_turn/<timestamp>/full/manifest.json \
     --seed 42 \
     --model-name gpt-4.1-mini
 
 PYTHONPATH=. python analysis/generate_chains_report.py \
-    --dataset artifacts/conversations_chains/<timestamp>/full/chains.jsonl \
-    --output artifacts/conversations_chains/<timestamp>/full/report.md \
+    --dataset artifacts/conversations_multi_turn/<timestamp>/full/chains.jsonl \
+    --output artifacts/conversations_multi_turn/<timestamp>/full/report.md \
     --seed 42 \
     --model-name gpt-4.1-mini
 
 PYTHONPATH=. python scripts/verify_no_fallbacks.py \
-    --artifacts-dir artifacts/conversations_chains/<timestamp>/full \
-    --output artifacts/conversations_chains/<timestamp>/full/verification_report.json
+    --artifacts-dir artifacts/conversations_multi_turn/<timestamp>/full \
+    --output artifacts/conversations_multi_turn/<timestamp>/full/verification_report.json
 
 PYTHONPATH=. python analysis/lint_chains.py \
-    --dataset artifacts/conversations_chains/<timestamp>/full/chains.jsonl \
-    --summary artifacts/conversations_chains/<timestamp>/full/lint_report.json \
+    --dataset artifacts/conversations_multi_turn/<timestamp>/full/chains.jsonl \
+    --summary artifacts/conversations_multi_turn/<timestamp>/full/lint_report.json \
     --max-findings 50
 ```
 
@@ -345,14 +345,14 @@ All generated conversations must:
 
 ## Reference Run (2025-11-05 14:44 UTC)
 
-- Conversations: `artifacts/conversations_chains/chains.jsonl` (1,500 conversations split 900 simple / 450 medium / 150 complex; 600 expected failures; 40.0% failure ratio within tolerance)
+- Conversations: `artifacts/conversations_multi_turn/chains.jsonl` (1,500 conversations split 900 simple / 450 medium / 150 complex; 600 expected failures; 40.0% failure ratio within tolerance)
 - Manifest: `artifacts/chains/manifest.json`
 - Report: `artifacts/reports/chains_baseline.md`
-- Run log: `artifacts/conversations_chains/20251105T144453Z/full/run.log`
-- Verification report: `artifacts/conversations_chains/20251105T144453Z/full/verification_report.json`
-- Lint summary: `artifacts/conversations_chains/20251105T144453Z/full/lint_report.json`
-- Quality summary: `artifacts/conversations_chains/20251105T144453Z/full/quality_checks.md`
-- Single-turn additions: `SC-01250` (`opportunity_details` expected failure) appended to `artifacts/scenarios_500/scenarios_clean.jsonl` and replayed via `ScenarioRepository` + `ConversationHarness` to confirm the "Opportunity not found ..." failure path prior to chained generation.
-- Offline deterministic baseline retained at `artifacts/conversations_chains/20251105T142324Z/full/` for regression comparisons.
+- Run log: `artifacts/conversations_multi_turn/20251105T144453Z/full/run.log`
+- Verification report: `artifacts/conversations_multi_turn/20251105T144453Z/full/verification_report.json`
+- Lint summary: `artifacts/conversations_multi_turn/20251105T144453Z/full/lint_report.json`
+- Quality summary: `artifacts/conversations_multi_turn/20251105T144453Z/full/quality_checks.md`
+- Single-turn additions: `SC-01250` (`opportunity_details` expected failure) appended to `artifacts/scenarios_single_turn/scenarios_clean.jsonl` and replayed via `ScenarioRepository` + `ConversationHarness` to confirm the "Opportunity not found ..." failure path prior to chained generation.
+- Offline deterministic baseline retained at `artifacts/conversations_multi_turn/20251105T142324Z/full/` for regression comparisons.
 
 Use this run as the seed corpus for Phase 6 baselines and scaling exercises; the manifest guards the 60/40 split and every failure chain variant contains a deterministic failure segment validated by the harness.

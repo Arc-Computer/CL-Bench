@@ -1,0 +1,365 @@
+{
+  "total_scenarios": 492,
+  "csv_path": "data/Agent tasks - updated.csv",
+  "schema_path": "data/fake_crm_tables_schema.json",
+  "checks": {
+    "schema_compliance": {
+      "pass_count": 492,
+      "fail_count": 0,
+      "errors": []
+    },
+    "no_formulaic_patterns": {
+      "pass_count": 489,
+      "fail_count": 3,
+      "violations": [
+        "SC-00004: Formulaic pattern 'Opportunity\\s+\\d+' in utterance: Update opp Pulse Digital - Cloud Infra (opportunit...",
+        "SC-00306: Formulaic pattern 'Client\\s+\\d+' in utterance: Create a new opp for Keystone Industries (client 4...",
+        "SC-00256: Formulaic pattern 'Client\\s+\\d+' in utterance: Update Michelle Taylor's contact: new email michel..."
+      ]
+    },
+    "realistic_company_names": {
+      "pass_count": 0,
+      "fail_count": 0,
+      "violations": []
+    },
+    "rounded_amounts": {
+      "pass_count": 492,
+      "fail_count": 0,
+      "violations": []
+    },
+    "natural_language": {
+      "pass_count": 492,
+      "fail_count": 0,
+      "violations": []
+    },
+    "enum_compliance": {
+      "pass_count": 276,
+      "violations_by_field": {
+        "contract_status": [
+          "SC-00013: Invalid contract status 'Draft'",
+          "SC-00018: Invalid contract status 'Pending Signature'",
+          "SC-00098: Invalid contract status 'Pending Signature'"
+        ],
+        "stage": [
+          "SC-00018: Invalid stage 'Draft'",
+          "SC-00062: Invalid stage 'Proposal,Qualification'"
+        ]
+      }
+    },
+    "required_fields": {
+      "pass_count": 492,
+      "fail_count": 0,
+      "violations": []
+    },
+    "failure_quality": {
+      "total_failure_scenarios": 197,
+      "with_error_substring": 197,
+      "missing_error_substring": []
+    },
+    "csv_task_distribution": {
+      "total_tasks": 26,
+      "frequency_comparison": [
+        {
+          "task": "quote_details",
+          "csv_frequency": 1,
+          "generated_count": 12,
+          "expected_count": 0,
+          "deviation_percent": 36926.829268292684
+        },
+        {
+          "task": "modify_quote",
+          "csv_frequency": 3,
+          "generated_count": 33,
+          "expected_count": 0,
+          "deviation_percent": 33841.260162601626
+        },
+        {
+          "task": "compare_quotes",
+          "csv_frequency": 1,
+          "generated_count": 8,
+          "expected_count": 0,
+          "deviation_percent": 24584.552845528455
+        },
+        {
+          "task": "modify_client",
+          "csv_frequency": 3,
+          "generated_count": 21,
+          "expected_count": 0,
+          "deviation_percent": 21498.9837398374
+        },
+        {
+          "task": "delete_quote",
+          "csv_frequency": 1,
+          "generated_count": 7,
+          "expected_count": 0,
+          "deviation_percent": 21498.983739837397
+        },
+        {
+          "task": "modify_contact",
+          "csv_frequency": 2,
+          "generated_count": 13,
+          "expected_count": 0,
+          "deviation_percent": 19956.19918699187
+        },
+        {
+          "task": "compare_quote_details",
+          "csv_frequency": 1,
+          "generated_count": 6,
+          "expected_count": 0,
+          "deviation_percent": 18413.414634146342
+        },
+        {
+          "task": "delete_opportunity",
+          "csv_frequency": 1,
+          "generated_count": 5,
+          "expected_count": 0,
+          "deviation_percent": 15327.845528455286
+        },
+        {
+          "task": "cancel_quote",
+          "csv_frequency": 2,
+          "generated_count": 6,
+          "expected_count": 0,
+          "deviation_percent": 9156.707317073171
+        },
+        {
+          "task": "add_note",
+          "csv_frequency": 1,
+          "generated_count": 1,
+          "expected_count": 0,
+          "deviation_percent": 2985.569105691057
+        },
+        {
+          "task": "create_new_client",
+          "csv_frequency": 142,
+          "generated_count": 41,
+          "expected_count": 4,
+          "deviation_percent": 790.9037558685446
+        },
+        {
+          "task": "quote_search",
+          "csv_frequency": 32,
+          "generated_count": 8,
+          "expected_count": 1,
+          "deviation_percent": 671.3922764227641
+        },
+        {
+          "task": "company_search",
+          "csv_frequency": 8,
+          "generated_count": 2,
+          "expected_count": 0,
+          "deviation_percent": 671.3922764227641
+        },
+        {
+          "task": "opportunity_details",
+          "csv_frequency": 6,
+          "generated_count": 1,
+          "expected_count": 0,
+          "deviation_percent": 414.26151761517616
+        },
+        {
+          "task": "client_search",
+          "csv_frequency": 192,
+          "generated_count": 23,
+          "expected_count": 6,
+          "deviation_percent": 269.62546578590786
+        }
+      ],
+      "large_deviations": [
+        {
+          "task": "quote_details",
+          "csv_frequency": 1,
+          "generated_count": 12,
+          "expected_count": 0,
+          "deviation_percent": 36926.829268292684
+        },
+        {
+          "task": "modify_quote",
+          "csv_frequency": 3,
+          "generated_count": 33,
+          "expected_count": 0,
+          "deviation_percent": 33841.260162601626
+        },
+        {
+          "task": "compare_quotes",
+          "csv_frequency": 1,
+          "generated_count": 8,
+          "expected_count": 0,
+          "deviation_percent": 24584.552845528455
+        },
+        {
+          "task": "modify_client",
+          "csv_frequency": 3,
+          "generated_count": 21,
+          "expected_count": 0,
+          "deviation_percent": 21498.9837398374
+        },
+        {
+          "task": "delete_quote",
+          "csv_frequency": 1,
+          "generated_count": 7,
+          "expected_count": 0,
+          "deviation_percent": 21498.983739837397
+        },
+        {
+          "task": "modify_contact",
+          "csv_frequency": 2,
+          "generated_count": 13,
+          "expected_count": 0,
+          "deviation_percent": 19956.19918699187
+        },
+        {
+          "task": "compare_quote_details",
+          "csv_frequency": 1,
+          "generated_count": 6,
+          "expected_count": 0,
+          "deviation_percent": 18413.414634146342
+        },
+        {
+          "task": "delete_opportunity",
+          "csv_frequency": 1,
+          "generated_count": 5,
+          "expected_count": 0,
+          "deviation_percent": 15327.845528455286
+        },
+        {
+          "task": "cancel_quote",
+          "csv_frequency": 2,
+          "generated_count": 6,
+          "expected_count": 0,
+          "deviation_percent": 9156.707317073171
+        },
+        {
+          "task": "add_note",
+          "csv_frequency": 1,
+          "generated_count": 1,
+          "expected_count": 0,
+          "deviation_percent": 2985.569105691057
+        },
+        {
+          "task": "create_new_client",
+          "csv_frequency": 142,
+          "generated_count": 41,
+          "expected_count": 4,
+          "deviation_percent": 790.9037558685446
+        },
+        {
+          "task": "quote_search",
+          "csv_frequency": 32,
+          "generated_count": 8,
+          "expected_count": 1,
+          "deviation_percent": 671.3922764227641
+        },
+        {
+          "task": "company_search",
+          "csv_frequency": 8,
+          "generated_count": 2,
+          "expected_count": 0,
+          "deviation_percent": 671.3922764227641
+        },
+        {
+          "task": "opportunity_details",
+          "csv_frequency": 6,
+          "generated_count": 1,
+          "expected_count": 0,
+          "deviation_percent": 414.26151761517616
+        },
+        {
+          "task": "client_search",
+          "csv_frequency": 192,
+          "generated_count": 23,
+          "expected_count": 6,
+          "deviation_percent": 269.62546578590786
+        },
+        {
+          "task": "create_new_contact",
+          "csv_frequency": 111,
+          "generated_count": 13,
+          "expected_count": 3,
+          "deviation_percent": 261.37295832417783
+        },
+        {
+          "task": "opportunity_search",
+          "csv_frequency": 2279,
+          "generated_count": 29,
+          "expected_count": 73,
+          "deviation_percent": -60.73650545632267
+        },
+        {
+          "task": "contact_search",
+          "csv_frequency": 375,
+          "generated_count": 18,
+          "expected_count": 12,
+          "deviation_percent": 48.107317073170734
+        },
+        {
+          "task": "create_quote",
+          "csv_frequency": 1804,
+          "generated_count": 31,
+          "expected_count": 58,
+          "deviation_percent": -46.977471021938605
+        },
+        {
+          "task": "modify_opportunity",
+          "csv_frequency": 2939,
+          "generated_count": 54,
+          "expected_count": 95,
+          "deviation_percent": -43.30699839832696
+        },
+        {
+          "task": "clone_opportunity",
+          "csv_frequency": 267,
+          "generated_count": 6,
+          "expected_count": 8,
+          "deviation_percent": -30.661368411436918
+        },
+        {
+          "task": "contract_search",
+          "csv_frequency": 40,
+          "generated_count": 1,
+          "expected_count": 1,
+          "deviation_percent": -22.860772357723576
+        },
+        {
+          "task": "view_opportunity_details",
+          "csv_frequency": 878,
+          "generated_count": 22,
+          "expected_count": 28,
+          "deviation_percent": -22.685056577217257
+        },
+        {
+          "task": "summarize_opportunities",
+          "csv_frequency": 194,
+          "generated_count": 5,
+          "expected_count": 6,
+          "deviation_percent": -20.475023049199567
+        }
+      ]
+    }
+  },
+  "critical_errors": [
+    "SC-00013: Invalid contract status 'Draft'",
+    "SC-00018: Invalid contract status 'Pending Signature'",
+    "SC-00098: Invalid contract status 'Pending Signature'",
+    "SC-00018: Invalid stage 'Draft'",
+    "SC-00062: Invalid stage 'Proposal,Qualification'"
+  ],
+  "warnings": [
+    "SC-00004: Formulaic pattern 'Opportunity\\s+\\d+' in utterance: Update opp Pulse Digital - Cloud Infra (opportunit...",
+    "SC-00306: Formulaic pattern 'Client\\s+\\d+' in utterance: Create a new opp for Keystone Industries (client 4...",
+    "SC-00256: Formulaic pattern 'Client\\s+\\d+' in utterance: Update Michelle Taylor's contact: new email michel...",
+    "Task 'quote_details': +36926.8% deviation from CSV frequency",
+    "Task 'modify_quote': +33841.3% deviation from CSV frequency",
+    "Task 'compare_quotes': +24584.6% deviation from CSV frequency",
+    "Task 'modify_client': +21499.0% deviation from CSV frequency",
+    "Task 'delete_quote': +21499.0% deviation from CSV frequency"
+  ],
+  "summary": {
+    "critical_error_count": 5,
+    "warning_count": 8,
+    "production_faithfulness_score": "74.8%",
+    "schema_compliance_rate": "100.0%",
+    "failure_scenario_quality": "100.0%",
+    "csv_distribution_alignment": "1/25 tasks within \u00b15%"
+  }
+}
