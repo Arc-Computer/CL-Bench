@@ -171,17 +171,33 @@ class ConversationHarness:
                 first_failed_turn = turn.turn_id
 
         success_path_turns = [t for t in per_turn if t.get("expect_success", True)]
+        expected_failure_turns = [t for t in per_turn if not t.get("expect_success", True)]
         successful_success_turns = sum(1 for t in success_path_turns if t.get("success", False))
         total_success_path = len(success_path_turns)
         overall_success = (total_success_path == 0) or (successful_success_turns == total_success_path)
         reward_signal = (successful_success_turns / total_success_path) if total_success_path > 0 else 1.0
+        observed_expected_failure = any(
+            (not turn.get("expect_success", True)) and (not turn.get("success", True)) for turn in per_turn
+        )
+        expected_failure_failure_turn = next(
+            (
+                turn["turn_id"]
+                for turn in per_turn
+                if (not turn.get("expect_success", True)) and (not turn.get("success", True))
+            ),
+            None,
+        )
+        if observed_expected_failure:
+            overall_success = False
+            if first_failed_turn is None and expected_failure_failure_turn is not None:
+                first_failed_turn = expected_failure_failure_turn
 
         metadata = {
             "verification_mode": "hybrid_semantic_llm_judge" if self._judge else conversation.verification_mode.value,
             "success_path_turns": total_success_path,
             "success_path_succeeded": successful_success_turns,
             "task_success_rate": reward_signal,
-            "expected_failure_turns": len(per_turn) - total_success_path,
+            "expected_failure_turns": len(expected_failure_turns),
             "total_turns": len(per_turn),
             "exact_match_count": sum(1 for t in per_turn if t.get("verification") == "exact_match"),
             "judge_evaluated_count": sum(1 for t in per_turn if t.get("judge_used", False)),
@@ -190,6 +206,7 @@ class ConversationHarness:
                 "provider": self._agent.provider_name,
                 "model": self._agent.model_name,
             },
+            "expected_failure": observed_expected_failure,
         }
 
         token_totals = _aggregate_token_usage(per_turn)
@@ -259,22 +276,40 @@ class ConversationHarness:
         for index, end_turn in enumerate(segment_boundaries):
             segment_turns = [pt for pt in per_turn if start_turn <= pt["turn_id"] <= end_turn]
             success_path_turns = [pt for pt in segment_turns if pt.get("expect_success", True)]
-            segment_success = all(pt.get("success", False) for pt in success_path_turns)
+            expected_failure_turns_segment = [pt for pt in segment_turns if not pt.get("expect_success", True)]
+
+            success_path_failure_turn = next(
+                (pt["turn_id"] for pt in success_path_turns if not pt.get("success", False)),
+                None,
+            )
+            success_path_failure_error = next(
+                (pt.get("error") for pt in success_path_turns if not pt.get("success", False)),
+                None,
+            )
+            observed_failure_turn = next(
+                (pt["turn_id"] for pt in expected_failure_turns_segment if not pt.get("success", True)),
+                None,
+            )
+            observed_failure_error = next(
+                (pt.get("error") for pt in expected_failure_turns_segment if not pt.get("success", True)),
+                None,
+            )
+
+            if expected_failure_turns_segment:
+                segment_success = observed_failure_turn is None
+                failure_turn = observed_failure_turn
+                failure_error = observed_failure_error
+            else:
+                segment_success = all(pt.get("success", False) for pt in success_path_turns)
+                failure_turn = success_path_failure_turn
+                failure_error = success_path_failure_error
+
             actual_outcome = "success" if segment_success else "failure"
 
             expected_meta = segment_meta_lookup.get(index + 1, {})
             expected_outcome = str(expected_meta.get("expected_outcome", "success")).lower()
             if expected_outcome not in ("success", "failure"):
                 expected_outcome = "success"
-
-            failure_turn = next(
-                (pt["turn_id"] for pt in segment_turns if pt.get("expect_success", True) and not pt.get("success", False)),
-                None,
-            )
-            failure_error = next(
-                (pt.get("error") for pt in segment_turns if pt.get("expect_success", True) and not pt.get("success", False)),
-                None,
-            )
 
             if expected_outcome != actual_outcome:
                 location = f" at turn {failure_turn}" if failure_turn is not None else ""
@@ -303,6 +338,7 @@ class ConversationHarness:
             start_turn = end_turn + 1
 
         success_path_turns = [t for t in per_turn if t.get("expect_success", True)]
+        expected_failure_turns = [t for t in per_turn if not t.get("expect_success", True)]
         successful_success_turns = sum(1 for t in success_path_turns if t.get("success", False))
         total_success_path = len(success_path_turns)
         overall_success = (total_success_path == 0) or (successful_success_turns == total_success_path)
@@ -310,6 +346,22 @@ class ConversationHarness:
         chain_success = all(
             segment["actual_outcome"] == segment["expected_outcome"] for segment in per_segment
         )
+        observed_expected_failure = any(
+            (not turn.get("expect_success", True)) and (not turn.get("success", True)) for turn in per_turn
+        )
+        expected_failure_failure_turn = next(
+            (
+                turn["turn_id"]
+                for turn in per_turn
+                if (not turn.get("expect_success", True)) and (not turn.get("success", True))
+            ),
+            None,
+        )
+        if observed_expected_failure:
+            overall_success = False
+            if first_failed_turn is None and expected_failure_failure_turn is not None:
+                first_failed_turn = expected_failure_failure_turn
+        chain_success = chain_success and not observed_expected_failure
 
         metadata = {
             "verification_mode": "hybrid_semantic_llm_judge" if self._judge else conversation.verification_mode.value,
@@ -317,7 +369,7 @@ class ConversationHarness:
             "success_path_turns": total_success_path,
             "success_path_succeeded": successful_success_turns,
             "task_success_rate": reward_signal,
-            "expected_failure_turns": len(per_turn) - total_success_path,
+            "expected_failure_turns": len(expected_failure_turns),
             "total_turns": len(per_turn),
             "segments": len(segment_boundaries),
             "exact_match_count": sum(1 for t in per_turn if t.get("verification") == "exact_match"),
@@ -327,6 +379,7 @@ class ConversationHarness:
                 "provider": self._agent.provider_name,
                 "model": self._agent.model_name,
             },
+            "expected_failure": observed_expected_failure,
         }
         token_totals = _aggregate_token_usage(per_turn)
         if token_totals:
