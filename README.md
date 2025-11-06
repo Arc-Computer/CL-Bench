@@ -199,7 +199,7 @@ The benchmark’s multi-turn conversations are built in layers so every turn sta
 
 5. **Harness validation.** `ConversationHarness` replays each conversation against a fresh CRM instance, failing fast if a success segment fails (or vice versa). The CLI (`scripts/generate_conversations.py --mode chain`) wraps this flow—smoke tests print expected vs. actual segment outcomes, while full runs validate every generated conversation before writing `chains.jsonl`.
 
-6. **Reproducible artifacts.** The chained generator exports a manifest (`artifacts/chains/manifest.json`), analytics report (`artifacts/reports/chains_baseline.md`), and a no-fallback verification pass (`scripts/verify_no_fallbacks.py`) whose output lives next to each run log (e.g., `verification_report.json`, `quality_checks.md`). Lint coverage (`analysis/lint_chains.py`) flags duplicate utterances and entity-name conflicts so we can triage conversational drift before baselining. The README and docs capture the exact commands, seeds, and model names used so datasets can be regenerated or scaled (e.g., new workflow chains, alternative Curator backends).
+6. **Reproducible artifacts.** The chained generator exports a manifest and analytics report alongside the dataset (`artifacts/conversations_multi_turn/20251105T144453Z/full/manifest.json` and `report.md`), plus a no-fallback verification pass (`verification_report.json`, `quality_checks.md`). Lint coverage (`analysis/lint_chains.py`) flags duplicate utterances and entity-name conflicts so we can triage conversational drift before baselining. The README and docs capture the exact commands, seeds, and model names used so datasets can be regenerated or scaled (e.g., new workflow chains, alternative Curator backends).
 
 To scale the pipeline, define additional workflow templates/chains, run the generator with your preferred Curator model (Gemini 2.5 Flash or GPT‑5‑mini via LiteLLM), and regenerate the manifest/analytics/verification artifacts. Because every step is validated against the CRM schema (and the no-fallback audit), the resulting dataset remains production-quality without manual clean-up.
 
@@ -207,12 +207,11 @@ To scale the pipeline, define additional workflow templates/chains, run the gene
 
 - **Single-turn scenarios** (validated 60/40 mix): `artifacts/scenarios_single_turn/scenarios_clean.jsonl` (495 records)
 - **Chained conversations** (1,500 conversations; 900 simple / 450 medium / 150 complex; 40% expected failures): `artifacts/conversations_multi_turn/chains.jsonl`
-- **Manifest**: `artifacts/chains/manifest.json` (includes failure ratio/tolerance flags)
-- **Analytics report**: `artifacts/reports/chains_baseline.md`
+- **Manifest**: `artifacts/conversations_multi_turn/20251105T144453Z/full/manifest.json` (includes failure ratio/tolerance flags)
+- **Analytics report**: `artifacts/conversations_multi_turn/20251105T144453Z/full/report.md`
 - **Verification log**: `artifacts/conversations_multi_turn/20251105T144453Z/full/verification_report.json`
 - **Lint summary**: `artifacts/conversations_multi_turn/20251105T144453Z/full/lint_report.json`
 - **Quality summary**: `artifacts/conversations_multi_turn/20251105T144453Z/full/quality_checks.md`
-- **Offline baseline (deterministic stub)**: preserved at `artifacts/conversations_multi_turn/20251105T142324Z/full/` for reproducibility comparisons.
 
 **Complexity Dimensions**: The benchmark measures two orthogonal difficulty axes. *Complex* chains test long-context tracking over 3-segment workflows (8-12 turns) with terminal failures. *Medium* chains test error recovery through mid-chain failures that require reasoning with partial context and handling template references to failed turns. Both dimensions are essential for production-robust agents.
 

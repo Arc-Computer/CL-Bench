@@ -346,13 +346,12 @@ All generated conversations must:
 ## Reference Run (2025-11-05 14:44 UTC)
 
 - Conversations: `artifacts/conversations_multi_turn/chains.jsonl` (1,500 conversations split 900 simple / 450 medium / 150 complex; 600 expected failures; 40.0% failure ratio within tolerance)
-- Manifest: `artifacts/chains/manifest.json`
-- Report: `artifacts/reports/chains_baseline.md`
+- Manifest: `artifacts/conversations_multi_turn/20251105T144453Z/full/manifest.json`
+- Report: `artifacts/conversations_multi_turn/20251105T144453Z/full/report.md`
 - Run log: `artifacts/conversations_multi_turn/20251105T144453Z/full/run.log`
 - Verification report: `artifacts/conversations_multi_turn/20251105T144453Z/full/verification_report.json`
 - Lint summary: `artifacts/conversations_multi_turn/20251105T144453Z/full/lint_report.json`
 - Quality summary: `artifacts/conversations_multi_turn/20251105T144453Z/full/quality_checks.md`
 - Single-turn additions: `SC-01250` (`opportunity_details` expected failure) appended to `artifacts/scenarios_single_turn/scenarios_clean.jsonl` and replayed via `ScenarioRepository` + `ConversationHarness` to confirm the "Opportunity not found ..." failure path prior to chained generation.
-- Offline deterministic baseline retained at `artifacts/conversations_multi_turn/20251105T142324Z/full/` for regression comparisons.
 
 Use this run as the seed corpus for Phase 6 baselines and scaling exercises; the manifest guards the 60/40 split and every failure chain variant contains a deterministic failure segment validated by the harness.
