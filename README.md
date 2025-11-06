@@ -228,12 +228,20 @@ To scale the pipeline, define additional workflow templates/chains, run the gene
 
 ### Single-Turn Scenario Library
 
-```bash
-# Regenerate the curated 60/40 scenario pool
-PYTHONPATH=. python scripts/generate_missing_scenarios.py \
-    --output artifacts/scenarios_single_turn/scenarios_clean.jsonl
+The repository includes a curated library (`artifacts/scenarios_single_turn/scenarios_clean.jsonl`). To add fresh Curator-generated scenarios for a specific tool, run:
 
-# Optional: inspect scenario/tool coverage
+```bash
+# Example: regenerate upload_document scenarios (60% success / 40% failure)
+PYTHONPATH=. python scripts/generate_missing_scenarios.py \
+    --tool upload_document \
+    --success-count 10 \
+    --failure-count 7 \
+    --scenarios-file artifacts/scenarios_single_turn/scenarios_clean.jsonl
+```
+
+The script validates each scenario using `ConversationHarness` before appending it. Repeat for any additional tools that need more coverage. To audit coverage across the library:
+
+```bash
 PYTHONPATH=. python scripts/analyze_scenario_coverage.py \
     --scenarios artifacts/scenarios_single_turn/scenarios_clean.jsonl
 ```
