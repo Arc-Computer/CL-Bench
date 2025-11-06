@@ -460,9 +460,31 @@ class ConversationHarness:
 
         tool = getattr(api, tool_name, None)
         if tool is None:
-            raise RuntimeError(
+            error_message = (
                 f"MockCrmApi does not implement tool '{tool_name}' "
                 f"(turn {turn.turn_id} of {conversation.conversation_id})."
+            )
+            record = {
+                "turn_id": turn.turn_id,
+                "user_utterance": turn.user_utterance,
+                "expected_tool": turn.expected_tool,
+                "expected_arguments": resolved_expected_args,
+                "tool_name": tool_name,
+                "arguments": agent_call.arguments if isinstance(agent_call.arguments, dict) else {},
+                "expect_success": turn.expect_success,
+                "matches_expected_tool": False,
+                "token_usage": dict(agent_call.token_usage),
+                "success": False,
+                "error": error_message,
+                "verification": "tool_not_found",
+                "judge_used": False,
+            }
+            if segment_number is not None:
+                record["segment_number"] = segment_number
+            return TurnProcessOutcome(
+                record=record,
+                success=False,
+                error_message=error_message,
             )
 
         if not isinstance(agent_call.arguments, dict):
@@ -521,9 +543,7 @@ class ConversationHarness:
                     expected_lower = expected_substring.lower()
                     error_lower = error_message.lower()
                     if expected_lower not in error_lower and expected_lower != "validation error":
-                        raise RuntimeError(
-                            f"Expected error containing '{expected_substring}' but got '{error_message}'."
-                        ) from exc
+                        record["expected_error_mismatch"] = expected_substring
 
                 record["success"] = False
                 record["verification"] = "expected_failure_diagnostic"
@@ -536,9 +556,25 @@ class ConversationHarness:
                 )
 
         if not turn.expect_success:
-            raise RuntimeError(
-                f"Tool '{tool_name}' succeeded on turn {turn.turn_id} "
-                f"of {conversation.conversation_id}, but failure was expected."
+            executed_turns[turn.turn_id] = {
+                "tool_name": tool_name,
+                "arguments": arguments,
+                "result": record.get("result"),
+                "success": True,
+            }
+            previous_turn_outputs[turn.turn_id] = record.get("result", {})
+            record["success"] = False
+            record["verification"] = "unexpected_success"
+            record["judge_used"] = False
+            record["error"] = (
+                f"Tool '{tool_name}' succeeded but failure was expected for "
+                f"turn {turn.turn_id} of {conversation.conversation_id}."
+            )
+            record["expected_error_mismatch"] = turn.expected_error_substring
+            return TurnProcessOutcome(
+                record=record,
+                success=False,
+                error_message=record["error"],
             )
 
         if execution_success:

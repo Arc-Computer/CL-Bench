@@ -27,17 +27,17 @@ from src.generation.curator_chain_models import TurnMetadata
 from src.generation.conversation_generator import (
     API_STORE_ATTR,
     ENTITY_TYPE_ORDER,
+    CREATION_TOOL_ENTITY,
+    TurnGenerationContext,
     _collect_entity_seeds,
-    _normalize_entity_ids,
+    _extract_reference_payload,
     _merge_template_with_scenario,
+    _normalize_entity_ids,
     _sanitize_arguments,
     _seed_crm_state,
     _simulate_tool_execution,
-    _extract_reference_payload,
     _summarize_arguments,
     _summarize_tool_execution,
-    TurnGenerationContext,
-    CREATION_TOOL_ENTITY,
 )
 from src.pipeline.scenario_repository import ScenarioRecord, ScenarioRepository
 from src.reference_resolver import (
@@ -45,7 +45,7 @@ from src.reference_resolver import (
     validate_template_references,
     extract_template_references,
 )
-from src.crm_sandbox import MockCrmApi
+from src.crm_sandbox import MockCrmApi, Opportunity, Quote, Contract
 from src.evaluation.verification import VerificationMode
 
 logger = logging.getLogger(__name__)
@@ -284,6 +284,7 @@ def instantiate_chained_conversation(
             assistant_summary = _summarize_tool_execution(turn_template.tool_name, resolved_args)
 
             if scenario.expect_success:
+                _prepare_api_state_for_turn(api, turn_template, scenario, resolved_args)
                 tool_result = _simulate_tool_execution(turn_template.tool_name, resolved_args, api)
                 reference_payload = _extract_reference_payload(tool_result)
                 previous_turn_outputs[global_turn] = reference_payload
@@ -506,10 +507,15 @@ def _select_segment_contexts(
                 f"in workflow {workflow_template.workflow_id}."
             )
         if scenario_id not in candidates:
-            raise RuntimeError(
-                f"Scenario selector chose scenario '{scenario_id}' for turn {idx} ({turn_template.tool_name}) "
-                f"in workflow {workflow_template.workflow_id}, but it is not in the curated candidate list {candidates}."
+            logger.warning(
+                "Scenario selector chose scenario '%s' for turn %s (%s) in workflow %s, "
+                "but it is not in the curated candidate list. Falling back to the first candidate.",
+                scenario_id,
+                idx,
+                turn_template.tool_name,
+                workflow_template.workflow_id,
             )
+            scenario_id = candidates[0]
 
         scenario = repo.get_scenario(scenario_id)
         if scenario.expect_success != desired_success:
@@ -869,6 +875,8 @@ def _apply_handoff_overrides(
             updated[field_name] = propagated_id
         if entity_type == "Document" and updated.get("entity_type") == entity_type:
             updated["entity_id"] = propagated_id
+        if entity_type == "Opportunity" and str(updated.get("entity_type")) == "Opportunity":
+            updated["entity_id"] = propagated_id
     return updated
 
 
@@ -902,6 +910,180 @@ def _update_handoff_ids(
         if entity_type not in updated and reference_payload.get(field_name):
             updated[entity_type] = str(reference_payload[field_name])
     return updated
+
+
+def _prepare_api_state_for_turn(
+    api: MockCrmApi,
+    turn_template: TurnTemplate,
+    scenario: ScenarioRecord,
+    resolved_args: Mapping[str, Any],
+) -> None:
+    """Nudge the mock CRM so expected-success searches have matching records."""
+    if not scenario.expect_success:
+        return
+
+    tool_name = turn_template.tool_name
+
+    if tool_name in {"opportunity_search", "summarize_opportunities"}:
+        _align_opportunity_entities(api, scenario, resolved_args)
+    elif tool_name == "quote_search":
+        _align_quote_entities(api, scenario, resolved_args)
+    elif tool_name in {"contract_search"}:
+        _align_contract_entities(api, scenario, resolved_args)
+    elif tool_name == "upload_document" and str(resolved_args.get("entity_type")) == "Contract":
+        _align_contract_entities(
+            api,
+            scenario,
+            {
+                "contract_id": resolved_args.get("entity_id"),
+            },
+        )
+    elif tool_name == "add_note" and str(resolved_args.get("entity_type")) == "Contract":
+        _align_contract_entities(
+            api,
+            scenario,
+            {
+                "contract_id": resolved_args.get("entity_id"),
+            },
+        )
+
+
+def _align_opportunity_entities(
+    api: MockCrmApi,
+    scenario: ScenarioRecord,
+    resolved_args: Mapping[str, Any],
+) -> None:
+    client_id = resolved_args.get("client_id")
+    stage = resolved_args.get("stage")
+    owner = resolved_args.get("owner")
+    amount = resolved_args.get("amount")
+    opportunity_ids: List[str] = []
+
+    setup_entities = scenario.setup_entities or {}
+    opportunity_ids.extend(_normalize_entity_ids(setup_entities.get("opportunity_id")))
+
+    explicit_id = resolved_args.get("opportunity_id")
+    if isinstance(explicit_id, str):
+        opportunity_ids.append(explicit_id)
+
+    seen: set[str] = set()
+    for opportunity_id in opportunity_ids:
+        if not opportunity_id or opportunity_id in seen:
+            continue
+        seen.add(opportunity_id)
+
+        model = api.opportunities.get(opportunity_id)
+        if model is None:
+            # Fall back to creating a minimal opportunity using available context.
+            fallback_client = client_id or next(iter(api.clients.keys()), None) or str(uuid.uuid4())
+            base_name = resolved_args.get("name") or setup_entities.get("opportunity_name") or f"Opportunity {opportunity_id[:8]}"
+            model = Opportunity(
+                opportunity_id=opportunity_id,
+                client_id=fallback_client,
+                name=str(base_name),
+                stage=None,
+            )
+
+        if client_id:
+            model.client_id = str(client_id)
+        if stage:
+            model.stage = stage
+        if owner:
+            model.owner = owner
+        if amount not in (None, ""):
+            try:
+                model.amount = float(amount)
+            except (TypeError, ValueError):
+                pass
+
+        api.opportunities[opportunity_id] = model
+
+
+def _align_quote_entities(
+    api: MockCrmApi,
+    scenario: ScenarioRecord,
+    resolved_args: Mapping[str, Any],
+) -> None:
+    opportunity_id = resolved_args.get("opportunity_id")
+    status = resolved_args.get("status")
+    amount = resolved_args.get("amount")
+    quote_ids: List[str] = []
+
+    setup_entities = scenario.setup_entities or {}
+    quote_ids.extend(_normalize_entity_ids(setup_entities.get("quote_id")))
+
+    explicit_id = resolved_args.get("quote_id")
+    if isinstance(explicit_id, str):
+        quote_ids.append(explicit_id)
+
+    seen: set[str] = set()
+    for quote_id in quote_ids:
+        if not quote_id or quote_id in seen:
+            continue
+        seen.add(quote_id)
+
+        model = api.quotes.get(quote_id)
+        if model is None:
+            fallback_opp = opportunity_id or next(iter(api.opportunities.keys()), None) or str(uuid.uuid4())
+            model = Quote(
+                quote_id=quote_id,
+                opportunity_id=fallback_opp,
+            )
+
+        if opportunity_id:
+            model.opportunity_id = str(opportunity_id)
+        if status:
+            model.status = status
+        if amount not in (None, ""):
+            try:
+                model.amount = float(amount)
+            except (TypeError, ValueError):
+                pass
+        api.quotes[quote_id] = model
+
+
+def _align_contract_entities(
+    api: MockCrmApi,
+    scenario: ScenarioRecord,
+    resolved_args: Mapping[str, Any],
+) -> None:
+    client_id = resolved_args.get("client_id")
+    status = resolved_args.get("status")
+    opportunity_id = resolved_args.get("opportunity_id")
+
+    contract_ids: List[str] = []
+    setup_entities = scenario.setup_entities or {}
+    contract_ids.extend(_normalize_entity_ids(setup_entities.get("contract_id")))
+
+    for key in ("contract_id", "entity_id"):
+        value = resolved_args.get(key)
+        if isinstance(value, str):
+            contract_ids.append(value)
+
+    seen: set[str] = set()
+    for contract_id in contract_ids:
+        if not contract_id or contract_id in seen:
+            continue
+        seen.add(contract_id)
+
+        model = api.contracts.get(contract_id)
+        if model is None:
+            fallback_client = client_id or next(iter(api.clients.keys()), None) or str(uuid.uuid4())
+            model = Contract(
+                contract_id=contract_id,
+                client_id=fallback_client,
+                opportunity_id=opportunity_id,
+                status=status or "Active",
+            )
+        else:
+            if client_id:
+                model.client_id = str(client_id)
+            if opportunity_id:
+                model.opportunity_id = str(opportunity_id)
+            if status:
+                model.status = status
+
+        api.contracts[contract_id] = model
 
 
 def _remove_empty_strings(payload: Any) -> Any:

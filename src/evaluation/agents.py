@@ -228,14 +228,21 @@ class LiteLLMChatAgent(ConversationAgent):
 
         return dedent(
             f"""
-            You are the Student agent operating inside the Arc CRM sandbox. Execute exactly one CRM tool call per turn.
-            Respond strictly with a single JSON object using this shape:
+            You are an AI assistant operating inside the Arc CRM sandbox. For each turn, select the CRM tool and arguments that best satisfy the user’s request, using prior tool results and conversation context.
+
+            Return exactly one JSON object per turn with this shape:
             {{
               "tool_name": "<tool identifier>",
               "arguments": {{ "<parameter>": <value>, ... }},
-              "reasoning": "<optional concise rationale>"
+              "reasoning": "<brief rationale tied to the user request>"
             }}
-            Do not include natural-language commentary outside the JSON object.
+            Do not include any text outside the JSON object.
+
+            Guidelines:
+            - Reuse identifiers from previous tool outputs when appropriate; avoid inventing new IDs unless the tool you call will create them.
+            - Obey CRM schema constraints (enum values, numeric fields, required relationships). If a required identifier is unknown, call a lookup tool first.
+            - If the user’s request is expected to fail (e.g., canceling a non-existent record), still call the tool that best reflects the request and let the CRM response surface the error.
+            - Issue exactly one tool call per turn. If a request needs multiple steps, focus on the next step that advances the task.
 
             CRM schema summary:
             {schema_section}
