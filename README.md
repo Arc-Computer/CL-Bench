@@ -232,7 +232,7 @@ To scale the pipeline, define additional workflow templates/chains, run the gene
 - **Lint summary**: `artifacts/conversations_multi_turn/20251107T134304Z/full/lint_report.json`
 - **Quality summary**: `artifacts/conversations_multi_turn/20251107T134304Z/full/quality_checks.md`
 
-**Dataset Quality Note**: The eval split has been enriched with detailed expected responses derived from actual tool execution results, improving LLM judge pass rates from 45.7% to 58.7%. For baseline evaluations, use `chains_eval_clean.jsonl` (418 conversations, 1,590 turns) which excludes conversations with seed data gaps and provides clean, reproducible results.
+**Dataset Quality Note**: The eval split has been enriched with detailed expected responses derived from actual tool execution results, improving LLM judge pass rates from 45.7% to 58.7%. For baseline evaluations, use `chains_eval_5to10.jsonl` (133 conversations, 852 turns, avg 6.4 turns) which provides multi-turn conversations (5-10 turns) with zero execution errors and enriched responses.
 
 **Complexity Dimensions**: The benchmark measures two orthogonal difficulty axes. *Complex* chains test long-context tracking over 3-segment workflows (8-12 turns) with terminal failures. *Medium* chains test error recovery through mid-chain failures that require reasoning with partial context and handling template references to failed turns. Both dimensions are essential for production-robust agents.
 
