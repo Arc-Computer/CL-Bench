@@ -1,0 +1,66 @@
+# LLM Judge QA
+
+- Conversations evaluated: 50
+- Turns evaluated: 276
+- Pass rate: 45.65%
+- Conversation-level failures: 50 (50 unique conversations)
+
+## How to Reproduce
+```bash
+PYTHONPATH=. python analysis/dataset_judge.py \
+    --dataset artifacts/conversations_multi_turn/20251107T134304Z/full/chains_eval.jsonl \
+    --model gpt-4.1-mini \
+    --output-dir artifacts/qa/<timestamp>/
+```
+
+## Flagged Conversations
+- CHAIN-EVAL-20251107T134304Z-0000: 2 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0001: 2 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0002: 4 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0003: 4 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0004: 2 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0005: 1 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0006: 2 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0007: 2 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0008: 4 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0009: 4 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0010: 2 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0011: 2 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0012: 4 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0013: 2 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0014: 3 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0015: 3 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0016: 2 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0017: 1 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0018: 4 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0019: 9 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0020: 1 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0021: 2 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0022: 5 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0023: 2 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0024: 4 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0025: 2 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0026: 4 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0027: 4 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0028: 1 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0029: 2 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0030: 2 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0031: 4 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0032: 4 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0033: 3 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0034: 5 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0035: 2 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0036: 4 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0037: 2 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0038: 1 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0039: 4 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0040: 4 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0041: 4 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0042: 9 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0043: 1 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0044: 1 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0045: 2 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0046: 3 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0047: 2 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0048: 4 failed turn(s)
+- CHAIN-EVAL-20251107T134304Z-0049: 3 failed turn(s)

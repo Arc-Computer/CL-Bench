@@ -2,8 +2,7 @@
 
 Validated single-turn scenarios used as building blocks for chained conversations.
 
-- `scenarios_clean.jsonl` – curated 60/40 success/failure pool (505 records).
-- `scenarios.jsonl` – raw scenario export prior to cleaning (kept for reference).
-- `validation_report.json` – verification summary produced during curation.
-
-All chained generation flows should reference `scenarios_clean.jsonl` via `ScenarioRepository`.
+- Latest drop: `20251107T133811Z` (295 success / 197 failure)
+- `scenarios_clean.jsonl` – success-only pool for production datasets.
+- `scenarios_failures.jsonl` – curated failure scenarios for stress testing.
+- Each timestamped directory contains success/failure splits plus a manifest.

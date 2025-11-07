@@ -6,15 +6,25 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import re
 from collections import Counter, defaultdict
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Tuple
-import re
-from copy import deepcopy
 
+from src.pipeline.scenario_repository import ENTITY_ID_KEYS
 from src.conversation_schema import Conversation
 from src.evaluation.conversation_harness import ConversationHarness, load_conversations_from_jsonl
 from src.evaluation.llm_judge import LLMJudge
+
+
+CANONICAL_FIELDS: Mapping[str, Iterable[str]] = {
+    "Client": ("name", "status", "email"),
+    "Contact": ("first_name", "last_name", "email"),
+    "Opportunity": ("name", "stage"),
+    "Quote": ("name",),
+    "Contract": ("name",),
+}
 
 
 def _resolve_turn_annotations(conversation: Conversation) -> Mapping[int, str]:
@@ -83,12 +93,71 @@ def _ensure_contact_defaults(contact_id: str, payload: MutableMapping[str, Any])
         payload["last_name"] = fallback.title()
 
 
+def _ensure_opportunity_defaults(opportunity_id: str, payload: MutableMapping[str, Any]) -> None:
+    if not payload.get("name"):
+        payload["name"] = f"Opportunity {opportunity_id[:6].upper()}"
+    if not payload.get("stage"):
+        payload["stage"] = "Qualification"
+
+
+def _ensure_quote_defaults(
+    quote_id: str,
+    payload: MutableMapping[str, Any],
+    *, 
+    fallback_opportunities: Sequence[str],
+) -> None:
+    if not payload.get("name"):
+        payload["name"] = f"Quote {quote_id[:6].upper()}"
+    if not payload.get("opportunity_id") and fallback_opportunities:
+        payload["opportunity_id"] = fallback_opportunities[0]
+
+
+def _ensure_contract_defaults(
+    contract_id: str,
+    payload: MutableMapping[str, Any],
+    *,
+    fallback_clients: Sequence[str],
+) -> None:
+    if not payload.get("name"):
+        payload["name"] = f"Contract {contract_id[:6].upper()}"
+    if not payload.get("client_id") and fallback_clients:
+        payload["client_id"] = fallback_clients[0]
+
+
 def _prepare_conversation(conversation: Conversation) -> Conversation:
     cleaned = deepcopy(conversation)
     seed_data = cleaned.initial_entities.setdefault("seed_data", {})
-    contacts: MutableMapping[str, MutableMapping[str, Any]] = seed_data.setdefault("Contact", {})
+    contacts = seed_data.setdefault("Contact", {})
+    opportunities = seed_data.setdefault("Opportunity", {})
+    quotes = seed_data.setdefault("Quote", {})
+    contracts = seed_data.setdefault("Contract", {})
+
+    fallback_clients: List[str] = []
+    fallback_opportunities: List[str] = []
+
+    for key, value in cleaned.initial_entities.items():
+        entity_type = ENTITY_ID_KEYS.get(key)
+        if entity_type == "Client" and isinstance(value, str):
+            fallback_clients.append(value)
+        if entity_type == "Opportunity" and isinstance(value, str):
+            fallback_opportunities.append(value)
+
+    fallback_clients.extend(opportunities.get(opp_id, {}).get("client_id") for opp_id in fallback_opportunities if opportunities.get(opp_id, {}).get("client_id"))
+    fallback_clients = [cid for cid in fallback_clients if isinstance(cid, str)]
+
     for contact_id, payload in contacts.items():
         _ensure_contact_defaults(contact_id, payload)
+    for opportunity_id, payload in opportunities.items():
+        _ensure_opportunity_defaults(opportunity_id, payload)
+    if not fallback_opportunities:
+        fallback_opportunities = list(opportunities.keys())
+    for quote_id, payload in quotes.items():
+        _ensure_quote_defaults(quote_id, payload, fallback_opportunities=fallback_opportunities)
+    if not fallback_clients:
+        fallback_clients = list(seed_data.get("Client", {}).keys())
+    fallback_clients = [cid for cid in fallback_clients if cid]
+    for contract_id, payload in contracts.items():
+        _ensure_contract_defaults(contract_id, payload, fallback_clients=fallback_clients)
     return cleaned
 
 

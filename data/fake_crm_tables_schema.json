@@ -4,6 +4,7 @@
   "type": "object",
   "properties": {
     "Client": {
+      "description": "Accounts and prospects tracked by the revenue team.",
       "type": "object",
       "properties": {
         "client_id": { "type": "string" },
@@ -20,6 +21,7 @@
     },
 
     "Contact": {
+      "description": "People associated with a client who can be engaged.",
       "type": "object",
       "properties": {
         "contact_id": { "type": "string" },
@@ -35,6 +37,7 @@
     },
 
     "Opportunity": {
+      "description": "Sales pipeline records tied to a client.",
       "type": "object",
       "properties": {
         "opportunity_id": { "type": "string" },
@@ -54,6 +57,7 @@
     },
 
     "Quote": {
+      "description": "Pricing proposals generated for a given opportunity.",
       "type": "object",
       "properties": {
         "quote_id": { "type": "string" },
@@ -72,6 +76,7 @@
     },
 
     "Contract": {
+      "description": "Executed agreements for a client or opportunity.",
       "type": "object",
       "properties": {
         "contract_id": { "type": "string" },
@@ -87,6 +92,7 @@
     },
 
     "Company": {
+      "description": "Reference companies (partners/vendors/competitors).",
       "type": "object",
       "properties": {
         "company_id": { "type": "string" },
@@ -103,6 +109,7 @@
     },
 
     "Document": {
+      "description": "Files uploaded against another CRM record.",
       "type": "object",
       "properties": {
         "document_id": { "type": "string" },
@@ -117,6 +124,7 @@
     },
 
     "Note": {
+      "description": "Internal collaboration notes linked to CRM records.",
       "type": "object",
       "properties": {
         "note_id": { "type": "string" },

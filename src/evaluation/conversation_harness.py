@@ -128,9 +128,18 @@ class ConversationHarness:
                 result = ConversationResult(
                     conversation_id=conversation.conversation_id,
                     overall_success=False,
-                    turns_executed=0,
+                    turns_executed=1,
                     failed_at_turn=1,
-                    per_turn_results=[],
+                    per_turn_results=[
+                        {
+                            "turn_id": 1,
+                            "success": False,
+                            "error": str(exc),
+                            "verification": "pre_execution_error",
+                            "tool_success": False,
+                            "response_success": False,
+                        }
+                    ],
                     reward_signal=0.0,
                     error_message=str(exc),
                     metadata={
@@ -179,66 +188,13 @@ class ConversationHarness:
             if not outcome.success and first_failed_turn is None and turn.expect_success:
                 first_failed_turn = turn.turn_id
 
-        success_path_turns = [t for t in per_turn if t.get("expect_success", True)]
-        expected_failure_turns = [t for t in per_turn if not t.get("expect_success", True)]
-        successful_success_turns = sum(1 for t in success_path_turns if t.get("success", False))
-        tool_successful_turns = sum(1 for t in success_path_turns if t.get("tool_success", False))
-        response_successful_turns = sum(1 for t in success_path_turns if t.get("response_success", False))
-        total_success_path = len(success_path_turns)
-        overall_success = (total_success_path == 0) or (successful_success_turns == total_success_path)
-        reward_signal = (successful_success_turns / total_success_path) if total_success_path > 0 else 1.0
-        tool_success_rate = (tool_successful_turns / total_success_path) if total_success_path > 0 else 1.0
-        response_success_rate = (response_successful_turns / total_success_path) if total_success_path > 0 else 1.0
-        observed_expected_failure = any(
-            (not turn.get("expect_success", True)) and (not turn.get("success", True)) for turn in per_turn
-        )
-        expected_failure_failure_turn = next(
-            (
-                turn["turn_id"]
-                for turn in per_turn
-                if (not turn.get("expect_success", True)) and (not turn.get("success", True))
-            ),
-            None,
-        )
-        if observed_expected_failure:
-            overall_success = False
-            if first_failed_turn is None and expected_failure_failure_turn is not None:
-                first_failed_turn = expected_failure_failure_turn
-
-        metadata = {
-            "verification_mode": "hybrid_semantic_llm_judge" if self._judge else conversation.verification_mode.value,
-            "success_path_turns": total_success_path,
-            "success_path_succeeded": successful_success_turns,
-            "task_success_rate": reward_signal,
-            "tool_success_rate": tool_success_rate,
-            "response_success_rate": response_success_rate,
-            "combined_success_rate": reward_signal,
-            "expected_failure_turns": len(expected_failure_turns),
-            "total_turns": len(per_turn),
-            "exact_match_count": sum(1 for t in per_turn if t.get("verification") == "exact_match"),
-            "judge_evaluated_count": sum(1 for t in per_turn if t.get("judge_used", False)),
-            "judge_approved_count": sum(1 for t in per_turn if t.get("judge_pass", False)),
-            "response_judge_evaluated_count": sum(1 for t in per_turn if t.get("response_judge_used", False)),
-            "response_judge_approved_count": sum(1 for t in per_turn if t.get("response_judge_pass", False)),
-            "agent": {
-                "provider": self._agent.provider_name,
-                "model": self._agent.model_name,
-            },
-            "expected_failure": observed_expected_failure,
-        }
-
-        token_totals = _aggregate_token_usage(per_turn)
-        if token_totals:
-            metadata["agent"]["token_usage"] = token_totals
-
-        return ConversationResult(
-            conversation_id=conversation.conversation_id,
-            overall_success=overall_success,
-            turns_executed=len(per_turn),
-            failed_at_turn=None if overall_success else first_failed_turn,
-            per_turn_results=per_turn,
-            reward_signal=reward_signal,
-            metadata=metadata,
+        return build_regular_conversation_result(
+            conversation=conversation,
+            per_turn=per_turn,
+            first_failed_turn=first_failed_turn,
+            judge_enabled=self._judge is not None,
+            agent_provider=self._agent.provider_name,
+            agent_model=self._agent.model_name,
         )
 
     # ------------------------------------------------------------------
@@ -289,139 +245,15 @@ class ConversationHarness:
             if not outcome.success and first_failed_turn is None and turn.expect_success:
                 first_failed_turn = turn.turn_id
 
-        per_segment: List[Dict[str, Any]] = []
-        start_turn = 1
-        for index, end_turn in enumerate(segment_boundaries):
-            segment_turns = [pt for pt in per_turn if start_turn <= pt["turn_id"] <= end_turn]
-            success_path_turns = [pt for pt in segment_turns if pt.get("expect_success", True)]
-            expected_failure_turns_segment = [pt for pt in segment_turns if not pt.get("expect_success", True)]
-
-            success_path_failure_turn = next(
-                (pt["turn_id"] for pt in success_path_turns if not pt.get("success", False)),
-                None,
-            )
-            success_path_failure_error = next(
-                (pt.get("error") for pt in success_path_turns if not pt.get("success", False)),
-                None,
-            )
-            observed_failure_turn = next(
-                (pt["turn_id"] for pt in expected_failure_turns_segment if not pt.get("success", True)),
-                None,
-            )
-            observed_failure_error = next(
-                (pt.get("error") for pt in expected_failure_turns_segment if not pt.get("success", True)),
-                None,
-            )
-
-            if expected_failure_turns_segment:
-                segment_success = observed_failure_turn is None
-                failure_turn = observed_failure_turn
-                failure_error = observed_failure_error
-            else:
-                segment_success = all(pt.get("success", False) for pt in success_path_turns)
-                failure_turn = success_path_failure_turn
-                failure_error = success_path_failure_error
-
-            actual_outcome = "success" if segment_success else "failure"
-
-            expected_meta = segment_meta_lookup.get(index + 1, {})
-            expected_outcome = str(expected_meta.get("expected_outcome", "success")).lower()
-            if expected_outcome not in ("success", "failure"):
-                expected_outcome = "success"
-
-            if expected_outcome != actual_outcome:
-                location = f" at turn {failure_turn}" if failure_turn is not None else ""
-                warnings.warn(
-                    f"Segment {index + 1} in {conversation.conversation_id} expected '{expected_outcome}' "
-                    f"but observed '{actual_outcome}'{location}. Continuing evaluation."
-                )
-
-            per_segment.append(
-                {
-                    "segment_number": index + 1,
-                    "start_turn": start_turn,
-                    "end_turn": end_turn,
-                    "turns_attempted": len(segment_turns),
-                    "successful_turns": sum(1 for pt in success_path_turns if pt.get("success", False)),
-                    "success": segment_success,
-                    "actual_outcome": actual_outcome,
-                    "expected_outcome": expected_outcome,
-                    "expected_failure": expected_outcome == "failure",
-                    "failed_at_turn": failure_turn,
-                    "error": failure_error,
-                    "turn_ids": [pt["turn_id"] for pt in segment_turns],
-                    "expected_metadata": dict(expected_meta),
-                }
-            )
-            start_turn = end_turn + 1
-
-        success_path_turns = [t for t in per_turn if t.get("expect_success", True)]
-        expected_failure_turns = [t for t in per_turn if not t.get("expect_success", True)]
-        successful_success_turns = sum(1 for t in success_path_turns if t.get("success", False))
-        tool_successful_turns = sum(1 for t in success_path_turns if t.get("tool_success", False))
-        response_successful_turns = sum(1 for t in success_path_turns if t.get("response_success", False))
-        total_success_path = len(success_path_turns)
-        overall_success = (total_success_path == 0) or (successful_success_turns == total_success_path)
-        reward_signal = (successful_success_turns / total_success_path) if total_success_path > 0 else 1.0
-        tool_success_rate = (tool_successful_turns / total_success_path) if total_success_path > 0 else 1.0
-        response_success_rate = (response_successful_turns / total_success_path) if total_success_path > 0 else 1.0
-        chain_success = all(
-            segment["actual_outcome"] == segment["expected_outcome"] for segment in per_segment
-        )
-        observed_expected_failure = any(
-            (not turn.get("expect_success", True)) and (not turn.get("success", True)) for turn in per_turn
-        )
-        expected_failure_failure_turn = next(
-            (
-                turn["turn_id"]
-                for turn in per_turn
-                if (not turn.get("expect_success", True)) and (not turn.get("success", True))
-            ),
-            None,
-        )
-        if observed_expected_failure:
-            overall_success = False
-            if first_failed_turn is None and expected_failure_failure_turn is not None:
-                first_failed_turn = expected_failure_failure_turn
-        chain_success = chain_success and not observed_expected_failure
-
-        metadata = {
-            "verification_mode": "hybrid_semantic_llm_judge" if self._judge else conversation.verification_mode.value,
-            "chain_id": conversation.chain_id,
-            "success_path_turns": total_success_path,
-            "success_path_succeeded": successful_success_turns,
-            "task_success_rate": reward_signal,
-            "tool_success_rate": tool_success_rate,
-            "response_success_rate": response_success_rate,
-            "combined_success_rate": reward_signal,
-            "expected_failure_turns": len(expected_failure_turns),
-            "total_turns": len(per_turn),
-            "segments": len(segment_boundaries),
-            "exact_match_count": sum(1 for t in per_turn if t.get("verification") == "exact_match"),
-            "judge_evaluated_count": sum(1 for t in per_turn if t.get("judge_used", False)),
-            "judge_approved_count": sum(1 for t in per_turn if t.get("judge_pass", False)),
-            "response_judge_evaluated_count": sum(1 for t in per_turn if t.get("response_judge_used", False)),
-            "response_judge_approved_count": sum(1 for t in per_turn if t.get("response_judge_pass", False)),
-            "agent": {
-                "provider": self._agent.provider_name,
-                "model": self._agent.model_name,
-            },
-            "expected_failure": observed_expected_failure,
-        }
-        token_totals = _aggregate_token_usage(per_turn)
-        if token_totals:
-            metadata["agent"]["token_usage"] = token_totals
-
-        return ConversationResult(
-            conversation_id=conversation.conversation_id,
-            overall_success=overall_success,
-            turns_executed=len(per_turn),
-            failed_at_turn=None if overall_success else first_failed_turn,
-            per_turn_results=per_turn,
-            reward_signal=reward_signal,
-            metadata=metadata,
-            per_segment_results=per_segment,
-            chain_success=chain_success,
+        return build_chain_conversation_result(
+            conversation=conversation,
+            per_turn=per_turn,
+            first_failed_turn=first_failed_turn,
+            segment_boundaries=segment_boundaries,
+            segment_meta_lookup=segment_meta_lookup,
+            judge_enabled=self._judge is not None,
+            agent_provider=self._agent.provider_name,
+            agent_model=self._agent.model_name,
         )
 
     # ------------------------------------------------------------------
@@ -766,6 +598,237 @@ def _aggregate_token_usage(per_turn: Sequence[Mapping[str, Any]]) -> Dict[str, i
             except (TypeError, ValueError):  # pragma: no cover - defensive guard
                 logger.debug("Ignoring non-numeric token usage entry %r for key %s", value, key)
     return totals if observed else {}
+
+
+def build_regular_conversation_result(
+    *,
+    conversation: Conversation,
+    per_turn: Sequence[Mapping[str, Any]],
+    first_failed_turn: Optional[int],
+    judge_enabled: bool,
+    agent_provider: str,
+    agent_model: str,
+) -> ConversationResult:
+    """Construct a ConversationResult for non-chained conversations."""
+    success_path_turns = [t for t in per_turn if t.get("expect_success", True)]
+    expected_failure_turns = [t for t in per_turn if not t.get("expect_success", True)]
+    successful_success_turns = sum(1 for t in success_path_turns if t.get("success", False))
+    tool_successful_turns = sum(1 for t in success_path_turns if t.get("tool_success", False))
+    response_successful_turns = sum(1 for t in success_path_turns if t.get("response_success", False))
+    total_success_path = len(success_path_turns)
+    overall_success = (total_success_path == 0) or (successful_success_turns == total_success_path)
+    reward_signal = (successful_success_turns / total_success_path) if total_success_path > 0 else 1.0
+    tool_success_rate = (tool_successful_turns / total_success_path) if total_success_path > 0 else 1.0
+    response_success_rate = (response_successful_turns / total_success_path) if total_success_path > 0 else 1.0
+    observed_expected_failure = any(
+        (not turn.get("expect_success", True)) and (not turn.get("success", True)) for turn in per_turn
+    )
+    expected_failure_failure_turn = next(
+        (
+            turn["turn_id"]
+            for turn in per_turn
+            if (not turn.get("expect_success", True)) and (not turn.get("success", True))
+        ),
+        None,
+    )
+    if observed_expected_failure:
+        overall_success = False
+        if first_failed_turn is None and expected_failure_failure_turn is not None:
+            first_failed_turn = expected_failure_failure_turn
+
+    metadata = {
+        "verification_mode": "hybrid_semantic_llm_judge"
+        if judge_enabled
+        else conversation.verification_mode.value,
+        "success_path_turns": total_success_path,
+        "success_path_succeeded": successful_success_turns,
+        "task_success_rate": reward_signal,
+        "tool_success_rate": tool_success_rate,
+        "response_success_rate": response_success_rate,
+        "combined_success_rate": reward_signal,
+        "expected_failure_turns": len(expected_failure_turns),
+        "total_turns": len(per_turn),
+        "exact_match_count": sum(1 for t in per_turn if t.get("verification") == "exact_match"),
+        "judge_evaluated_count": sum(1 for t in per_turn if t.get("judge_used", False)),
+        "judge_approved_count": sum(1 for t in per_turn if t.get("judge_pass", False)),
+        "response_judge_evaluated_count": sum(1 for t in per_turn if t.get("response_judge_used", False)),
+        "response_judge_approved_count": sum(1 for t in per_turn if t.get("response_judge_pass", False)),
+        "agent": {
+            "provider": agent_provider,
+            "model": agent_model,
+        },
+        "expected_failure": observed_expected_failure,
+    }
+
+    token_totals = _aggregate_token_usage(per_turn)
+    if token_totals:
+        metadata["agent"]["token_usage"] = token_totals
+
+    overall_failed_turn = None if overall_success else first_failed_turn
+    return ConversationResult(
+        conversation_id=conversation.conversation_id,
+        overall_success=overall_success,
+        turns_executed=len(per_turn),
+        failed_at_turn=overall_failed_turn,
+        per_turn_results=list(per_turn),
+        reward_signal=reward_signal,
+        metadata=metadata,
+    )
+
+
+def build_chain_conversation_result(
+    *,
+    conversation: Conversation,
+    per_turn: Sequence[Mapping[str, Any]],
+    first_failed_turn: Optional[int],
+    segment_boundaries: Sequence[int],
+    segment_meta_lookup: Optional[Mapping[int, Mapping[str, Any]]] = None,
+    judge_enabled: bool,
+    agent_provider: str,
+    agent_model: str,
+) -> ConversationResult:
+    """Construct a ConversationResult for chained conversations."""
+    if not segment_boundaries:
+        raise ValueError(
+            f"Chained conversation {conversation.conversation_id} is missing segment boundaries."
+        )
+
+    per_segment: List[Dict[str, Any]] = []
+    start_turn = 1
+    meta_lookup = segment_meta_lookup or {}
+    for index, end_turn in enumerate(segment_boundaries):
+        segment_turns = [pt for pt in per_turn if start_turn <= pt["turn_id"] <= end_turn]
+        success_path_turns = [pt for pt in segment_turns if pt.get("expect_success", True)]
+        expected_failure_turns_segment = [pt for pt in segment_turns if not pt.get("expect_success", True)]
+
+        success_path_failure_turn = next(
+            (pt["turn_id"] for pt in success_path_turns if not pt.get("success", False)),
+            None,
+        )
+        success_path_failure_error = next(
+            (pt.get("error") for pt in success_path_turns if not pt.get("success", False)),
+            None,
+        )
+        observed_failure_turn = next(
+            (pt["turn_id"] for pt in expected_failure_turns_segment if not pt.get("success", True)),
+            None,
+        )
+        observed_failure_error = next(
+            (pt.get("error") for pt in expected_failure_turns_segment if not pt.get("success", True)),
+            None,
+        )
+
+        if expected_failure_turns_segment:
+            segment_success = observed_failure_turn is None
+            failure_turn = observed_failure_turn
+            failure_error = observed_failure_error
+        else:
+            segment_success = all(pt.get("success", False) for pt in success_path_turns)
+            failure_turn = success_path_failure_turn
+            failure_error = success_path_failure_error
+
+        actual_outcome = "success" if segment_success else "failure"
+
+        expected_meta = meta_lookup.get(index + 1, {})
+        expected_outcome = str(expected_meta.get("expected_outcome", "success")).lower()
+        if expected_outcome not in ("success", "failure"):
+            expected_outcome = "success"
+
+        if expected_outcome != actual_outcome:
+            location = f" at turn {failure_turn}" if failure_turn is not None else ""
+            warnings.warn(
+                f"Segment {index + 1} in {conversation.conversation_id} expected '{expected_outcome}' "
+                f"but observed '{actual_outcome}'{location}. Continuing evaluation."
+            )
+
+        per_segment.append(
+            {
+                "segment_number": index + 1,
+                "start_turn": start_turn,
+                "end_turn": end_turn,
+                "turns_attempted": len(segment_turns),
+                "successful_turns": sum(1 for pt in success_path_turns if pt.get("success", False)),
+                "success": segment_success,
+                "actual_outcome": actual_outcome,
+                "expected_outcome": expected_outcome,
+                "expected_failure": expected_outcome == "failure",
+                "failed_at_turn": failure_turn,
+                "error": failure_error,
+                "turn_ids": [pt["turn_id"] for pt in segment_turns],
+                "expected_metadata": dict(expected_meta),
+            }
+        )
+        start_turn = end_turn + 1
+
+    success_path_turns = [t for t in per_turn if t.get("expect_success", True)]
+    expected_failure_turns = [t for t in per_turn if not t.get("expect_success", True)]
+    successful_success_turns = sum(1 for t in success_path_turns if t.get("success", False))
+    tool_successful_turns = sum(1 for t in success_path_turns if t.get("tool_success", False))
+    response_successful_turns = sum(1 for t in success_path_turns if t.get("response_success", False))
+    total_success_path = len(success_path_turns)
+    overall_success = (total_success_path == 0) or (successful_success_turns == total_success_path)
+    reward_signal = (successful_success_turns / total_success_path) if total_success_path > 0 else 1.0
+    tool_success_rate = (tool_successful_turns / total_success_path) if total_success_path > 0 else 1.0
+    response_success_rate = (response_successful_turns / total_success_path) if total_success_path > 0 else 1.0
+    chain_success = all(segment["actual_outcome"] == segment["expected_outcome"] for segment in per_segment)
+    observed_expected_failure = any(
+        (not turn.get("expect_success", True)) and (not turn.get("success", True)) for turn in per_turn
+    )
+    expected_failure_failure_turn = next(
+        (
+            turn["turn_id"]
+            for turn in per_turn
+            if (not turn.get("expect_success", True)) and (not turn.get("success", True))
+        ),
+        None,
+    )
+    if observed_expected_failure:
+        overall_success = False
+        if first_failed_turn is None and expected_failure_failure_turn is not None:
+            first_failed_turn = expected_failure_failure_turn
+    chain_success = chain_success and not observed_expected_failure
+
+    metadata = {
+        "verification_mode": "hybrid_semantic_llm_judge"
+        if judge_enabled
+        else conversation.verification_mode.value,
+        "chain_id": conversation.chain_id,
+        "success_path_turns": total_success_path,
+        "success_path_succeeded": successful_success_turns,
+        "task_success_rate": reward_signal,
+        "tool_success_rate": tool_success_rate,
+        "response_success_rate": response_success_rate,
+        "combined_success_rate": reward_signal,
+        "expected_failure_turns": len(expected_failure_turns),
+        "total_turns": len(per_turn),
+        "segments": len(segment_boundaries),
+        "exact_match_count": sum(1 for t in per_turn if t.get("verification") == "exact_match"),
+        "judge_evaluated_count": sum(1 for t in per_turn if t.get("judge_used", False)),
+        "judge_approved_count": sum(1 for t in per_turn if t.get("judge_pass", False)),
+        "response_judge_evaluated_count": sum(1 for t in per_turn if t.get("response_judge_used", False)),
+        "response_judge_approved_count": sum(1 for t in per_turn if t.get("response_judge_pass", False)),
+        "agent": {
+            "provider": agent_provider,
+            "model": agent_model,
+        },
+        "expected_failure": observed_expected_failure,
+    }
+    token_totals = _aggregate_token_usage(per_turn)
+    if token_totals:
+        metadata["agent"]["token_usage"] = token_totals
+
+    overall_failed_turn = None if overall_success else first_failed_turn
+    return ConversationResult(
+        conversation_id=conversation.conversation_id,
+        overall_success=overall_success,
+        turns_executed=len(per_turn),
+        failed_at_turn=overall_failed_turn,
+        per_turn_results=list(per_turn),
+        reward_signal=reward_signal,
+        metadata=metadata,
+        per_segment_results=per_segment,
+        chain_success=chain_success,
+    )
 
 
 def load_conversations_from_jsonl(path: Path) -> List[Conversation]:

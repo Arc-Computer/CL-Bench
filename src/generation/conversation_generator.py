@@ -8,9 +8,12 @@ import logging
 import random
 import uuid
 from dataclasses import dataclass
-from typing import Any, Dict, List, Mapping, MutableMapping, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Mapping, MutableMapping, Optional, Sequence, Tuple
 
-from datasets import Dataset
+try:
+    from datasets import Dataset
+except ImportError:  # pragma: no cover - optional dependency
+    Dataset = None  # type: ignore
 
 from src.conversation_schema import Conversation, ConversationTurn
 from src.conversation_templates import TurnTemplate, WorkflowTemplate
@@ -23,10 +26,14 @@ from src.crm_sandbox import (
     Opportunity,
     Quote,
 )
-from src.generation.curator_utterances import CuratorUtteranceGenerator
 from src.pipeline.scenario_repository import ENTITY_ID_KEYS, ScenarioRecord, ScenarioRepository
 from src.reference_resolver import TemplateResolutionError, resolve_template, validate_template_references
 from src.evaluation.verification import VerificationMode
+
+if TYPE_CHECKING:  # pragma: no cover - only for typing
+    from src.generation.curator_utterances import CuratorUtteranceGenerator
+else:  # pragma: no cover - runtime fallback when curator isn't installed
+    CuratorUtteranceGenerator = Any
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +97,9 @@ def instantiate_conversation(
     success_ratio: float = 0.6,
 ) -> Conversation:
     """Generate a single conversation instance for the provided workflow template."""
+
+    if CuratorUtteranceGenerator is Any or Dataset is None:  # pragma: no cover
+        raise ImportError("CuratorUtteranceGenerator is unavailable. Install bespokelabs-curator to generate conversations.")
 
     if conversation_id is None:
         conversation_id = f"CONV-{uuid.uuid4().hex[:8].upper()}"
@@ -452,7 +462,10 @@ def _build_client(entity_id: str, metadata: Mapping[str, Any], _: Optional[str])
     name = metadata.get("name")
     if not isinstance(name, str) or not name.strip():
         raise ValueError(f"Client {entity_id} missing human-readable name metadata.")
-    owner = _require_metadata_value(metadata, "owner", "Client", entity_id)
+    owner = metadata.get("owner")
+    if not owner:
+        # Some legacy seed payloads omit owner; fall back to a deterministic placeholder
+        owner = metadata.get("owner_name") or "Unassigned Owner"
     return Client(
         client_id=entity_id,
         name=name.strip(),

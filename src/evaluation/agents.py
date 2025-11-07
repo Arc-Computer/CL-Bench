@@ -9,11 +9,12 @@ for live LLM providers, deterministic mocks, or scripted behaviours.
 
 from __future__ import annotations
 
+import asyncio
 import csv
 import inspect
 import json
 import os
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, is_dataclass
 from functools import lru_cache
 from pathlib import Path
 from textwrap import dedent
@@ -284,8 +285,6 @@ class LiteLLMChatAgent(ConversationAgent):
             "current_turn": {
                 "turn_id": context.turn.turn_id,
                 "user_utterance": context.turn.user_utterance,
-                "expected_tool_hint": context.turn.expected_tool,
-                "expected_arguments_hint": context.expected_arguments,
                 "expect_success": context.turn.expect_success,
             },
         }

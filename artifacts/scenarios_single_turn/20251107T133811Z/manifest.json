@@ -1,0 +1,114 @@
+{
+  "timestamp": "20251107T133811Z",
+  "source_file": "artifacts/scenarios_single_turn/scenarios.jsonl",
+  "total_records": 492,
+  "success_records": 295,
+  "failure_records": 197,
+  "tool_breakdown": {
+    "modify_opportunity": {
+      "success": 34,
+      "failure": 20
+    },
+    "create_new_opportunity": {
+      "success": 68,
+      "failure": 52
+    },
+    "modify_quote": {
+      "success": 23,
+      "failure": 10
+    },
+    "add_note": {
+      "success": 1,
+      "failure": 0
+    },
+    "create_new_client": {
+      "success": 22,
+      "failure": 19
+    },
+    "modify_contact": {
+      "success": 8,
+      "failure": 5
+    },
+    "clone_opportunity": {
+      "success": 3,
+      "failure": 3
+    },
+    "client_search": {
+      "success": 19,
+      "failure": 4
+    },
+    "contract_search": {
+      "success": 1,
+      "failure": 0
+    },
+    "modify_client": {
+      "success": 11,
+      "failure": 10
+    },
+    "create_contract": {
+      "success": 4,
+      "failure": 2
+    },
+    "create_quote": {
+      "success": 17,
+      "failure": 14
+    },
+    "create_new_contact": {
+      "success": 7,
+      "failure": 6
+    },
+    "quote_details": {
+      "success": 10,
+      "failure": 2
+    },
+    "contact_search": {
+      "success": 10,
+      "failure": 8
+    },
+    "opportunity_search": {
+      "success": 18,
+      "failure": 11
+    },
+    "compare_quotes": {
+      "success": 4,
+      "failure": 4
+    },
+    "view_opportunity_details": {
+      "success": 14,
+      "failure": 8
+    },
+    "delete_quote": {
+      "success": 1,
+      "failure": 6
+    },
+    "quote_search": {
+      "success": 7,
+      "failure": 1
+    },
+    "cancel_quote": {
+      "success": 2,
+      "failure": 4
+    },
+    "compare_quote_details": {
+      "success": 4,
+      "failure": 2
+    },
+    "summarize_opportunities": {
+      "success": 3,
+      "failure": 2
+    },
+    "delete_opportunity": {
+      "success": 2,
+      "failure": 3
+    },
+    "opportunity_details": {
+      "success": 1,
+      "failure": 0
+    },
+    "company_search": {
+      "success": 1,
+      "failure": 1
+    }
+  },
+  "missing_tools": []
+}

@@ -1,0 +1,11 @@
+{
+  "timestamp": "20251107T134304Z",
+  "source_files": [
+    "artifacts/conversations_multi_turn/20251105T144453Z/full/chains.jsonl",
+    "artifacts/conversations_multi_turn/20251106T152518Z/full/chains.jsonl"
+  ],
+  "eval_count": 600,
+  "holdout_count": 400,
+  "stress_count": 200,
+  "extra_success": 800
+}

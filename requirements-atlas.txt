@@ -1,0 +1,24 @@
+# Optional Atlas SDK dependencies
+# Install these only if you plan to use Atlas SDK integration:
+#   pip install -r requirements-atlas.txt
+#
+# Note: Atlas SDK requires litellm>=1.77.7, which conflicts with
+# bespokelabs-curator's requirement for litellm==1.61.3. If you need
+# both, you may need to use separate environments or wait for curator
+# to update its litellm dependency.
+
+# Core Atlas SDK dependencies (installed via editable install of external/atlas-sdk)
+# These are listed here for reference - actual installation happens via:
+#   pip install -e external/atlas-sdk[dev]
+asyncpg>=0.29.0
+httpx>=0.25.0
+langchain-core>=0.3.76
+langgraph>=0.6.8
+litellm>=1.77.7
+python-dotenv>=1.0.1
+pydantic>=2.11.9
+
+# Dev dependencies (optional)
+pytest>=7.4
+pytest-asyncio>=0.21
+

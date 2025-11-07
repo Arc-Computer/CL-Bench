@@ -91,6 +91,14 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+> **Dependencies note:** The base `requirements.txt` is tuned for the Curator generation pipeline, which depends on `anthropic<0.48` and the current `0.1.x` releases of `bespokelabs-curator`. If you need newer Anthropic/LiteLLM versions for Atlas SDK work, install `requirements-atlas.txt` (ideally in a separate virtualenv) after the core requirements.
+
+For judge-only or mock-baseline runs (no scenario generation), use the lightweight `requirements-judge.txt` to avoid pulling the full Curator/HuggingFace stack:
+
+```bash
+pip install -r requirements-judge.txt
+```
+
 ### Set Up Postgres Backend (Optional)
 
 For testing with a real database:
@@ -217,12 +225,14 @@ To scale the pipeline, define additional workflow templates/chains, run the gene
 ### Current Artifact Snapshot
 
 - **Single-turn scenarios** (validated 60/40 mix): `artifacts/scenarios_single_turn/scenarios_clean.jsonl` (495 records)
-- **Chained conversations** (1,500 conversations; 900 simple / 450 medium / 150 complex; 40% expected failures): `artifacts/conversations_multi_turn/chains.jsonl`
-- **Manifest**: `artifacts/conversations_multi_turn/20251105T144453Z/full/manifest.json`
-- **Analytics report**: `artifacts/conversations_multi_turn/20251105T144453Z/full/report.md`
-- **Verification log**: `artifacts/conversations_multi_turn/20251105T144453Z/full/verification_report.json`
-- **Lint summary**: `artifacts/conversations_multi_turn/20251105T144453Z/full/lint_report.json`
-- **Quality summary**: `artifacts/conversations_multi_turn/20251105T144453Z/full/quality_checks.md`
+- **Chained conversations** (1,500 conversations; 900 simple / 450 medium / 150 complex; 40% expected failures): `artifacts/conversations_multi_turn/20251107T134304Z/full/chains_eval_enriched.jsonl`
+- **Manifest**: `artifacts/conversations_multi_turn/20251107T134304Z/full/manifest.json`
+- **Analytics report**: `artifacts/conversations_multi_turn/20251107T134304Z/full/report.md`
+- **Verification log**: `artifacts/conversations_multi_turn/20251107T134304Z/full/verification_report.json`
+- **Lint summary**: `artifacts/conversations_multi_turn/20251107T134304Z/full/lint_report.json`
+- **Quality summary**: `artifacts/conversations_multi_turn/20251107T134304Z/full/quality_checks.md`
+
+**Dataset Quality Note**: The eval split has been enriched with detailed expected responses derived from actual tool execution results, improving LLM judge pass rates from 45.7% to 58.7% and providing production-realistic response expectations.
 
 **Complexity Dimensions**: The benchmark measures two orthogonal difficulty axes. *Complex* chains test long-context tracking over 3-segment workflows (8-12 turns) with terminal failures. *Medium* chains test error recovery through mid-chain failures that require reasoning with partial context and handling template references to failed turns. Both dimensions are essential for production-robust agents.
 
