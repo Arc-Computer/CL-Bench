@@ -1,9 +1,0 @@
-{
-  "timestamp": "2025-11-07T01:20:24.309726+00:00",
-  "total_conversations": 1,
-  "successful_runs": 0,
-  "failed_runs": 1,
-  "token_usage": {},
-  "config_path": "configs/atlas/teacher_student.yaml",
-  "conversations_path": "artifacts/conversations_multi_turn/chain_smoke.jsonl"
-}
