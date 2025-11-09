@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import random
-from copy import deepcopy
 import re
 from datetime import date, timedelta
+from copy import deepcopy
 from typing import Any, Dict, List
 from uuid import uuid4
 
@@ -248,6 +248,31 @@ ENTITY_SEEDERS = {
 TOOL_REFERENCE_PATTERN = re.compile(r"^\s*\{\{\s*([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)\s*\}\}\s*$")
 
 
+def _future_close_date(value: Any) -> str:
+    default_date = date.today() + timedelta(days=30)
+    parsed: date | None = None
+    if isinstance(value, str):
+        try:
+            parsed = date.fromisoformat(value)
+        except ValueError:
+            parsed = None
+    elif isinstance(value, date):
+        parsed = value
+    if parsed is None or parsed < date.today():
+        parsed = default_date
+    return parsed.isoformat()
+
+
+def _normalise_probability(value: Any, *, default: float = 45.0) -> float:
+    try:
+        prob_value = float(value)
+    except (TypeError, ValueError):
+        return default
+    if 0 < prob_value <= 1:
+        prob_value *= 100
+    return max(0, min(100, prob_value))
+
+
 def _rewrite_to_templates(
     arguments: Dict[str, Any],
     outputs_registry: Dict[str, int],
@@ -298,32 +323,31 @@ def _apply_tool_defaults(tool_name: str, arguments: Dict[str, Any]) -> Dict[str,
             except (TypeError, ValueError):
                 arguments["amount"] = float(random.randint(8000, 25000))
 
-        close_date_raw = arguments.get("close_date")
-        next_month = date.today() + timedelta(days=30)
-        parsed_date: date | None = None
-        if isinstance(close_date_raw, str):
-            try:
-                parsed_date = date.fromisoformat(close_date_raw)
-            except ValueError:
-                parsed_date = None
-        elif isinstance(close_date_raw, date):
-            parsed_date = close_date_raw
-        if parsed_date is None or parsed_date < date.today():
-            parsed_date = next_month
-        arguments["close_date"] = parsed_date.isoformat()
-
+        arguments["close_date"] = _future_close_date(arguments.get("close_date"))
         probability = arguments.get("probability")
-        if probability is None:
-            arguments["probability"] = 45
-        else:
-            try:
-                prob_value = max(0, min(100, float(probability)))
-            except (TypeError, ValueError):
-                prob_value = 45.0
-            arguments["probability"] = prob_value
+        arguments["probability"] = _normalise_probability(probability) if probability is not None else 45
 
         if not arguments.get("owner"):
             arguments["owner"] = "AE Team"
+    elif tool_name == "modify_opportunity":
+        if "close_date" in arguments:
+            arguments["close_date"] = _future_close_date(arguments["close_date"])
+        if "probability" in arguments:
+            arguments["probability"] = _normalise_probability(arguments["probability"])
+    elif tool_name == "create_quote":
+        if "status" not in arguments or not arguments["status"]:
+            arguments["status"] = "Draft"
+        arguments["valid_until"] = _future_close_date(arguments.get("valid_until"))
+        if "amount" in arguments:
+            try:
+                amt = float(arguments["amount"])
+            except (TypeError, ValueError):
+                amt = random.randint(5000, 25000)
+            if amt <= 0:
+                amt = random.randint(5000, 25000)
+            arguments["amount"] = float(amt)
+        else:
+            arguments["amount"] = float(random.randint(5000, 25000))
 
     return arguments
 
@@ -331,6 +355,7 @@ def _apply_tool_defaults(tool_name: str, arguments: Dict[str, Any]) -> Dict[str,
 def _ensure_seed_values(
     tool_name: str,
     arguments: Dict[str, Any],
+    turn_index: int,
     *,
     api: MockCrmApi,
     seed_data: Dict[str, Dict[str, Dict[str, Any]]],
@@ -341,6 +366,10 @@ def _ensure_seed_values(
             continue
         value = arguments[field]
         if isinstance(value, str) and value.startswith("{{"):
+            alias_map = alias_registry.setdefault(entity_type, {})
+            resolved = alias_map.get(value)
+            if resolved:
+                arguments[field] = resolved
             continue
         alias_map = alias_registry.setdefault(entity_type, {})
         alias_key = str(value) if value else None
@@ -365,7 +394,14 @@ def _ensure_seed_values(
             actual_id = seeder(api, seed_data, {})
             alias_map[entity_id or actual_id] = actual_id
             arguments["entity_id"] = actual_id
-    _seed_search_fixture(tool_name, arguments, api=api, seed_data=seed_data)
+    _seed_search_fixture(
+        tool_name,
+        arguments,
+        turn_index=turn_index,
+        api=api,
+        seed_data=seed_data,
+        alias_registry=alias_registry,
+    )
     return arguments
 
 
@@ -373,8 +409,10 @@ def _seed_search_fixture(
     tool_name: str,
     arguments: Dict[str, Any],
     *,
+    turn_index: int,
     api: MockCrmApi,
     seed_data: Dict[str, Dict[str, Dict[str, Any]]],
+    alias_registry: Dict[str, Dict[str, str]],
 ) -> None:
     entity_name = SEARCH_TOOL_ENTITY.get(tool_name)
     if not entity_name:
@@ -388,7 +426,18 @@ def _seed_search_fixture(
         if isinstance(value, str) and value.startswith("{{"):
             continue
         seed_overrides[key] = value
-    seeder(api, seed_data, seed_overrides)
+    if entity_name == "Opportunity":
+        seed_overrides["close_date"] = _future_close_date(seed_overrides.get("close_date"))
+
+    entity_id = seeder(api, seed_data, seed_overrides)
+    if not isinstance(entity_id, str):
+        return
+
+    output_fields = TOOL_OUTPUT_FIELDS.get(tool_name, ())
+    alias_map = alias_registry.setdefault(entity_name, {})
+    for field in output_fields:
+        placeholder = f"{{{{turn_{turn_index}.{field}}}}}"
+        alias_map.setdefault(placeholder, entity_id)
 
 
 def _extract_turn_text(conversation_payload: Dict[str, Any], index: int, role: str) -> str:
@@ -420,10 +469,26 @@ def records_to_conversations(records: List[Dict]) -> List[Conversation]:
         processed_arguments: List[Dict[str, Any]] = []
         for idx, (plan_step, arg_entry) in enumerate(zip(plan, arg_payloads), start=1):
             args = deepcopy(arg_entry["arguments"])
+            references = arg_entry.get("references") or {}
+            for field, ref_spec in references.items():
+                if not isinstance(ref_spec, dict):
+                    continue
+                if field in args and args[field]:
+                    continue
+                source_turn = ref_spec.get("from_step")
+                output_field = ref_spec.get("output_field")
+                if not source_turn or not output_field:
+                    continue
+                try:
+                    turn_ref = int(source_turn)
+                except (TypeError, ValueError):
+                    continue
+                args[field] = f"{{{{turn_{turn_ref}.{output_field}}}}}"
             args = _rewrite_to_templates(args, outputs_registry, tool_output_turns)
             args = _ensure_seed_values(
                 plan_step["tool_name"],
                 args,
+                turn_index=idx,
                 api=api,
                 seed_data=seed_data,
                 alias_registry=alias_registry,

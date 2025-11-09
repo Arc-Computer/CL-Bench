@@ -54,7 +54,7 @@ def _normalize_tool_name(raw: str) -> str:
 WORKFLOW_JSON_EXAMPLE = json.dumps(
     {
         "task": "CREATE NEW CLIENT",
-        "rationale": "Ensure the client does not already exist, then create it, then verify persistence.",
+        "rationale": "Ensure the client does not already exist, collect the right metadata, create the record, and verify downstream consumers.",
         "success_path": [
             {
                 "tool_name": "client_search",
@@ -73,6 +73,18 @@ WORKFLOW_JSON_EXAMPLE = json.dumps(
                 "arguments_needed": ["name"],
                 "description": "Confirm the newly created client is discoverable.",
                 "validation_hints": "Should return the client_id produced earlier."
+            },
+            {
+                "tool_name": "create_new_contact",
+                "arguments_needed": ["first_name", "last_name", "email", "client_id"],
+                "description": "Seed an executive contact tied to the new client.",
+                "validation_hints": "client_id must reference the prior step; email must be unique."
+            },
+            {
+                "tool_name": "contact_search",
+                "arguments_needed": ["client_id"],
+                "description": "Verify the contact can be retrieved for follow-up tasks.",
+                "validation_hints": "Should return the contact_id created above."
             },
         ],
         "failure_checks": [
@@ -158,8 +170,8 @@ Typical customer phrasing:
 
 Related sub-actions: {sub_actions}
 
-Instructions:
-- Return 2-4 steps in the success path, each referencing a CRM tool from this allowlist: {allowed_tools_text} (use exact snake_case names).
+        Instructions:
+- Return 5-8 ordered steps in the success path, each referencing a CRM tool from this allowlist: {allowed_tools_text} (use exact snake_case names). Plans with fewer than 5 steps are invalid.
 - Add at least one failure check to catch schema violations (missing FK, invalid enum, etc.).
 - Prefer minimum-token descriptions that still capture the constraint.
 {retry_note}
