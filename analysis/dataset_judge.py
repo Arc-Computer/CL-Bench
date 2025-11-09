@@ -10,7 +10,7 @@ import re
 from collections import Counter, defaultdict
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Literal, Mapping, MutableMapping, Optional, Sequence, Tuple
 
 from dotenv import load_dotenv
 
@@ -171,6 +171,7 @@ def run_dataset_judge(
     model: str,
     start_index: int = 0,
     limit: Optional[int] = None,
+    backend: Literal["mock", "postgres"] = "mock",
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     subset = conversations[start_index:]
     if limit is not None:
@@ -199,7 +200,7 @@ def run_dataset_judge(
         complexity_counter[sanitized.complexity_level] += 1
 
         try:
-            harness = ConversationHarness([sanitized], use_llm_judge=False)
+            harness = ConversationHarness([sanitized], use_llm_judge=False, backend=backend)
             harness_result = harness.run()[0]
         except Exception as exc:
             summary["conversation_errors"] += 1
@@ -303,6 +304,12 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, default=Path("artifacts/qa"), help="Directory to store QA outputs")
     parser.add_argument("--limit", type=int, help="Optional maximum number of conversations to evaluate")
     parser.add_argument("--start", type=int, default=0, help="Index to start evaluation from (default: 0)")
+    parser.add_argument(
+        "--backend",
+        choices=["mock", "postgres"],
+        default="mock",
+        help="CRM backend used for harness replay.",
+    )
     args = parser.parse_args()
 
     conversations = load_conversations_from_jsonl(args.dataset)
@@ -311,6 +318,7 @@ def main() -> None:
         model=args.model,
         start_index=args.start,
         limit=args.limit,
+        backend=args.backend,
     )
 
     timestamp = dt.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")

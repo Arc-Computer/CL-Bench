@@ -8,9 +8,10 @@ import os
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Literal, Mapping, Optional, Sequence, Union
 
 from src.conversation_schema import Conversation, ConversationResult, ConversationTurn
+from src.crm_backend import DatabaseConfig, PostgresCrmBackend
 from src.crm_sandbox import MockCrmApi
 from src.evaluation.agents import AgentTurnContext, ConversationAgent, MockAgent
 from src.evaluation.llm_judge import LLMJudge
@@ -21,9 +22,41 @@ from src.generation.conversation_generator import (
     _extract_reference_payload,
     _get_entity_builder,
 )
+from enum import Enum
 from src.reference_resolver import TemplateResolutionError, resolve_template
 
 logger = logging.getLogger(__name__)
+
+POSTGRES_ENTITY_COLUMN_MAP: Dict[str, tuple[str, tuple[str, ...]]] = {
+    "Client": (
+        "clients",
+        ("client_id", "name", "email", "status", "industry", "phone", "address", "owner"),
+    ),
+    "Contact": (
+        "contacts",
+        ("contact_id", "first_name", "last_name", "title", "email", "phone", "client_id", "notes"),
+    ),
+    "Opportunity": (
+        "opportunities",
+        ("opportunity_id", "client_id", "name", "stage", "amount", "close_date", "owner", "probability", "notes"),
+    ),
+    "Quote": (
+        "quotes",
+        ("quote_id", "opportunity_id", "version", "amount", "status", "valid_until", "quote_prefix"),
+    ),
+    "Contract": (
+        "contracts",
+        ("contract_id", "client_id", "opportunity_id", "start_date", "end_date", "value", "status", "document_url"),
+    ),
+    "Document": (
+        "documents",
+        ("document_id", "entity_type", "entity_id", "file_name", "uploaded_by", "file_url"),
+    ),
+    "Note": (
+        "notes",
+        ("note_id", "entity_type", "entity_id", "content", "created_by"),
+    ),
+}
 
 
 @dataclass
@@ -101,10 +134,14 @@ class ConversationHarness:
         output_path: Optional[Path] = None,
         agent: Optional[ConversationAgent] = None,
         use_llm_judge: bool = True,
+        backend: Literal["mock", "postgres"] = "mock",
+        db_config: Optional[DatabaseConfig] = None,
     ) -> None:
         self._conversations = list(conversations)
         self._agent: ConversationAgent = agent or MockAgent()
         self._output_path = output_path
+        self._backend_mode = backend
+        self._db_config = db_config
         self._judge: Optional[LLMJudge] = None
         if use_llm_judge:
             api_key = os.getenv("OPENAI_API_KEY")
@@ -165,103 +202,109 @@ class ConversationHarness:
     # ------------------------------------------------------------------
     def _run_single_regular(self, conversation: Conversation) -> ConversationResult:
         """Execute a regular (non-chained) conversation without failing fast."""
-        api = MockCrmApi()
-        self._seed_backend(api, conversation.initial_entities)
+        api = self._create_backend()
+        try:
+            self._seed_backend(api, conversation.initial_entities)
 
-        per_turn: List[Dict[str, Any]] = []
-        previous_turn_outputs: Dict[int, Dict[str, Any]] = {}
-        executed_turns: Dict[int, Dict[str, Any]] = {}
-        first_failed_turn: Optional[int] = None
+            per_turn: List[Dict[str, Any]] = []
+            previous_turn_outputs: Dict[int, Dict[str, Any]] = {}
+            executed_turns: Dict[int, Dict[str, Any]] = {}
+            first_failed_turn: Optional[int] = None
 
-        for turn in conversation.turns:
-            outcome = self._process_turn_with_judge(
+            for turn in conversation.turns:
+                outcome = self._process_turn_with_judge(
+                    conversation=conversation,
+                    api=api,
+                    turn=turn,
+                    segment_number=1,
+                    previous_turn_outputs=previous_turn_outputs,
+                    executed_turns=executed_turns,
+                    conversation_history=per_turn,
+                )
+                per_turn.append(outcome.record)
+
+                if not outcome.success and first_failed_turn is None and turn.expect_success:
+                    first_failed_turn = turn.turn_id
+
+            return build_regular_conversation_result(
                 conversation=conversation,
-                api=api,
-                turn=turn,
-                segment_number=1,
-                previous_turn_outputs=previous_turn_outputs,
-                executed_turns=executed_turns,
-                conversation_history=per_turn,
+                per_turn=per_turn,
+                first_failed_turn=first_failed_turn,
+                judge_enabled=self._judge is not None,
+                agent_provider=self._agent.provider_name,
+                agent_model=self._agent.model_name,
             )
-            per_turn.append(outcome.record)
-
-            if not outcome.success and first_failed_turn is None and turn.expect_success:
-                first_failed_turn = turn.turn_id
-
-        return build_regular_conversation_result(
-            conversation=conversation,
-            per_turn=per_turn,
-            first_failed_turn=first_failed_turn,
-            judge_enabled=self._judge is not None,
-            agent_provider=self._agent.provider_name,
-            agent_model=self._agent.model_name,
-        )
+        finally:
+            self._teardown_backend(api)
 
     # ------------------------------------------------------------------
     def _run_single_chain(self, conversation: Conversation) -> ConversationResult:
         """Execute a chained conversation while collecting per-segment metrics."""
-        api = MockCrmApi()
-        self._seed_backend(api, conversation.initial_entities)
+        api = self._create_backend()
+        try:
+            self._seed_backend(api, conversation.initial_entities)
 
-        segment_boundaries = conversation.segment_boundaries or []
-        if not segment_boundaries:
-            raise ValueError(
-                f"Chained conversation {conversation.conversation_id} is missing segment boundaries."
-            )
+            segment_boundaries = conversation.segment_boundaries or []
+            if not segment_boundaries:
+                raise ValueError(
+                    f"Chained conversation {conversation.conversation_id} is missing segment boundaries."
+                )
 
-        segment_meta_lookup: Dict[int, Mapping[str, Any]] = {}
-        for item in conversation.cumulative_context.get("segment_summaries", []):
-            if not isinstance(item, Mapping):
-                continue
-            number = item.get("segment_number") or item.get("segment_id")
-            if number is None:
-                continue
-            segment_meta_lookup[int(number)] = item
+            segment_meta_lookup: Dict[int, Mapping[str, Any]] = {}
+            for item in conversation.cumulative_context.get("segment_summaries", []):
+                if not isinstance(item, Mapping):
+                    continue
+                number = item.get("segment_number") or item.get("segment_id")
+                if number is None:
+                    continue
+                segment_meta_lookup[int(number)] = item
 
-        per_turn: List[Dict[str, Any]] = []
-        previous_turn_outputs: Dict[int, Dict[str, Any]] = {}
-        executed_turns: Dict[int, Dict[str, Any]] = {}
-        first_failed_turn: Optional[int] = None
+            per_turn: List[Dict[str, Any]] = []
+            previous_turn_outputs: Dict[int, Dict[str, Any]] = {}
+            executed_turns: Dict[int, Dict[str, Any]] = {}
+            first_failed_turn: Optional[int] = None
 
-        def _segment_for_turn(turn_id: int) -> int:
-            for index, boundary in enumerate(segment_boundaries):
-                if turn_id <= boundary:
-                    return index + 1
-            return len(segment_boundaries)
+            def _segment_for_turn(turn_id: int) -> int:
+                for index, boundary in enumerate(segment_boundaries):
+                    if turn_id <= boundary:
+                        return index + 1
+                return len(segment_boundaries)
 
-        for turn in conversation.turns:
-            segment_number = _segment_for_turn(turn.turn_id)
-            outcome = self._process_turn_with_judge(
+            for turn in conversation.turns:
+                segment_number = _segment_for_turn(turn.turn_id)
+                outcome = self._process_turn_with_judge(
+                    conversation=conversation,
+                    api=api,
+                    turn=turn,
+                    segment_number=segment_number,
+                    previous_turn_outputs=previous_turn_outputs,
+                    executed_turns=executed_turns,
+                    conversation_history=per_turn,
+                )
+                per_turn.append(outcome.record)
+
+                if not outcome.success and first_failed_turn is None and turn.expect_success:
+                    first_failed_turn = turn.turn_id
+
+            return build_chain_conversation_result(
                 conversation=conversation,
-                api=api,
-                turn=turn,
-                segment_number=segment_number,
-                previous_turn_outputs=previous_turn_outputs,
-                executed_turns=executed_turns,
-                conversation_history=per_turn,
+                per_turn=per_turn,
+                first_failed_turn=first_failed_turn,
+                segment_boundaries=segment_boundaries,
+                segment_meta_lookup=segment_meta_lookup,
+                judge_enabled=self._judge is not None,
+                agent_provider=self._agent.provider_name,
+                agent_model=self._agent.model_name,
             )
-            per_turn.append(outcome.record)
-
-            if not outcome.success and first_failed_turn is None and turn.expect_success:
-                first_failed_turn = turn.turn_id
-
-        return build_chain_conversation_result(
-            conversation=conversation,
-            per_turn=per_turn,
-            first_failed_turn=first_failed_turn,
-            segment_boundaries=segment_boundaries,
-            segment_meta_lookup=segment_meta_lookup,
-            judge_enabled=self._judge is not None,
-            agent_provider=self._agent.provider_name,
-            agent_model=self._agent.model_name,
-        )
+        finally:
+            self._teardown_backend(api)
 
     # ------------------------------------------------------------------
     def _process_turn_with_judge(
         self,
         *,
         conversation: Conversation,
-        api: MockCrmApi,
+        api: Union[MockCrmApi, PostgresCrmBackend],
         turn: ConversationTurn,
         previous_turn_outputs: Dict[int, Dict[str, Any]],
         executed_turns: Dict[int, Dict[str, Any]],
@@ -550,10 +593,27 @@ class ConversationHarness:
         return TurnProcessOutcome(record=record, success=combined_success)
 
     # ------------------------------------------------------------------
+    def _create_backend(self) -> Union[MockCrmApi, PostgresCrmBackend]:
+        if self._backend_mode == "postgres":
+            config = self._db_config or DatabaseConfig.from_env()
+            backend = PostgresCrmBackend(config)
+            backend.begin_session(reset=True)
+            return backend
+        return MockCrmApi()
+
     @staticmethod
-    def _seed_backend(api: MockCrmApi, initial_entities: Mapping[str, Any]) -> None:
+    def _teardown_backend(api: Union[MockCrmApi, PostgresCrmBackend]) -> None:
+        if isinstance(api, PostgresCrmBackend):
+            api.rollback_session()
+            api.close()
+
+    @staticmethod
+    def _seed_backend(api: Union[MockCrmApi, PostgresCrmBackend], initial_entities: Mapping[str, Any]) -> None:
         seed_data = initial_entities.get("seed_data") if isinstance(initial_entities, Mapping) else None
-        if not seed_data:
+        if not seed_data and not isinstance(api, PostgresCrmBackend):
+            return
+        if isinstance(api, PostgresCrmBackend):
+            ConversationHarness._seed_postgres_backend(api, seed_data or {})
             return
 
         first_client_id: Optional[str] = None
@@ -573,6 +633,50 @@ class ConversationHarness:
                 fallback_client = metadata.get("client_id") or first_client_id
                 model = builder(entity_id, metadata, fallback_client)
                 store[entity_id] = model
+
+    @staticmethod
+    def _seed_postgres_backend(api: PostgresCrmBackend, seed_data: Mapping[str, Any]) -> None:
+        if not seed_data:
+            return
+        first_client_id: Optional[str] = None
+        for entity_type in ENTITY_TYPE_ORDER:
+            entity_records = seed_data.get(entity_type, {})
+            if not entity_records:
+                continue
+            builder = _get_entity_builder(entity_type)
+            if builder is None:
+                continue
+            for entity_id, metadata in entity_records.items():
+                fallback_client = metadata.get("client_id") or first_client_id
+                model = builder(entity_id, metadata, fallback_client)
+                ConversationHarness._insert_entity_postgres(api, entity_type, model)
+                if entity_type == "Client" and first_client_id is None:
+                    first_client_id = entity_id
+
+    @staticmethod
+    def _insert_entity_postgres(api: PostgresCrmBackend, entity_type: str, model: Any) -> None:
+        mapping = POSTGRES_ENTITY_COLUMN_MAP.get(entity_type)
+        if not mapping:
+            return
+        table, columns = mapping
+        payload = model.model_dump()
+        params: Dict[str, Any] = {}
+        for column in columns:
+            value = payload.get(column)
+            if isinstance(value, Enum):
+                value = value.value
+            params[column] = value
+        if entity_type == "Opportunity" and params.get("probability") is not None:
+            try:
+                params["probability"] = int(float(params["probability"]))
+            except (TypeError, ValueError):
+                params["probability"] = None
+        query = (
+            f"INSERT INTO {table} ({', '.join(columns)}) "
+            f"VALUES ({', '.join('%({})s'.format(col) for col in columns)}) "
+            f"ON CONFLICT ({columns[0]}) DO NOTHING;"
+        )
+        api._execute(query, params)
 
     def _write_results(self, results: Iterable[ConversationResult]) -> None:
         output_path = Path(self._output_path)

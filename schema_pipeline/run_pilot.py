@@ -16,6 +16,12 @@ def main() -> None:
     parser.add_argument("--save", action="store_true", help="Persist the combined batch to artifacts/schema_pipeline.")
     parser.add_argument("--suffix", type=str, default="pilot", help="Suffix for saved artifacts if --save is set.")
     parser.add_argument("--disable-harness-judge", action="store_true", help="Skip the harness LLM judge (default enabled).")
+    parser.add_argument(
+        "--backend",
+        choices=["mock", "postgres"],
+        default="mock",
+        help="CRM backend used by ConversationHarness.",
+    )
     args = parser.parse_args()
 
     load_dotenv(dotenv_path=Path(".env"))
@@ -29,6 +35,7 @@ def main() -> None:
     harness = ConversationHarness(
         conversations,
         use_llm_judge=not args.disable_harness_judge,
+        backend=args.backend,
     )
     results = harness.run()
 

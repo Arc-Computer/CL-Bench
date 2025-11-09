@@ -5,9 +5,10 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import asdict, dataclass, field, is_dataclass
-from typing import Any, Dict, List, Mapping, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Union
 
 from src.conversation_schema import Conversation, ConversationResult, ConversationTurn
+from src.crm_backend import PostgresCrmBackend
 from src.crm_sandbox import MockCrmApi
 from src.evaluation.conversation_harness import (
     ConversationHarness,
@@ -50,7 +51,7 @@ class ConversationSession:
     session_id: str
     conversation: Conversation
     harness: ConversationHarness
-    api: MockCrmApi
+    api: Union[MockCrmApi, PostgresCrmBackend]
     dataset_revision: Optional[str]
     agent_config: Dict[str, Any]
     use_llm_judge: bool
@@ -62,6 +63,7 @@ class ConversationSession:
     segment_boundaries: Sequence[int] = field(default_factory=list)
     segment_meta_lookup: Mapping[int, Mapping[str, Any]] = field(default_factory=dict)
     conversation_result: Optional[ConversationResult] = None
+    _backend_torn_down: bool = field(default=False, init=False)
 
     def __post_init__(self) -> None:
         ConversationHarness._seed_backend(self.api, self.conversation.initial_entities)
@@ -144,12 +146,24 @@ class ConversationSession:
             )
 
         self.conversation_result = result
+        self._teardown_backend()
         return result
 
     def run_full_conversation(self) -> ConversationResult:
         while len(self.per_turn_records) < len(self.conversation.turns):
             self.execute_turn(len(self.per_turn_records) + 1)
         return self.finalize()
+
+    def _teardown_backend(self) -> None:
+        if not self._backend_torn_down:
+            self.harness._teardown_backend(self.api)  # type: ignore[attr-defined]
+            self._backend_torn_down = True
+
+    def __del__(self) -> None:  # pragma: no cover - defensive cleanup
+        try:
+            self._teardown_backend()
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------
     def _segment_number(self, turn_id: int) -> Optional[int]:
@@ -182,8 +196,14 @@ def _build_session(session_id: str, task_payload: Mapping[str, Any]) -> Conversa
     agent_config = dict(task_payload.get("agent_config") or {})
     agent = build_conversation_agent(agent_config)
     use_llm_judge = bool(task_payload.get("use_llm_judge", True))
-    harness = ConversationHarness([conversation], agent=agent, use_llm_judge=use_llm_judge)
-    api = MockCrmApi()
+    backend_mode = str(task_payload.get("backend", "mock"))
+    harness = ConversationHarness(
+        [conversation],
+        agent=agent,
+        use_llm_judge=use_llm_judge,
+        backend=backend_mode if backend_mode in {"mock", "postgres"} else "mock",
+    )
+    api = harness._create_backend()  # type: ignore[attr-defined]
 
     return ConversationSession(
         session_id=session_id,
@@ -207,6 +227,9 @@ def _get_session(session_id: str, task_payload: Mapping[str, Any]) -> Conversati
 
 
 def _reset_session(session_id: str, task_payload: Mapping[str, Any]) -> ConversationSession:
+    old_session = _SESSION_CACHE.get(session_id)
+    if old_session is not None:
+        old_session._teardown_backend()
     session = _build_session(session_id, task_payload)
     _SESSION_CACHE[session_id] = session
     return session

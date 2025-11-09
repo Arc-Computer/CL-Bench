@@ -48,6 +48,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Disable the LLM judge (semantic validation only).",
     )
+    parser.add_argument(
+        "--backend",
+        choices=["mock", "postgres"],
+        default="mock",
+        help="CRM backend used for execution.",
+    )
     return parser.parse_args()
 
 
@@ -89,6 +95,7 @@ def main() -> int:
         output_path=args.output,
         agent=agent,
         use_llm_judge=not args.no_judge,
+        backend=args.backend,
     )
     results = harness.run()
     successes = sum(1 for result in results if result.overall_success)
