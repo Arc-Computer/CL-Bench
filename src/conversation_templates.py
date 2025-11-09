@@ -950,6 +950,10 @@ WORKFLOW_CHAINS: Dict[str, WorkflowChain] = {
     "clone_expansion_failure": CHAIN_CLONE_EXPANSION_FAILURE,
 }
 
+CHAIN_ID_TO_KEY: Dict[str, str] = {
+    chain.chain_id: key for key, chain in WORKFLOW_CHAINS.items()
+}
+
 CHAIN_ALIAS_MAP: Dict[str, List[str]] = {
     "onboarding_pipeline_contract": [
         "onboarding_pipeline_contract_success",
@@ -1008,6 +1012,8 @@ def expand_chain_ids(requested_keys: Sequence[str]) -> List[str]:
             expanded.extend(variants)
         elif key in WORKFLOW_CHAINS:
             expanded.append(key)
+        elif key in CHAIN_ID_TO_KEY:
+            expanded.append(CHAIN_ID_TO_KEY[key])
         else:
             raise KeyError(f"Unknown workflow chain key '{key}'.")
 

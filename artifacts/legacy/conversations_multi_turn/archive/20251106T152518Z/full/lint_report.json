@@ -1,0 +1,187 @@
+{
+  "duplicate_utterance_count": 36,
+  "duplicate_utterances": [
+    {
+      "conversation_id": "CHAIN-003B-0039",
+      "turn_id": 6,
+      "user_utterance": "Can you find the client named Tech and check if they're still a prospect?"
+    },
+    {
+      "conversation_id": "CHAIN-004A-0000",
+      "turn_id": 9,
+      "user_utterance": "Find me all prospects with 'tech' in their name."
+    },
+    {
+      "conversation_id": "CHAIN-004A-0001",
+      "turn_id": 9,
+      "user_utterance": "Find me all prospects with 'tech' in their name."
+    },
+    {
+      "conversation_id": "CHAIN-004A-0002",
+      "turn_id": 9,
+      "user_utterance": "Find me all prospects with 'tech' in their name."
+    },
+    {
+      "conversation_id": "CHAIN-004A-0007",
+      "turn_id": 9,
+      "user_utterance": "Find me all prospects with 'tech' in their name."
+    },
+    {
+      "conversation_id": "CHAIN-004A-0009",
+      "turn_id": 9,
+      "user_utterance": "Find me all prospects with 'tech' in their name."
+    },
+    {
+      "conversation_id": "CHAIN-004A-0010",
+      "turn_id": 9,
+      "user_utterance": "Find me all prospects with 'tech' in their name."
+    },
+    {
+      "conversation_id": "CHAIN-004A-0012",
+      "turn_id": 9,
+      "user_utterance": "Find me all prospects with 'tech' in their name."
+    },
+    {
+      "conversation_id": "CHAIN-004A-0015",
+      "turn_id": 9,
+      "user_utterance": "Find me all prospects with 'tech' in their name."
+    },
+    {
+      "conversation_id": "CHAIN-004A-0028",
+      "turn_id": 9,
+      "user_utterance": "Find me all prospects with 'tech' in their name."
+    },
+    {
+      "conversation_id": "CHAIN-004A-0030",
+      "turn_id": 9,
+      "user_utterance": "Find me all prospects with 'tech' in their name."
+    },
+    {
+      "conversation_id": "CHAIN-004A-0034",
+      "turn_id": 9,
+      "user_utterance": "Find me all prospects with 'tech' in their name."
+    },
+    {
+      "conversation_id": "CHAIN-004A-0035",
+      "turn_id": 9,
+      "user_utterance": "Find me all prospects with 'tech' in their name."
+    },
+    {
+      "conversation_id": "CHAIN-004A-0040",
+      "turn_id": 9,
+      "user_utterance": "Find me all prospects with 'tech' in their name."
+    },
+    {
+      "conversation_id": "CHAIN-004A-0042",
+      "turn_id": 9,
+      "user_utterance": "Find me all prospects with 'tech' in their name."
+    },
+    {
+      "conversation_id": "CHAIN-004A-0043",
+      "turn_id": 9,
+      "user_utterance": "Find me all prospects with 'tech' in their name."
+    },
+    {
+      "conversation_id": "CHAIN-004A-0044",
+      "turn_id": 9,
+      "user_utterance": "Find me all prospects with 'tech' in their name."
+    },
+    {
+      "conversation_id": "CHAIN-004B-0001",
+      "turn_id": 8,
+      "user_utterance": "Find me all prospects with 'tech' in their name."
+    },
+    {
+      "conversation_id": "CHAIN-004B-0003",
+      "turn_id": 8,
+      "user_utterance": "Find me all prospects with 'tech' in their name."
+    },
+    {
+      "conversation_id": "CHAIN-004B-0007",
+      "turn_id": 8,
+      "user_utterance": "Find me all prospects with 'tech' in their name."
+    },
+    {
+      "conversation_id": "CHAIN-004B-0011",
+      "turn_id": 8,
+      "user_utterance": "Find me all prospects with 'tech' in their name."
+    },
+    {
+      "conversation_id": "CHAIN-004B-0016",
+      "turn_id": 8,
+      "user_utterance": "Find me all prospects with 'tech' in their name."
+    },
+    {
+      "conversation_id": "CHAIN-004B-0019",
+      "turn_id": 8,
+      "user_utterance": "Find me all prospects with 'tech' in their name."
+    },
+    {
+      "conversation_id": "CHAIN-004B-0020",
+      "turn_id": 8,
+      "user_utterance": "Find me all prospects with 'tech' in their name."
+    },
+    {
+      "conversation_id": "CHAIN-004B-0025",
+      "turn_id": 8,
+      "user_utterance": "Find me all prospects with 'tech' in their name."
+    },
+    {
+      "conversation_id": "CHAIN-004B-0028",
+      "turn_id": 8,
+      "user_utterance": "Find me all prospects with 'tech' in their name."
+    },
+    {
+      "conversation_id": "CHAIN-004B-0033",
+      "turn_id": 8,
+      "user_utterance": "Find me all prospects with 'tech' in their name."
+    },
+    {
+      "conversation_id": "CHAIN-004B-0034",
+      "turn_id": 8,
+      "user_utterance": "Find me all prospects with 'tech' in their name."
+    },
+    {
+      "conversation_id": "CHAIN-004B-0035",
+      "turn_id": 8,
+      "user_utterance": "Find me all prospects with 'tech' in their name."
+    },
+    {
+      "conversation_id": "CHAIN-005A-0021",
+      "turn_id": 9,
+      "user_utterance": "Find me the client named Tech who is currently a prospect."
+    },
+    {
+      "conversation_id": "CHAIN-005B-0014",
+      "turn_id": 11,
+      "user_utterance": "Update that opportunity to reflect the latest negotiation details."
+    },
+    {
+      "conversation_id": "CHAIN-005B-0016",
+      "turn_id": 11,
+      "user_utterance": "Update that opportunity to reflect the latest negotiation details."
+    },
+    {
+      "conversation_id": "CHAIN-005B-0020",
+      "turn_id": 9,
+      "user_utterance": "Find me the client named Tech who's still a prospect."
+    },
+    {
+      "conversation_id": "CHAIN-005B-0020",
+      "turn_id": 11,
+      "user_utterance": "Update that opportunity to reflect the latest negotiation details."
+    },
+    {
+      "conversation_id": "CHAIN-005B-0022",
+      "turn_id": 10,
+      "user_utterance": "Create a new opportunity for TechVision Inc with a value of $131,000 and set it to the qualification stage."
+    },
+    {
+      "conversation_id": "CHAIN-005B-0029",
+      "turn_id": 9,
+      "user_utterance": "Find me a client with the name tech who is currently a prospect."
+    }
+  ],
+  "name_conflict_count": 0,
+  "name_conflicts": []
+}

@@ -220,8 +220,19 @@ class ScenarioRepository:
                 raise ValueError("Task weights CSV is empty.")
 
             try:
-                task_index = header.index("Task Description")
-                count_index = header.index("Count")
+                normalized_header = {
+                    (column or "").strip().lower(): index for index, column in enumerate(header)
+                }
+
+                def _find_index(*candidates: str) -> int:
+                    for candidate in candidates:
+                        normalized = candidate.strip().lower()
+                        if normalized in normalized_header:
+                            return normalized_header[normalized]
+                    raise ValueError
+
+                task_index = _find_index("Task Description", "task_description")
+                count_index = _find_index("Count", "count")
             except ValueError as exc:
                 raise ValueError("Task weights CSV missing required columns.") from exc
 

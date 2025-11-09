@@ -1,0 +1,182 @@
+{
+  "duplicate_utterance_count": 6,
+  "duplicate_utterances": [
+    {
+      "conversation_id": "CHAIN-004A-0003",
+      "turn_id": 9,
+      "user_utterance": "Find me prospects with 'tech' in their name."
+    },
+    {
+      "conversation_id": "CHAIN-004A-0007",
+      "turn_id": 9,
+      "user_utterance": "Find me prospects with 'tech' in their name."
+    },
+    {
+      "conversation_id": "CHAIN-004A-0010",
+      "turn_id": 9,
+      "user_utterance": "Find me prospects with 'tech' in their name."
+    },
+    {
+      "conversation_id": "CHAIN-004A-0017",
+      "turn_id": 9,
+      "user_utterance": "Find me prospects with 'tech' in their name."
+    },
+    {
+      "conversation_id": "CHAIN-004B-0001",
+      "turn_id": 8,
+      "user_utterance": "Find me prospects with 'tech' in their name."
+    },
+    {
+      "conversation_id": "CHAIN-004B-0007",
+      "turn_id": 8,
+      "user_utterance": "Find me prospects with 'tech' in their name."
+    }
+  ],
+  "name_conflict_count": 12,
+  "name_conflicts": [
+    {
+      "conversation_id": "CHAIN-002B-0000",
+      "turn_id": 4,
+      "tool": "create_new_opportunity",
+      "entity_type": "Client",
+      "entity_id": "075f99cd-17b5-4556-8b0f-1b68928dcfa6",
+      "canonical_name": "Williams Group",
+      "conflicting_names": [
+        "techvision inc"
+      ],
+      "user_utterance": "Create a new opportunity for TechVision Inc with a proposal stage and a value of $330,000."
+    },
+    {
+      "conversation_id": "CHAIN-002B-0001",
+      "turn_id": 4,
+      "tool": "create_new_opportunity",
+      "entity_type": "Client",
+      "entity_id": "075f99cd-17b5-4556-8b0f-1b68928dcfa6",
+      "canonical_name": "Williams Group",
+      "conflicting_names": [
+        "techvision inc"
+      ],
+      "user_utterance": "Create a new opportunity for TechVision Inc with a proposal stage and a value of $330,000."
+    },
+    {
+      "conversation_id": "CHAIN-002B-0002",
+      "turn_id": 4,
+      "tool": "create_new_opportunity",
+      "entity_type": "Client",
+      "entity_id": "075f99cd-17b5-4556-8b0f-1b68928dcfa6",
+      "canonical_name": "Williams Group",
+      "conflicting_names": [
+        "techvision inc"
+      ],
+      "user_utterance": "Create a new opportunity for TechVision Inc with a proposal stage and a value of $330,000."
+    },
+    {
+      "conversation_id": "CHAIN-002B-0003",
+      "turn_id": 4,
+      "tool": "create_new_opportunity",
+      "entity_type": "Client",
+      "entity_id": "075f99cd-17b5-4556-8b0f-1b68928dcfa6",
+      "canonical_name": "Williams Group",
+      "conflicting_names": [
+        "techvision inc"
+      ],
+      "user_utterance": "Create a new opportunity for TechVision Inc with a proposal stage and a value of $330,000."
+    },
+    {
+      "conversation_id": "CHAIN-002B-0004",
+      "turn_id": 4,
+      "tool": "create_new_opportunity",
+      "entity_type": "Client",
+      "entity_id": "075f99cd-17b5-4556-8b0f-1b68928dcfa6",
+      "canonical_name": "Williams Group",
+      "conflicting_names": [
+        "techvision inc"
+      ],
+      "user_utterance": "Create a new opportunity for TechVision Inc with a proposal stage and a value of $330,000."
+    },
+    {
+      "conversation_id": "CHAIN-002B-0005",
+      "turn_id": 4,
+      "tool": "create_new_opportunity",
+      "entity_type": "Client",
+      "entity_id": "075f99cd-17b5-4556-8b0f-1b68928dcfa6",
+      "canonical_name": "Williams Group",
+      "conflicting_names": [
+        "techvision inc"
+      ],
+      "user_utterance": "Create a new opportunity for TechVision Inc with a proposal stage and a value of $330,000."
+    },
+    {
+      "conversation_id": "CHAIN-002B-0006",
+      "turn_id": 4,
+      "tool": "create_new_opportunity",
+      "entity_type": "Client",
+      "entity_id": "075f99cd-17b5-4556-8b0f-1b68928dcfa6",
+      "canonical_name": "Williams Group",
+      "conflicting_names": [
+        "techvision inc"
+      ],
+      "user_utterance": "Create a new opportunity for TechVision Inc with a proposal stage and a value of $330,000."
+    },
+    {
+      "conversation_id": "CHAIN-002B-0007",
+      "turn_id": 4,
+      "tool": "create_new_opportunity",
+      "entity_type": "Client",
+      "entity_id": "075f99cd-17b5-4556-8b0f-1b68928dcfa6",
+      "canonical_name": "Williams Group",
+      "conflicting_names": [
+        "techvision inc"
+      ],
+      "user_utterance": "Create a new opportunity for TechVision Inc with a proposal stage and a value of $330,000."
+    },
+    {
+      "conversation_id": "CHAIN-002B-0008",
+      "turn_id": 4,
+      "tool": "create_new_opportunity",
+      "entity_type": "Client",
+      "entity_id": "075f99cd-17b5-4556-8b0f-1b68928dcfa6",
+      "canonical_name": "Williams Group",
+      "conflicting_names": [
+        "techvision inc"
+      ],
+      "user_utterance": "Create a new opportunity for TechVision Inc with a proposal stage and a value of $330,000."
+    },
+    {
+      "conversation_id": "CHAIN-002B-0009",
+      "turn_id": 4,
+      "tool": "create_new_opportunity",
+      "entity_type": "Client",
+      "entity_id": "075f99cd-17b5-4556-8b0f-1b68928dcfa6",
+      "canonical_name": "Williams Group",
+      "conflicting_names": [
+        "techvision inc"
+      ],
+      "user_utterance": "Create a new opportunity for TechVision Inc with a proposal stage and a value of $330,000."
+    },
+    {
+      "conversation_id": "CHAIN-002B-0010",
+      "turn_id": 4,
+      "tool": "create_new_opportunity",
+      "entity_type": "Client",
+      "entity_id": "075f99cd-17b5-4556-8b0f-1b68928dcfa6",
+      "canonical_name": "Williams Group",
+      "conflicting_names": [
+        "techvision inc"
+      ],
+      "user_utterance": "Create a new opportunity for TechVision Inc with a proposal stage and a value of $330,000."
+    },
+    {
+      "conversation_id": "CHAIN-002B-0011",
+      "turn_id": 4,
+      "tool": "create_new_opportunity",
+      "entity_type": "Client",
+      "entity_id": "075f99cd-17b5-4556-8b0f-1b68928dcfa6",
+      "canonical_name": "Williams Group",
+      "conflicting_names": [
+        "techvision inc"
+      ],
+      "user_utterance": "Create a new opportunity for TechVision Inc with a proposal stage and a value of $330,000."
+    }
+  ]
+}

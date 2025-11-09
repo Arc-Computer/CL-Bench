@@ -1,0 +1,325 @@
+{
+  "tables": {
+    "Client": {
+      "description": "Accounts and prospects tracked by the revenue team.",
+      "properties": {
+        "address": {
+          "type": "string"
+        },
+        "client_id": {
+          "type": "string"
+        },
+        "created_date": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "email": {
+          "format": "email",
+          "type": "string"
+        },
+        "industry": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        },
+        "phone": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "Active",
+            "Prospect",
+            "Inactive"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "client_id",
+        "name"
+      ]
+    },
+    "Company": {
+      "description": "Reference companies (partners/vendors/competitors).",
+      "properties": {
+        "address": {
+          "type": "string"
+        },
+        "company_id": {
+          "type": "string"
+        },
+        "contacts": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "industry": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "Partner",
+            "Vendor",
+            "Competitor"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "company_id",
+        "name"
+      ]
+    },
+    "Contact": {
+      "description": "People associated with a client who can be engaged.",
+      "properties": {
+        "client_id": {
+          "type": "string"
+        },
+        "contact_id": {
+          "type": "string"
+        },
+        "email": {
+          "format": "email",
+          "type": "string"
+        },
+        "first_name": {
+          "type": "string"
+        },
+        "last_name": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "string"
+        },
+        "phone": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "contact_id",
+        "first_name",
+        "last_name",
+        "client_id"
+      ]
+    },
+    "Contract": {
+      "description": "Executed agreements for a client or opportunity.",
+      "properties": {
+        "client_id": {
+          "type": "string"
+        },
+        "contract_id": {
+          "type": "string"
+        },
+        "document_url": {
+          "format": "uri",
+          "type": "string"
+        },
+        "end_date": {
+          "format": "date",
+          "type": "string"
+        },
+        "opportunity_id": {
+          "type": "string"
+        },
+        "start_date": {
+          "format": "date",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "Active",
+            "Pending",
+            "Expired"
+          ],
+          "type": "string"
+        },
+        "value": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "contract_id",
+        "client_id"
+      ]
+    },
+    "Document": {
+      "description": "Files uploaded against another CRM record.",
+      "properties": {
+        "document_id": {
+          "type": "string"
+        },
+        "entity_id": {
+          "type": "string"
+        },
+        "entity_type": {
+          "enum": [
+            "Opportunity",
+            "Contract",
+            "Quote",
+            "Client"
+          ],
+          "type": "string"
+        },
+        "file_name": {
+          "type": "string"
+        },
+        "file_url": {
+          "format": "uri",
+          "type": "string"
+        },
+        "uploaded_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "uploaded_by": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_id",
+        "entity_type",
+        "entity_id"
+      ]
+    },
+    "Note": {
+      "description": "Internal collaboration notes linked to CRM records.",
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "created_by": {
+          "type": "string"
+        },
+        "entity_id": {
+          "type": "string"
+        },
+        "entity_type": {
+          "enum": [
+            "Opportunity",
+            "Client",
+            "Contact",
+            "Quote",
+            "Contract"
+          ],
+          "type": "string"
+        },
+        "note_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "note_id",
+        "entity_type",
+        "entity_id",
+        "content"
+      ]
+    },
+    "Opportunity": {
+      "description": "Sales pipeline records tied to a client.",
+      "properties": {
+        "amount": {
+          "type": "number"
+        },
+        "client_id": {
+          "type": "string"
+        },
+        "close_date": {
+          "format": "date",
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "string"
+        },
+        "opportunity_id": {
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        },
+        "probability": {
+          "maximum": 100,
+          "minimum": 0,
+          "type": "number"
+        },
+        "stage": {
+          "enum": [
+            "Prospecting",
+            "Qualification",
+            "Proposal",
+            "Negotiation",
+            "Closed-Won",
+            "Closed-Lost"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "opportunity_id",
+        "name",
+        "client_id"
+      ]
+    },
+    "Quote": {
+      "description": "Pricing proposals generated for a given opportunity.",
+      "properties": {
+        "amount": {
+          "type": "number"
+        },
+        "created_date": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "opportunity_id": {
+          "type": "string"
+        },
+        "quote_id": {
+          "type": "string"
+        },
+        "quote_prefix": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "Draft",
+            "Sent",
+            "Approved",
+            "Rejected",
+            "Canceled"
+          ],
+          "type": "string"
+        },
+        "valid_until": {
+          "format": "date",
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "quote_id",
+        "opportunity_id"
+      ]
+    }
+  }
+}

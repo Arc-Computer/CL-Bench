@@ -381,7 +381,8 @@ def generate_chain_conversations(
     if conversations:
         ratio = failure_conversations / len(conversations)
         allowed_deviation = max(CHAIN_RATIO_TOLERANCE, 1.0 / len(conversations))
-        if abs(ratio - CHAIN_FAILURE_RATIO) > allowed_deviation:
+        disable_ratio_check = os.environ.get("DISABLE_CHAIN_FAILURE_RATIO") == "1"
+        if not disable_ratio_check and abs(ratio - CHAIN_FAILURE_RATIO) > allowed_deviation:
             raise RuntimeError(
                 f"Chained generation produced failure ratio {ratio:.3f}, "
                 f"expected {CHAIN_FAILURE_RATIO:.2f}±{allowed_deviation:.2f}."

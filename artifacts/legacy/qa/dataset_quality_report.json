@@ -1,0 +1,258 @@
+{
+  "summary": {
+    "total_conversations": 486,
+    "total_turns": 4236,
+    "schema_errors_count": 0,
+    "schema_compliant": true,
+    "task_coverage": {
+      "tasks_in_dataset": 12,
+      "tasks_in_csv": 28,
+      "coverage_percentage": 42.857142857142854
+    },
+    "complexity_distribution": {
+      "complex": 398,
+      "medium": 88
+    }
+  },
+  "schema_errors": [],
+  "task_distribution": [
+    {
+      "task": "ADD NOTE",
+      "expected_frequency": 1,
+      "expected_pct": 0.00658718134510243,
+      "actual_count": 224,
+      "actual_pct": 5.288007554296506,
+      "delta_pct": 5.281420372951404
+    },
+    {
+      "task": "CANCEL QUOTE",
+      "expected_frequency": 2,
+      "expected_pct": 0.01317436269020486,
+      "actual_count": 0,
+      "actual_pct": 0.0,
+      "delta_pct": -0.01317436269020486
+    },
+    {
+      "task": "CLIENT SEARCH",
+      "expected_frequency": 192,
+      "expected_pct": 1.2647388182596668,
+      "actual_count": 1108,
+      "actual_pct": 26.156751652502358,
+      "delta_pct": 24.892012834242692
+    },
+    {
+      "task": "CLONE OPPORTUNITY",
+      "expected_frequency": 267,
+      "expected_pct": 1.7587774191423489,
+      "actual_count": 0,
+      "actual_pct": 0.0,
+      "delta_pct": -1.7587774191423489
+    },
+    {
+      "task": "COMPANY SEARCH",
+      "expected_frequency": 8,
+      "expected_pct": 0.05269745076081944,
+      "actual_count": 0,
+      "actual_pct": 0.0,
+      "delta_pct": -0.05269745076081944
+    },
+    {
+      "task": "COMPARE QUOTE DETAILS",
+      "expected_frequency": 1,
+      "expected_pct": 0.00658718134510243,
+      "actual_count": 0,
+      "actual_pct": 0.0,
+      "delta_pct": -0.00658718134510243
+    },
+    {
+      "task": "COMPARE QUOTES",
+      "expected_frequency": 1,
+      "expected_pct": 0.00658718134510243,
+      "actual_count": 262,
+      "actual_pct": 6.185080264400378,
+      "delta_pct": 6.178493083055276
+    },
+    {
+      "task": "CONTACT SEARCH",
+      "expected_frequency": 375,
+      "expected_pct": 2.4701930044134115,
+      "actual_count": 0,
+      "actual_pct": 0.0,
+      "delta_pct": -2.4701930044134115
+    },
+    {
+      "task": "CONTRACT SEARCH",
+      "expected_frequency": 40,
+      "expected_pct": 0.2634872538040972,
+      "actual_count": 0,
+      "actual_pct": 0.0,
+      "delta_pct": -0.2634872538040972
+    },
+    {
+      "task": "CREATE NEW CLIENT",
+      "expected_frequency": 142,
+      "expected_pct": 0.9353797510045451,
+      "actual_count": 0,
+      "actual_pct": 0.0,
+      "delta_pct": -0.9353797510045451
+    },
+    {
+      "task": "CREATE NEW CONTACT",
+      "expected_frequency": 111,
+      "expected_pct": 0.7311771293063698,
+      "actual_count": 224,
+      "actual_pct": 5.288007554296506,
+      "delta_pct": 4.556830424990136
+    },
+    {
+      "task": "CREATE NEW CONTRACT",
+      "expected_frequency": 24,
+      "expected_pct": 0.15809235228245835,
+      "actual_count": 0,
+      "actual_pct": 0.0,
+      "delta_pct": -0.15809235228245835
+    },
+    {
+      "task": "CREATE NEW OPPORTUNITY",
+      "expected_frequency": 3683,
+      "expected_pct": 24.26058889401225,
+      "actual_count": 262,
+      "actual_pct": 6.185080264400378,
+      "delta_pct": -18.075508629611875
+    },
+    {
+      "task": "CREATE QUOTE",
+      "expected_frequency": 1804,
+      "expected_pct": 11.883275146564785,
+      "actual_count": 262,
+      "actual_pct": 6.185080264400378,
+      "delta_pct": -5.698194882164406
+    },
+    {
+      "task": "DELETE OPPORTUNITY",
+      "expected_frequency": 1,
+      "expected_pct": 0.00658718134510243,
+      "actual_count": 0,
+      "actual_pct": 0.0,
+      "delta_pct": -0.00658718134510243
+    },
+    {
+      "task": "DELETE QUOTE",
+      "expected_frequency": 1,
+      "expected_pct": 0.00658718134510243,
+      "actual_count": 0,
+      "actual_pct": 0.0,
+      "delta_pct": -0.00658718134510243
+    },
+    {
+      "task": "MODIFY CLIENT",
+      "expected_frequency": 3,
+      "expected_pct": 0.019761544035307294,
+      "actual_count": 398,
+      "actual_pct": 9.395656279508971,
+      "delta_pct": 9.375894735473665
+    },
+    {
+      "task": "MODIFY CONTACT",
+      "expected_frequency": 2,
+      "expected_pct": 0.01317436269020486,
+      "actual_count": 224,
+      "actual_pct": 5.288007554296506,
+      "delta_pct": 5.274833191606301
+    },
+    {
+      "task": "MODIFY OPPORTUNITY",
+      "expected_frequency": 2939,
+      "expected_pct": 19.359725973256044,
+      "actual_count": 524,
+      "actual_pct": 12.370160528800756,
+      "delta_pct": -6.9895654444552875
+    },
+    {
+      "task": "MODIFY QUOTE",
+      "expected_frequency": 3,
+      "expected_pct": 0.019761544035307294,
+      "actual_count": 262,
+      "actual_pct": 6.185080264400378,
+      "delta_pct": 6.165318720365071
+    },
+    {
+      "task": "OPPORTUNITY DETAILS",
+      "expected_frequency": 6,
+      "expected_pct": 0.03952308807061459,
+      "actual_count": 0,
+      "actual_pct": 0.0,
+      "delta_pct": -0.03952308807061459
+    },
+    {
+      "task": "OPPORTUNITY SEARCH",
+      "expected_frequency": 2279,
+      "expected_pct": 15.012186285488442,
+      "actual_count": 262,
+      "actual_pct": 6.185080264400378,
+      "delta_pct": -8.827106021088063
+    },
+    {
+      "task": "QUOTE DETAILS",
+      "expected_frequency": 1,
+      "expected_pct": 0.00658718134510243,
+      "actual_count": 0,
+      "actual_pct": 0.0,
+      "delta_pct": -0.00658718134510243
+    },
+    {
+      "task": "QUOTE PREFIXES",
+      "expected_frequency": 1,
+      "expected_pct": 0.00658718134510243,
+      "actual_count": 0,
+      "actual_pct": 0.0,
+      "delta_pct": -0.00658718134510243
+    },
+    {
+      "task": "QUOTE SEARCH",
+      "expected_frequency": 32,
+      "expected_pct": 0.21078980304327777,
+      "actual_count": 0,
+      "actual_pct": 0.0,
+      "delta_pct": -0.21078980304327777
+    },
+    {
+      "task": "SUMMARIZE OPPORTUNITIES",
+      "expected_frequency": 194,
+      "expected_pct": 1.2779131809498716,
+      "actual_count": 0,
+      "actual_pct": 0.0,
+      "delta_pct": -1.2779131809498716
+    },
+    {
+      "task": "UPLOAD DOCUMENT",
+      "expected_frequency": 2190,
+      "expected_pct": 14.425927145774322,
+      "actual_count": 224,
+      "actual_pct": 5.288007554296506,
+      "delta_pct": -9.137919591477816
+    },
+    {
+      "task": "VIEW OPPORTUNITY DETAILS",
+      "expected_frequency": 878,
+      "expected_pct": 5.783545220999934,
+      "actual_count": 0,
+      "actual_pct": 0.0,
+      "delta_pct": -5.783545220999934
+    }
+  ],
+  "tool_usage": {
+    "client_search": 1108,
+    "modify_client": 398,
+    "create_new_opportunity": 262,
+    "modify_opportunity": 524,
+    "opportunity_search": 262,
+    "create_quote": 262,
+    "modify_quote": 262,
+    "compare_quotes": 262,
+    "create_new_contact": 224,
+    "modify_contact": 224,
+    "upload_document": 224,
+    "add_note": 224
+  }
+}

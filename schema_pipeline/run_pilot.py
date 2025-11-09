@@ -1,0 +1,41 @@
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+from schema_pipeline import PipelineConfig, SchemaFirstPipeline
+from schema_pipeline.harness_adapter import records_to_conversations
+from src.evaluation.conversation_harness import ConversationHarness
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Run a schema-first pilot through the ConversationHarness.")
+    parser.add_argument("--batch-size", type=int, default=5, help="Number of conversations to sample.")
+    parser.add_argument("--save", action="store_true", help="Persist the combined batch to artifacts/schema_pipeline.")
+    parser.add_argument("--suffix", type=str, default="pilot", help="Suffix for saved artifacts if --save is set.")
+    parser.add_argument("--disable-harness-judge", action="store_true", help="Skip the harness LLM judge (default enabled).")
+    args = parser.parse_args()
+
+    load_dotenv(dotenv_path=Path(".env"))
+
+    pipeline = SchemaFirstPipeline(PipelineConfig())
+    records = pipeline.generate_batch(args.batch_size)
+    if args.save:
+        pipeline.save_batch(records, args.suffix)
+
+    conversations = records_to_conversations(records)
+    harness = ConversationHarness(
+        conversations,
+        use_llm_judge=not args.disable_harness_judge,
+    )
+    results = harness.run()
+
+    successes = sum(1 for result in results if result.overall_success)
+    total = len(results) or 1
+    print(f"Pilot batch complete: {successes}/{len(results)} conversations succeeded ({successes / total:.1%}).")
+
+
+if __name__ == "__main__":
+    main()

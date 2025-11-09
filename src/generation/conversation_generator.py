@@ -556,9 +556,15 @@ def _build_quote(entity_id: str, metadata: Mapping[str, Any], _: Optional[str]) 
         amount = float(amount)
     except (TypeError, ValueError):
         raise ValueError(f"Quote {entity_id} has non-numeric amount metadata: {amount!r}")
+    name = metadata.get("name")
+    if isinstance(name, str):
+        name = name.strip()
+    if not name:
+        name = f"Quote {entity_id[:8]}"
     return Quote(
         quote_id=entity_id,
         opportunity_id=opportunity_id,
+        name=name,
         amount=amount,
         status=status,
     )

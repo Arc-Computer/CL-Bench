@@ -1,0 +1,41 @@
+{
+  "conversations": 20,
+  "turns": 108,
+  "passes": 0,
+  "failures": 108,
+  "conversation_failures": 20,
+  "conversation_errors": 0,
+  "model": "gpt-4.1-mini",
+  "complexity_counts": {
+    "simple": 9,
+    "medium": 2,
+    "complex": 9
+  },
+  "failure_conversations": {
+    "CHAIN-EVAL-20251107T134304Z-0000": 2,
+    "CHAIN-EVAL-20251107T134304Z-0001": 2,
+    "CHAIN-EVAL-20251107T134304Z-0002": 6,
+    "CHAIN-EVAL-20251107T134304Z-0003": 8,
+    "CHAIN-EVAL-20251107T134304Z-0004": 2,
+    "CHAIN-EVAL-20251107T134304Z-0005": 8,
+    "CHAIN-EVAL-20251107T134304Z-0006": 7,
+    "CHAIN-EVAL-20251107T134304Z-0007": 2,
+    "CHAIN-EVAL-20251107T134304Z-0008": 8,
+    "CHAIN-EVAL-20251107T134304Z-0009": 6,
+    "CHAIN-EVAL-20251107T134304Z-0010": 2,
+    "CHAIN-EVAL-20251107T134304Z-0011": 2,
+    "CHAIN-EVAL-20251107T134304Z-0012": 8,
+    "CHAIN-EVAL-20251107T134304Z-0013": 2,
+    "CHAIN-EVAL-20251107T134304Z-0014": 8,
+    "CHAIN-EVAL-20251107T134304Z-0015": 8,
+    "CHAIN-EVAL-20251107T134304Z-0016": 2,
+    "CHAIN-EVAL-20251107T134304Z-0017": 2,
+    "CHAIN-EVAL-20251107T134304Z-0018": 8,
+    "CHAIN-EVAL-20251107T134304Z-0019": 15
+  },
+  "error_conversations": {},
+  "pass_rate": 0.0,
+  "dataset_path": "artifacts/conversations_multi_turn/20251107T134304Z/full/chains_eval.jsonl",
+  "output_dir": "artifacts/qa/final_validation_20251107T112353Z/20251107T162356Z",
+  "timestamp": "20251107T162356Z"
+}

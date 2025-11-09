@@ -1,0 +1,183 @@
+{
+  "metadata": {
+    "total_conversations": 1000,
+    "success_ratio": 0.60,
+    "failure_ratio": 0.40,
+    "source": "Agent_tasks.csv task distribution analysis",
+    "timestamp": "20251107T_FINAL"
+  },
+  "chain_definitions": {
+    "CHAIN-002": {
+      "success_id": "CHAIN-002A",
+      "failure_id": "CHAIN-002B",
+      "workflows": ["client_management", "opportunity_management", "quote_generation"],
+      "description": "Manage existing client, create/modify opportunity, generate quote",
+      "tasks_covered": [
+        "CREATE NEW OPPORTUNITY",
+        "MODIFY OPPORTUNITY",
+        "OPPORTUNITY SEARCH",
+        "CREATE QUOTE",
+        "VIEW OPPORTUNITY DETAILS",
+        "CLONE OPPORTUNITY",
+        "CLIENT SEARCH",
+        "MODIFY CLIENT",
+        "MODIFY QUOTE",
+        "DELETE OPPORTUNITY",
+        "CANCEL QUOTE",
+        "DELETE QUOTE",
+        "QUOTE DETAILS",
+        "QUOTE PREFIXES",
+        "COMPARE QUOTES",
+        "COMPARE QUOTE DETAILS"
+      ],
+      "allocation": 436,
+      "success_count": 262,
+      "failure_count": 174,
+      "weight_percentage": 43.6
+    },
+    "CHAIN-003": {
+      "success_id": "CHAIN-003A",
+      "failure_id": "CHAIN-003B",
+      "workflows": ["contact_management", "document_workflow", "client_management"],
+      "description": "Manage contact, upload documents, add notes",
+      "tasks_covered": [
+        "UPLOAD DOCUMENT",
+        "CONTACT SEARCH",
+        "CREATE NEW CONTACT",
+        "MODIFY CONTACT",
+        "ADD NOTE",
+        "CLIENT SEARCH"
+      ],
+      "allocation": 227,
+      "success_count": 136,
+      "failure_count": 91,
+      "weight_percentage": 22.7
+    },
+    "CHAIN-006": {
+      "success_id": "CHAIN-006A",
+      "failure_id": "CHAIN-006B",
+      "workflows": ["client_management"],
+      "description": "Single-segment client management refresh",
+      "tasks_covered": [
+        "CLIENT SEARCH",
+        "CREATE NEW CLIENT",
+        "MODIFY CLIENT"
+      ],
+      "allocation": 121,
+      "success_count": 73,
+      "failure_count": 48,
+      "weight_percentage": 12.1
+    },
+    "CHAIN-007": {
+      "success_id": "CHAIN-007A",
+      "failure_id": "CHAIN-007B",
+      "workflows": ["contact_management", "document_workflow"],
+      "description": "Contact creation and document workflow",
+      "tasks_covered": [
+        "CREATE NEW CONTACT",
+        "CONTACT SEARCH",
+        "MODIFY CONTACT",
+        "UPLOAD DOCUMENT"
+      ],
+      "allocation": 146,
+      "success_count": 88,
+      "failure_count": 58,
+      "weight_percentage": 14.6
+    },
+    "CHAIN-009": {
+      "success_id": "CHAIN-009A",
+      "failure_id": "CHAIN-009B",
+      "workflows": ["opportunity_summary", "contract_review"],
+      "description": "Summarize pipeline health then review associated contracts",
+      "tasks_covered": [
+        "OPPORTUNITY SEARCH",
+        "SUMMARIZE OPPORTUNITIES",
+        "CONTRACT SEARCH",
+        "CREATE NEW CONTRACT",
+        "VIEW OPPORTUNITY DETAILS",
+        "OPPORTUNITY DETAILS"
+      ],
+      "allocation": 70,
+      "success_count": 42,
+      "failure_count": 28,
+      "weight_percentage": 7.0
+    }
+  },
+  "task_to_chains_map": {
+    "CREATE NEW OPPORTUNITY": ["CHAIN-002"],
+    "MODIFY OPPORTUNITY": ["CHAIN-002"],
+    "OPPORTUNITY SEARCH": ["CHAIN-002", "CHAIN-009"],
+    "UPLOAD DOCUMENT": ["CHAIN-003", "CHAIN-007"],
+    "CREATE QUOTE": ["CHAIN-002"],
+    "VIEW OPPORTUNITY DETAILS": ["CHAIN-002", "CHAIN-009"],
+    "CONTACT SEARCH": ["CHAIN-003", "CHAIN-007"],
+    "CLONE OPPORTUNITY": ["CHAIN-002"],
+    "SUMMARIZE OPPORTUNITIES": ["CHAIN-009"],
+    "CLIENT SEARCH": ["CHAIN-002", "CHAIN-003", "CHAIN-006"],
+    "CREATE NEW CLIENT": ["CHAIN-006"],
+    "CREATE NEW CONTACT": ["CHAIN-003", "CHAIN-007"],
+    "CONTRACT SEARCH": ["CHAIN-009"],
+    "QUOTE SEARCH": ["CHAIN-002"],
+    "CREATE NEW CONTRACT": ["CHAIN-009"],
+    "MODIFY CLIENT": ["CHAIN-002", "CHAIN-006"],
+    "MODIFY CONTACT": ["CHAIN-003", "CHAIN-007"],
+    "ADD NOTE": ["CHAIN-003"],
+    "MODIFY QUOTE": ["CHAIN-002"],
+    "CANCEL QUOTE": ["CHAIN-002"],
+    "DELETE OPPORTUNITY": ["CHAIN-002"],
+    "DELETE QUOTE": ["CHAIN-002"],
+    "QUOTE DETAILS": ["CHAIN-002"],
+    "QUOTE PREFIXES": ["CHAIN-002"],
+    "COMPARE QUOTES": ["CHAIN-002"],
+    "COMPARE QUOTE DETAILS": ["CHAIN-002"],
+    "OPPORTUNITY DETAILS": ["CHAIN-009"]
+  },
+  "generation_plan": {
+    "total_conversations": 1000,
+    "total_success": 601,
+    "total_failure": 399,
+    "chains": [
+      {
+        "chain_id_success": "CHAIN-002A",
+        "chain_id_failure": "CHAIN-002B",
+        "success_count": 262,
+        "failure_count": 174
+      },
+      {
+        "chain_id_success": "CHAIN-003A",
+        "chain_id_failure": "CHAIN-003B",
+        "success_count": 136,
+        "failure_count": 91
+      },
+      {
+        "chain_id_success": "CHAIN-006A",
+        "chain_id_failure": "CHAIN-006B",
+        "success_count": 73,
+        "failure_count": 48
+      },
+      {
+        "chain_id_success": "CHAIN-007A",
+        "chain_id_failure": "CHAIN-007B",
+        "success_count": 88,
+        "failure_count": 58
+      },
+      {
+        "chain_id_success": "CHAIN-009A",
+        "chain_id_failure": "CHAIN-009B",
+        "success_count": 42,
+        "failure_count": 28
+      }
+    ]
+  },
+  "validation_criteria": {
+    "task_coverage_min": 0.95,
+    "failure_ratio_target": 0.40,
+    "failure_ratio_tolerance": 0.05,
+    "turn_length_min": 5,
+    "turn_length_max": 10,
+    "seed_data_execution_failures_max": 0,
+    "empty_expected_responses_max": 0,
+    "judge_pass_rate_min": 0.55,
+    "judge_pass_rate_max": 0.65
+  }
+}
