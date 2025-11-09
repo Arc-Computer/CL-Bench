@@ -12,10 +12,14 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Tuple
 
+from dotenv import load_dotenv
+
 from src.pipeline.scenario_repository import ENTITY_ID_KEYS
 from src.conversation_schema import Conversation
 from src.evaluation.conversation_harness import ConversationHarness, load_conversations_from_jsonl
 from src.evaluation.llm_judge import LLMJudge
+
+load_dotenv()
 
 
 CANONICAL_FIELDS: Mapping[str, Iterable[str]] = {
@@ -253,13 +257,13 @@ def _write_jsonl(path: Path, rows: Iterable[Mapping[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:
         for row in rows:
-            handle.write(json.dumps(row) + "\n")
+            handle.write(json.dumps(row, default=str) + "\n")
 
 
 def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:
-        json.dump(payload, handle, indent=2)
+        json.dump(payload, handle, indent=2, default=str)
 
 
 def _write_readme(path: Path, summary: Mapping[str, Any]) -> None:
