@@ -1,0 +1,66 @@
+agent:
+  type: crm_harness
+  name: crm-benchmark-student
+  system_prompt: |
+    You are the Arc CRM benchmark harness. Execute the ground-truth conversation exactly as specified,
+    using the Postgres backend to enforce production validation rules. Do not invent tool calls.
+  tools: []
+  backend: postgres          # Enforced inside the adapter to guarantee Postgres realism
+  use_llm_judge: true
+
+teacher:
+  llm:
+    provider: openai
+    model: gpt-4.1
+    api_key_env: OPENAI_API_KEY
+    temperature: 0.05
+    max_output_tokens: 2048
+  plan_cache_seconds: 180
+
+student:
+  tool_choice: auto
+  recursion_limit: 1
+
+orchestration:
+  forced_mode: paired        # Disable capability probe; run single-shot + teacher validation at the end
+  max_retries: 0
+
+adaptive_teaching:
+  enabled: false
+
+rim:
+  small_model:
+    provider: gemini
+    model: gemini/gemini-2.5-flash
+    api_key_env: GEMINI_API_KEY
+    max_output_tokens: 1024
+  large_model:
+    provider: gemini
+    model: gemini/gemini-2.5-pro
+    api_key_env: GEMINI_API_KEY
+    max_output_tokens: 1536
+  judge_prompt: |
+    Reward runs that reach the correct CRM state, follow required tools, and stay safe.
+  variance_threshold: 0.15
+  uncertainty_threshold: 0.30
+
+learning:
+  llm:
+    provider: gemini
+    model: gemini/gemini-2.5-flash
+    api_key_env: GEMINI_API_KEY
+    temperature: 0.05
+    max_output_tokens: 4096
+  apply_to_prompts: true
+  gates:
+    enforce_actionability: true
+    enforce_cue: true
+
+storage:
+  database_url: postgresql://atlas:atlas@localhost:5433/atlas
+  min_connections: 1
+  max_connections: 5
+  statement_timeout_seconds: 30
+
+runtime_safety:
+  enable_output_safety: false

@@ -61,16 +61,16 @@ USER REQUEST:
 
 EXPECTED APPROACH (ground truth from dataset):
 Tool: {expected_tool}
-Arguments: {json.dumps(expected_arguments, indent=2)}
+Arguments: {json.dumps(expected_arguments, indent=2, default=str)}
 
 AGENT'S ACTUAL APPROACH:
 Tool: {agent_tool}
-Arguments: {json.dumps(agent_arguments, indent=2)}
-Result: {json.dumps(tool_result) if tool_result is not None else "N/A"}
+Arguments: {json.dumps(agent_arguments, indent=2, default=str)}
+Result: {json.dumps(tool_result, default=str) if tool_result is not None else "N/A"}
 Error: {tool_error or "None"}
 
 RECENT CONVERSATION HISTORY:
-{json.dumps(conversation_history, indent=2)}
+{json.dumps(conversation_history, indent=2, default=str)}
 
 EVALUATION CRITERIA:
 - Did the agent understand the user's intent?
@@ -147,7 +147,7 @@ USER REQUEST:
 {user_utterance}
 
 RECENT CONVERSATION HISTORY:
-{json.dumps(conversation_history, indent=2)}
+{json.dumps(conversation_history, indent=2, default=str)}
 
 GROUND-TRUTH TOOL RESULT:
 {tool_result_json}
@@ -156,7 +156,7 @@ REFERENCE RESPONSE (authoritative guidance):
 {expected_text}
 
 ACCEPTABLE ANSWERS:
-{json.dumps(answers, indent=2)}
+{json.dumps(answers, indent=2, default=str)}
 
 AGENT RESPONSE TO GRADE:
 {agent_response or '[empty response]'}

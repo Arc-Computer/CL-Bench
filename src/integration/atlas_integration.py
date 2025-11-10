@@ -105,6 +105,7 @@ async def _run_single_task(
     task_payload: Dict[str, Any],
     *,
     config_path: Path,
+    run_id: str,
 ) -> Dict[str, Any]:
     if atlas_arun is None:  # pragma: no cover
         raise ImportError(
@@ -120,6 +121,8 @@ async def _run_single_task(
         "workflow_category": conversation_payload.get("workflow_category"),
         "complexity_level": conversation_payload.get("complexity_level"),
         "source": "crm-benchmark",
+        "run_id": run_id,
+        "dataset_revision": task_payload.get("dataset_revision"),
     }
 
     result = await atlas_arun(
@@ -183,8 +186,14 @@ def run_atlas_baseline(
                 "dataset_revision": dataset_revision,
                 "use_llm_judge": use_llm_judge,
                 "agent_config": agent_config,
+                "backend": "postgres",
             }
         )
+
+    tasks_path = atlas_output_dir / "tasks.jsonl"
+    with tasks_path.open("w", encoding="utf-8") as tasks_file:
+        for payload in task_payloads:
+            tasks_file.write(json.dumps(payload, ensure_ascii=False) + "\n")
 
     async def _run_all() -> List[Dict[str, Any]]:
         results: List[Dict[str, Any]] = []
@@ -192,6 +201,7 @@ def run_atlas_baseline(
             result = await _run_single_task(
                 payload,
                 config_path=config_path,
+                run_id=run_id,
             )
             results.append(result)
         return results
@@ -212,7 +222,22 @@ def run_atlas_baseline(
         and record["conversation_result"].get("overall_success")
     )
     failed_runs = len(results) - runs_success
-    token_usage = {}
+    failed_conversations = [
+        record.get("conversation_id")
+        for record in results
+        if not (
+            isinstance(record.get("conversation_result"), Mapping)
+            and record["conversation_result"].get("overall_success")
+        )
+    ]
+
+    token_usage: Dict[str, int] = {}
+    execution_modes: Dict[str, int] = {}
+    adaptive_modes: Dict[str, int] = {}
+    learning_usage_totals: Dict[str, int] = {"cue_hits": 0, "action_adoptions": 0, "failed_adoptions": 0}
+    reward_scores: List[float] = []
+    reward_stats_samples: List[Mapping[str, Any]] = []
+
     for record in results:
         telemetry = record.get("atlas_metadata", {})
         usage = telemetry.get("token_usage", {})
@@ -221,18 +246,58 @@ def run_atlas_baseline(
                 if isinstance(value, (int, float)):
                     token_usage[key] = token_usage.get(key, 0) + int(value)
 
+        mode = telemetry.get("execution_mode")
+        if isinstance(mode, str) and mode:
+            execution_modes[mode] = execution_modes.get(mode, 0) + 1
+
+        adaptive_summary = telemetry.get("adaptive_summary")
+        if isinstance(adaptive_summary, Mapping):
+            adaptive_mode = adaptive_summary.get("adaptive_mode")
+            if isinstance(adaptive_mode, str) and adaptive_mode:
+                adaptive_modes[adaptive_mode] = adaptive_modes.get(adaptive_mode, 0) + 1
+
+        learning_usage = telemetry.get("learning_usage", {}).get("session", {})
+        if isinstance(learning_usage, Mapping):
+            for key in ("cue_hits", "action_adoptions", "failed_adoptions"):
+                value = learning_usage.get(key)
+                if isinstance(value, (int, float)):
+                    learning_usage_totals[key] = learning_usage_totals.get(key, 0) + int(value)
+
+        session_reward = telemetry.get("session_reward")
+        if isinstance(session_reward, Mapping):
+            score = session_reward.get("score")
+            if isinstance(score, (int, float)):
+                reward_scores.append(float(score))
+        reward_stats = telemetry.get("session_reward_stats")
+        if isinstance(reward_stats, Mapping):
+            reward_stats_samples.append(reward_stats)
+
+    reward_summary: Dict[str, Any] = {
+        "count": len(reward_scores),
+        "mean": sum(reward_scores) / len(reward_scores) if reward_scores else None,
+        "min": min(reward_scores) if reward_scores else None,
+        "max": max(reward_scores) if reward_scores else None,
+    }
+
     metrics = {
         "timestamp": timestamp,
         "total_conversations": len(results),
         "atlas_successful_runs": runs_success,
         "harness_successes": harness_success,
         "failed_runs": failed_runs,
+        "failed_conversations": [cid for cid in failed_conversations if cid],
         "token_usage": token_usage,
+        "execution_modes": execution_modes,
+        "adaptive_modes": adaptive_modes,
+        "learning_usage_totals": learning_usage_totals,
+        "reward_summary": reward_summary,
+        "reward_stats_samples": reward_stats_samples,
         "config_path": str(config_path),
         "conversations_path": str(conversations_path),
         "dataset_revision": dataset_revision,
         "run_id": run_id,
         "agent_config": agent_config,
+        "tasks_path": str(tasks_path),
     }
     metrics_path = atlas_output_dir / "metrics.json"
     with metrics_path.open("w", encoding="utf-8") as handle:
@@ -248,18 +313,24 @@ def run_atlas_baseline(
         f"- Dataset revision: `{dataset_revision}`",
         f"- Atlas successes: {runs_success}/{len(results)}",
         f"- Harness successes: {harness_success}/{len(results)}",
+        f"- Tasks file: `{tasks_path}`",
+        f"- Execution modes: {json.dumps(execution_modes)}",
         f"- Token usage: {json.dumps(token_usage)}",
+        f"- Reward mean: {reward_summary.get('mean')}",
     ]
     readme_path.write_text("\n".join(readme) + "\n", encoding="utf-8")
 
     return {
         "sessions_path": str(sessions_path),
         "metrics_path": str(metrics_path),
+        "tasks_path": str(tasks_path),
         "total_conversations": len(results),
         "atlas_successful_runs": runs_success,
         "harness_successes": harness_success,
         "failed_runs": failed_runs,
         "token_usage": token_usage,
+        "execution_modes": execution_modes,
+        "reward_summary": reward_summary,
         "dataset_revision": dataset_revision,
         "run_id": run_id,
     }

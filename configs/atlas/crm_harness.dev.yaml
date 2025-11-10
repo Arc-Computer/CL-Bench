@@ -1,0 +1,62 @@
+# Local smoke-test config that mirrors crm_harness.yaml but disables the LLM judge
+# and limits token budgets for quick validation runs.
+
+agent:
+  type: crm_harness
+  name: crm-benchmark-student-dev
+  system_prompt: |
+    You are the Arc CRM benchmark harness (dev). Execute the ground-truth conversation step-for-step.
+  tools: []
+  backend: postgres
+  use_llm_judge: false
+
+teacher:
+  llm:
+    provider: openai
+    model: gpt-4.1
+    api_key_env: OPENAI_API_KEY
+    temperature: 0.05
+    max_output_tokens: 1024
+
+student:
+  tool_choice: auto
+  recursion_limit: 1
+
+orchestration:
+  forced_mode: paired
+  max_retries: 0
+
+adaptive_teaching:
+  enabled: false
+
+rim:
+  small_model:
+    provider: gemini
+    model: gemini/gemini-2.5-flash
+    api_key_env: GEMINI_API_KEY
+    max_output_tokens: 512
+  large_model:
+    provider: gemini
+    model: gemini/gemini-2.5-flash
+    api_key_env: GEMINI_API_KEY
+    max_output_tokens: 768
+  judge_prompt: "Reward runs that reach the correct CRM state."
+  variance_threshold: 0.2
+  uncertainty_threshold: 0.35
+
+learning:
+  llm:
+    provider: gemini
+    model: gemini/gemini-2.5-flash
+    api_key_env: GEMINI_API_KEY
+    temperature: 0.05
+    max_output_tokens: 2048
+  apply_to_prompts: false
+
+storage:
+  database_url: postgresql://atlas:atlas@localhost:5433/atlas
+  min_connections: 1
+  max_connections: 3
+
+runtime_safety:
+  enable_output_safety: false

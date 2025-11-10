@@ -248,13 +248,13 @@ def _response(**payload: Any) -> str:
     return json.dumps(payload, ensure_ascii=False)
 
 
-def create_conversation_adapter(
-    prompt: Optional[str] = None,
-    metadata: Optional[Dict[str, Any]] = None,
-    **_: Any,
+def handle_crm_adapter_request(
+    *,
+    prompt: Optional[str],
+    metadata: Optional[Dict[str, Any]],
+    backend_override: Optional[str] = None,
+    use_llm_judge_override: Optional[bool] = None,
 ) -> str:
-    """Entry point for the Atlas Python adapter."""
-
     metadata = metadata or {}
     mode = metadata.get("mode")
     execution_mode = metadata.get("execution_mode")
@@ -271,6 +271,11 @@ def create_conversation_adapter(
         task_payload = json.loads(raw_task_payload)
     except json.JSONDecodeError as exc:
         return _response(status="error", error=f"Invalid task_payload JSON: {exc}")
+
+    if backend_override:
+        task_payload["backend"] = backend_override
+    if use_llm_judge_override is not None:
+        task_payload["use_llm_judge"] = use_llm_judge_override
 
     session_id = str(task_payload.get("task_id") or _conversation_id_from_payload(task_payload))
     try:
@@ -335,4 +340,17 @@ def create_conversation_adapter(
         )
 
 
-__all__ = ["create_conversation_adapter"]
+def create_conversation_adapter(
+    prompt: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+    **_: Any,
+) -> str:
+    """Entry point for the legacy Atlas Python adapter."""
+
+    return handle_crm_adapter_request(
+        prompt=prompt,
+        metadata=metadata,
+    )
+
+
+__all__ = ["create_conversation_adapter", "handle_crm_adapter_request"]
