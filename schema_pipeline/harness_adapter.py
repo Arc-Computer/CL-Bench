@@ -6,6 +6,7 @@ import random
 import re
 from datetime import date, timedelta
 from copy import deepcopy
+from datetime import date, datetime
 from typing import Any, Dict, List
 from uuid import uuid4
 
@@ -236,6 +237,16 @@ def _seed_note(api: MockCrmApi, seed_data: Dict[str, Dict[str, Dict[str, Any]]],
     )
     seed_data.setdefault("Note", {})[note.note_id] = note.model_dump()
     return note.note_id
+
+
+def _json_safe(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(v) for v in value]
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    return value
 
 
 ENTITY_SEEDERS = {
@@ -494,49 +505,57 @@ def records_to_conversations(records: List[Dict]) -> List[Conversation]:
             )
             plan = plan[:min_len]
             arg_payloads = arg_payloads[:min_len]
-        outputs_registry: Dict[str, int] = {}
-        tool_output_turns: Dict[str, Dict[str, int]] = {}
-        seed_data: Dict[str, Dict[str, Dict[str, Any]]] = {}
-        alias_registry: Dict[str, Dict[str, str]] = {}
-        api = MockCrmApi()
+        cached_arguments = record.get("_resolved_arguments")
+        cached_seed_data = record.get("seed_data")
 
-        processed_arguments: List[Dict[str, Any]] = []
-        for idx, (plan_step, arg_entry) in enumerate(zip(plan, arg_payloads), start=1):
-            args = deepcopy(arg_entry["arguments"])
-            references = arg_entry.get("references") or {}
-            for field, ref_spec in references.items():
-                if not isinstance(ref_spec, dict):
-                    continue
-                if field in args and args[field]:
-                    continue
-                source_turn = ref_spec.get("from_step")
-                output_field = ref_spec.get("output_field")
-                if not source_turn or not output_field:
-                    continue
-                try:
-                    turn_ref = int(source_turn)
-                except (TypeError, ValueError):
-                    continue
-                args[field] = f"{{{{turn_{turn_ref}.{output_field}}}}}"
-            args = _ensure_seed_values(
-                plan_step["tool_name"],
-                args,
-                turn_index=idx,
-                api=api,
-                seed_data=seed_data,
-                alias_registry=alias_registry,
-            )
-            args = _apply_tool_defaults(plan_step["tool_name"], args)
-            args = canonicalize_tool_arguments(plan_step["tool_name"], args)
-            processed_arguments.append(args)
-            for field_name in TOOL_OUTPUT_FIELDS.get(plan_step["tool_name"], ()):
-                outputs_registry[field_name] = idx
-                tool_output_turns.setdefault(plan_step["tool_name"], {})[field_name] = idx
+        if cached_arguments and len(cached_arguments) == len(plan) and cached_seed_data:
+            processed_arguments = [deepcopy(args) for args in cached_arguments]
+            seed_data = deepcopy(cached_seed_data)
+        else:
+            seed_data = {}
+            alias_registry: Dict[str, Dict[str, str]] = {}
+            api = MockCrmApi()
+            processed_arguments = []
+            for idx, (plan_step, arg_entry) in enumerate(zip(plan, arg_payloads), start=1):
+                args = deepcopy(arg_entry["arguments"])
+                references = arg_entry.get("references") or {}
+                for field, ref_spec in references.items():
+                    if not isinstance(ref_spec, dict):
+                        continue
+                    if field in args and args[field]:
+                        continue
+                    source_turn = ref_spec.get("from_step")
+                    output_field = ref_spec.get("output_field")
+                    if not source_turn or not output_field:
+                        continue
+                    try:
+                        turn_ref = int(source_turn)
+                    except (TypeError, ValueError):
+                        continue
+                    args[field] = f"{{{{turn_{turn_ref}.{output_field}}}}}"
+                args = _ensure_seed_values(
+                    plan_step["tool_name"],
+                    args,
+                    turn_index=idx,
+                    api=api,
+                    seed_data=seed_data,
+                    alias_registry=alias_registry,
+                )
+                args = _apply_tool_defaults(plan_step["tool_name"], args)
+                args = canonicalize_tool_arguments(plan_step["tool_name"], args)
+                processed_arguments.append(args)
+            record["_resolved_arguments"] = [deepcopy(arg) for arg in processed_arguments]
+            record["seed_data"] = _json_safe(seed_data)
 
         turns: List[ConversationTurn] = []
         for idx, (plan_step, args) in enumerate(zip(plan, processed_arguments), start=1):
             user_text = _extract_turn_text(record["conversation"], idx, "user")
             assistant_text = _extract_turn_text(record["conversation"], idx, "assistant")
+            template_text = None
+            assistant_turn = record["conversation"].get("turns", [])
+            expected_index = (idx - 1) * 2 + 1
+            if expected_index < len(assistant_turn):
+                template_text = assistant_turn[expected_index].get("response_template")
             turns.append(
                 ConversationTurn(
                     turn_id=idx,
@@ -544,7 +563,7 @@ def records_to_conversations(records: List[Dict]) -> List[Conversation]:
                     expected_tool=plan_step["tool_name"],
                     expected_args=args,
                     expect_success=True,
-                    expected_response=ExpectedResponse(text=assistant_text),
+                    expected_response=ExpectedResponse(text=template_text or assistant_text),
                 )
             )
 

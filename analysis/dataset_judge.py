@@ -65,7 +65,7 @@ def _judge_turn(
 ) -> Dict[str, Any]:
     user_utterance = turn_result.get("user_utterance", "")
     expected_payload = turn_result.get("expected_response") or {}
-    agent_response = expected_payload.get("text", "") or turn_result.get("agent_response_text", "")
+    agent_response = turn_result.get("agent_response_text") or expected_payload.get("text", "")
     tool_result = turn_result.get("result")
 
     assessment = judge.judge_response(

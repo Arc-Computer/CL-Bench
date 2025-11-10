@@ -410,13 +410,19 @@ class SchemaFirstPipeline:
                 if idx > 0:
                     user_prompt = turns[idx - 1].get("content", "")
 
-                rewritten = self.response_paraphraser.paraphrase(
+                turn_number = assistant_index
+
+                rendered, template = self.response_paraphraser.paraphrase(
                     persona=style_profile,
                     user_utterance=user_prompt,
                     turn_result=turn_result,
+                    turn_number=turn_number,
+                    generate_template=True,
                 )
-                if rewritten:
-                    turn["content"] = rewritten
+                if rendered:
+                    turn["content"] = rendered
+                if template:
+                    turn["response_template"] = template
 
                 tool_call = turn.get("tool_call") or {}
                 tool_call.setdefault("name", turn_result.get("expected_tool") or turn_result.get("tool_name"))

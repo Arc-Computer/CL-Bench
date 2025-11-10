@@ -55,7 +55,8 @@ def resolve_template(
     args: Dict[str, Any],
     previous_turns: Dict[int, Dict[str, Any]],
     turn_number: int,
-    strict: bool = True
+    strict: bool = True,
+    allow_current_turn: bool = False,
 ) -> Dict[str, Any]:
     """Resolve {{turn_N.field}} templates in arguments dictionary.
     
@@ -78,7 +79,7 @@ def resolve_template(
                 field_name = match.group(2)
                 
                 # Validate turn number exists and is before current turn
-                if turn_num >= turn_number:
+                if turn_num > turn_number or (turn_num == turn_number and not allow_current_turn):
                     if strict:
                         raise TemplateResolutionError(
                             f"Template {{turn_{turn_num}.{field_name}}} references "

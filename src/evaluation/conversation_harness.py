@@ -551,6 +551,12 @@ class ConversationHarness:
         expected_response = turn.expected_response
         agent_response_text = (agent_call.response_text or "").strip()
         if agent_response_text:
+            agent_response_text = _resolve_response_text(
+                agent_response_text,
+                previous_turn_outputs,
+                record.get("result"),
+                turn.turn_id,
+            )
             record["agent_response_text"] = agent_response_text
 
         response_success = True
@@ -709,6 +715,28 @@ def _aggregate_token_usage(per_turn: Sequence[Mapping[str, Any]]) -> Dict[str, i
             except (TypeError, ValueError):  # pragma: no cover - defensive guard
                 logger.debug("Ignoring non-numeric token usage entry %r for key %s", value, key)
     return totals if observed else {}
+
+
+def _resolve_response_text(
+    template: str,
+    previous_turns: Mapping[int, Mapping[str, Any]],
+    current_result: Mapping[str, Any] | None,
+    turn_id: int,
+) -> str:
+    if "{{turn_" not in template:
+        return template
+    context = dict(previous_turns)
+    if isinstance(current_result, Mapping):
+        context[turn_id] = current_result
+    resolved = resolve_template(
+        {"text": template},
+        context,
+        turn_number=turn_id,
+        strict=False,
+        allow_current_turn=True,
+    )
+    value = resolved.get("text") if isinstance(resolved, dict) else resolved
+    return value if isinstance(value, str) else template
 
 
 def build_regular_conversation_result(
