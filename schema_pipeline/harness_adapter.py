@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import random
 import re
 from datetime import date, timedelta
@@ -392,7 +393,13 @@ def _ensure_seed_values(
         seeder = ENTITY_SEEDERS.get(entity_type)
         if seeder:
             actual_id = seeder(api, seed_data, {})
-            alias_map[entity_id or actual_id] = actual_id
+            if isinstance(entity_id, str):
+                alias_key = entity_id
+            elif entity_id:
+                alias_key = json.dumps(entity_id, sort_keys=True, default=str)
+            else:
+                alias_key = None
+            alias_map[alias_key or actual_id] = actual_id
             arguments["entity_id"] = actual_id
     _seed_search_fixture(
         tool_name,

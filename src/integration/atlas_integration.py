@@ -32,12 +32,23 @@ except ImportError:  # pragma: no cover - optional dependency
     ExecutionContext = None  # type: ignore
 
 from src.evaluation.conversation_harness import load_conversations_from_jsonl
+from src.integration import atlas_crm_adapter
 from src.integration.atlas_common import conversation_to_payload
 
 
 def _to_primitive(value: Any) -> Any:
     if is_dataclass(value):
         return _to_primitive(asdict(value))
+    if hasattr(value, "model_dump"):
+        try:
+            return _to_primitive(value.model_dump())
+        except Exception:
+            return str(value)
+    if hasattr(value, "dict"):
+        try:
+            return _to_primitive(value.dict())  # type: ignore[call-arg]
+        except Exception:
+            return str(value)
     if isinstance(value, dict):
         return {k: _to_primitive(v) for k, v in value.items()}
     if isinstance(value, list):
@@ -63,10 +74,21 @@ def _extract_atlas_metadata() -> Dict[str, Any]:
         return {}
     if not isinstance(metadata, Mapping):
         return {}
-    try:
-        return json.loads(json.dumps(metadata, default=_to_primitive))
-    except (TypeError, ValueError):
-        return {"raw_metadata": str(metadata)}
+    snapshot: Dict[str, Any] = {}
+    for key in (
+        "session_reward",
+        "session_reward_stats",
+        "session_reward_audit",
+        "token_usage",
+        "execution_mode",
+        "adaptive_summary",
+        "learning_usage",
+        "session_metadata",
+    ):
+        value = metadata.get(key)
+        if value is not None:
+            snapshot[key] = _to_primitive(value)
+    return snapshot
 
 
 def _parse_final_answer(final_answer: Optional[str]) -> Dict[str, Any]:
@@ -125,12 +147,18 @@ async def _run_single_task(
         "dataset_revision": task_payload.get("dataset_revision"),
     }
 
-    result = await atlas_arun(
-        task=json.dumps(task_payload, ensure_ascii=False),
-        config_path=str(config_path),
-        session_metadata=session_metadata,
-        stream_progress=False,
-    )
+    task_pointer = str(task_payload.get("task_id") or f"{run_id}-{uuid.uuid4().hex}")
+    atlas_crm_adapter.register_structured_task(task_pointer, task_payload)
+
+    try:
+        result = await atlas_arun(
+            task=json.dumps({"conversation_pointer": task_pointer}, ensure_ascii=False),
+            config_path=str(config_path),
+            session_metadata=session_metadata,
+            stream_progress=False,
+        )
+    finally:
+        atlas_crm_adapter.release_structured_task(task_pointer)
     metadata = _extract_atlas_metadata()
     final_payload = _parse_final_answer(getattr(result, "final_answer", None))
     raw_result = getattr(result, "model_dump", lambda: None)()

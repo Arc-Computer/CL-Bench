@@ -185,6 +185,25 @@ class ConversationSession:
 
 
 _SESSION_CACHE: Dict[str, ConversationSession] = {}
+_TASK_PAYLOAD_CACHE: Dict[str, Mapping[str, Any]] = {}
+
+
+def register_structured_task(task_pointer: str, payload: Mapping[str, Any]) -> None:
+    _TASK_PAYLOAD_CACHE[task_pointer] = payload
+
+
+def release_structured_task(task_pointer: str) -> None:
+    _TASK_PAYLOAD_CACHE.pop(task_pointer, None)
+
+
+def _resolve_task_payload(raw_payload: Mapping[str, Any]) -> Mapping[str, Any]:
+    if "conversation_pointer" in raw_payload:
+        pointer = str(raw_payload["conversation_pointer"])
+        cached = _TASK_PAYLOAD_CACHE.get(pointer)
+        if cached is None:
+            raise ValueError(f"Conversation payload pointer '{pointer}' is not registered.")
+        return cached
+    return raw_payload
 
 
 def _build_session(session_id: str, task_payload: Mapping[str, Any]) -> ConversationSession:
@@ -248,6 +267,52 @@ def _response(**payload: Any) -> str:
     return json.dumps(payload, ensure_ascii=False)
 
 
+def _compact_turn_record(record: Mapping[str, Any]) -> Dict[str, Any]:
+    keep_fields = [
+        "turn_id",
+        "user_utterance",
+        "tool_name",
+        "arguments",
+        "success",
+        "error",
+        "reasoning",
+        "response_success",
+        "expected_tool",
+        "expect_success",
+        "segment_number",
+        "verification",
+    ]
+    compact: Dict[str, Any] = {}
+    for field in keep_fields:
+        if field in record:
+            compact[field] = record[field]
+    return compact
+
+
+def _compact_conversation_result(result: Mapping[str, Any]) -> Dict[str, Any]:
+    base_fields = [
+        "conversation_id",
+        "overall_success",
+        "turns_executed",
+        "failed_at_turn",
+        "reward_signal",
+        "error_message",
+        "metadata",
+    ]
+    compact: Dict[str, Any] = {}
+    for field in base_fields:
+        if field in result:
+            compact[field] = result[field]
+    per_turn = result.get("per_turn_results")
+    if isinstance(per_turn, Sequence):
+        compact["per_turn_results"] = [
+            _compact_turn_record(item) for item in per_turn if isinstance(item, Mapping)
+        ]
+    else:
+        compact["per_turn_results"] = []
+    return compact
+
+
 def handle_crm_adapter_request(
     *,
     prompt: Optional[str],
@@ -268,9 +333,14 @@ def handle_crm_adapter_request(
         return _response(status="error", error="metadata.task_payload is required for Atlas CRM adapter.")
 
     try:
-        task_payload = json.loads(raw_task_payload)
+        parsed_payload = json.loads(raw_task_payload)
     except json.JSONDecodeError as exc:
         return _response(status="error", error=f"Invalid task_payload JSON: {exc}")
+
+    try:
+        task_payload = _resolve_task_payload(parsed_payload)
+    except ValueError as exc:
+        return _response(status="error", error=str(exc))
 
     if backend_override:
         task_payload["backend"] = backend_override
@@ -306,27 +376,28 @@ def handle_crm_adapter_request(
                 "turn_id": turn_id,
                 "tool_name": turn_record.get("tool_name"),
                 "arguments": turn_record.get("arguments"),
-                "turn_result": turn_record,
+                "turn_result": _compact_turn_record(turn_record),
                 "completed_turns": len(session.per_turn_records),
                 "total_turns": len(session.conversation.turns),
             }
             if session.completed:
                 result = session.finalize()
-                response["conversation_result"] = _to_primitive(result)
+                response["conversation_result"] = _compact_conversation_result(_to_primitive(result))
                 _SESSION_CACHE.pop(session_id, None)
             return _response(**response)
 
         session = _reset_session(session_id, task_payload)
         session.run_full_conversation()
         result = session.finalize()
+        full_turns = [_compact_turn_record(record) for record in session.per_turn_records]
         response = {
             "status": "ok",
             "conversation_id": session.conversation.conversation_id,
             "dataset_revision": session.dataset_revision,
             "agent_config": session.agent_config,
             "use_llm_judge": session.use_llm_judge,
-            "turn_results": list(session.per_turn_records),
-            "conversation_result": _to_primitive(result),
+            "turn_results": full_turns,
+            "conversation_result": _compact_conversation_result(_to_primitive(result)),
             "execution_mode": "single_shot",
         }
         _SESSION_CACHE.pop(session_id, None)
