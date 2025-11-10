@@ -246,6 +246,7 @@ class Opportunity(CRMBaseModel):
     owner: Optional[str] = None
     probability: Optional[float] = Field(default=None, ge=0, le=100)
     notes: Optional[str] = None
+    created_at: Optional[datetime] = None
 
     @field_validator("opportunity_id", mode="before")
     @classmethod

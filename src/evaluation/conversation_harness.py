@@ -24,6 +24,7 @@ from src.generation.conversation_generator import (
 )
 from enum import Enum
 from src.reference_resolver import TemplateResolutionError, resolve_template
+from src.tool_schema import canonicalize_tool_arguments, prepare_execution_arguments
 
 logger = logging.getLogger(__name__)
 
@@ -324,6 +325,8 @@ class ConversationHarness:
                 f"in {conversation.conversation_id}: {exc}"
             ) from exc
 
+        resolved_expected_args = canonicalize_tool_arguments(turn.expected_tool, resolved_expected_args)
+
         context = AgentTurnContext(
             conversation=conversation,
             turn=turn,
@@ -401,7 +404,8 @@ class ConversationHarness:
                 f"of {conversation.conversation_id}: {agent_call.arguments!r}"
             )
 
-        arguments = dict(agent_call.arguments)
+        arguments = canonicalize_tool_arguments(tool_name, agent_call.arguments)
+        execution_arguments = prepare_execution_arguments(tool_name, arguments)
         record: Dict[str, Any] = {
             "turn_id": turn.turn_id,
             "user_utterance": turn.user_utterance,
@@ -432,17 +436,20 @@ class ConversationHarness:
         record["response_judge_used"] = False
         record["response_judge_pass"] = False
 
-        if isinstance(resolved_expected_args, Mapping):
-            arg_match, mismatch_reason = _arguments_match_semantically(arguments, resolved_expected_args)
+        expected_args_canonical = resolved_expected_args
+        record["expected_arguments"] = expected_args_canonical
+
+        if isinstance(expected_args_canonical, Mapping):
+            arg_match, mismatch_reason = _arguments_match_semantically(arguments, expected_args_canonical)
         else:
-            arg_match = arguments == resolved_expected_args
+            arg_match = arguments == expected_args_canonical
             mismatch_reason = None if arg_match else "Arguments did not exactly match expected payload"
         record["matches_expected_arguments"] = arg_match
         if not arg_match and mismatch_reason:
             record["argument_mismatch_reason"] = mismatch_reason
 
         try:
-            result = tool(**arguments)
+            result = tool(**execution_arguments)
             execution_success = True
             record["result"] = _extract_reference_payload(result)
         except Exception as exc:
@@ -683,7 +690,7 @@ class ConversationHarness:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with output_path.open("w", encoding="utf-8") as handle:
             for result in results:
-                handle.write(json.dumps(result.__dict__) + "\n")
+                handle.write(json.dumps(result.__dict__, default=str) + "\n")
 
 
 def _aggregate_token_usage(per_turn: Sequence[Mapping[str, Any]]) -> Dict[str, int]:

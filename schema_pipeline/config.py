@@ -31,5 +31,6 @@ class PipelineConfig:
     tasks_csv: Path = Path("data/Agent_tasks.csv")
     output_dir: Path = Path("artifacts/schema_pipeline")
     max_retries: int = 3
+    argument_regeneration_attempts: int = 3
     viewer_session_id: Optional[str] = None
     gemini: GeminiConfig = field(default_factory=GeminiConfig)

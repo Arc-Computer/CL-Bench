@@ -6,7 +6,10 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import logging
 import re
+import sys
+import time
 from collections import Counter, defaultdict
 from copy import deepcopy
 from pathlib import Path
@@ -177,6 +180,7 @@ def run_dataset_judge(
     if limit is not None:
         subset = subset[:limit]
 
+    total_conversations = len(subset)
     judge = LLMJudge(model=model)
 
     per_turn_records: List[Dict[str, Any]] = []
@@ -193,7 +197,8 @@ def run_dataset_judge(
     conversation_failures: Dict[str, int] = defaultdict(int)
     conversation_errors: Dict[str, str] = {}
 
-    for conversation in subset:
+    start_time = time.time()
+    for idx, conversation in enumerate(subset, start=1):
         conversation_id = conversation.conversation_id
         sanitized = _prepare_conversation(conversation)
         summary["conversations"] += 1
@@ -205,6 +210,7 @@ def run_dataset_judge(
         except Exception as exc:
             summary["conversation_errors"] += 1
             conversation_errors[conversation_id] = str(exc)
+            logging.warning("Conversation %s errored: %s", conversation_id, exc)
             continue
 
         annotations = _resolve_turn_annotations(sanitized)
@@ -244,6 +250,20 @@ def run_dataset_judge(
 
         if failed_turns:
             summary["conversation_failures"] += 1
+
+        if idx % 10 == 0 or idx == total_conversations:
+            elapsed = time.time() - start_time
+            rate = idx / elapsed if elapsed > 0 else 0.0
+            eta = _format_eta((total_conversations - idx) / rate) if rate > 0 else "N/A"
+            logging.info(
+                "Judged %d/%d conversations (%.1f%%). Pass turns: %d, Fail turns: %d. ETA: %s",
+                idx,
+                total_conversations,
+                (idx / total_conversations * 100) if total_conversations else 0.0,
+                summary["passes"],
+                summary["failures"],
+                eta,
+            )
 
     summary["complexity_counts"] = dict(complexity_counter)
     summary["failure_conversations"] = dict(conversation_failures)
@@ -297,7 +317,25 @@ def _write_readme(path: Path, summary: Mapping[str, Any]) -> None:
     path.write_text("\n".join(content) + "\n", encoding="utf-8")
 
 
+def _format_eta(seconds: float) -> str:
+    if seconds == float("inf") or seconds != seconds:
+        return "N/A"
+    seconds = max(0, int(seconds))
+    minutes, secs = divmod(seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours}h {minutes}m {secs}s"
+    if minutes:
+        return f"{minutes}m {secs}s"
+    return f"{secs}s"
+
+
 def main() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s | %(levelname)s | %(message)s",
+        handlers=[logging.StreamHandler(sys.stdout)],
+    )
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset", type=Path, required=True, help="Path to conversations JSONL")
     parser.add_argument("--model", type=str, default="gpt-4.1-mini", help="LLM judge model identifier")

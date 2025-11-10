@@ -28,8 +28,6 @@ def main() -> None:
 
     pipeline = SchemaFirstPipeline(PipelineConfig())
     records = pipeline.generate_batch(args.batch_size)
-    if args.save:
-        pipeline.save_batch(records, args.suffix)
 
     conversations = records_to_conversations(records)
     harness = ConversationHarness(
@@ -38,6 +36,11 @@ def main() -> None:
         backend=args.backend,
     )
     results = harness.run()
+
+    pipeline.rewrite_conversations(records, results)
+
+    if args.save:
+        pipeline.save_batch(records, args.suffix)
 
     successes = sum(1 for result in results if result.overall_success)
     total = len(results) or 1

@@ -73,10 +73,16 @@ class NaturalUtteranceGenerator(curator.LLM):
         tone = style_profile.get("tone", "balanced")
         step_count = max(len(workflow_steps), 2)
         tool_lines = []
-        for arg in arguments:
+        required_facts: List[str] = []
+        for index, arg in enumerate(arguments, start=1):
+            tool_name = arg["tool_name"]
+            tool_args = arg.get("arguments", {})
+            validation = ", ".join(arg.get("validation_notes", []))
             tool_lines.append(
-                f"- {arg['tool_name']}: {arg['arguments']} (checks: {', '.join(arg.get('validation_notes', []))})"
+                f"- {tool_name}: {tool_args} (checks: {validation or 'n/a'})"
             )
+            facts_json = json.dumps(tool_args, ensure_ascii=False)
+            required_facts.append(f"{index}. {tool_name}: {facts_json}")
         retry_note = ""
         if input.get("prompt_variant", 0) > 0:
             retry_note = "\nReturn ONLY the JSON payload described below. Do not include extra narration."
@@ -88,8 +94,15 @@ Tool arguments:
 
 Persona: You are a {persona}. Maintain a {formality} register and a {tone} tone throughout.
 
-Write a conversation with exactly {step_count * 2} turns (user then assistant per step). Each assistant turn must explicitly mention the tool it is invoking and describe the reasoning before the call. When the assistant performs a tool call,
-embed it in the turn as JSON like TOOL:{{"name": "...", "arguments": {{...}}}}. Ensure the tool order matches the workflow steps above.
+Write a conversation with exactly {step_count * 2} turns (user then assistant per step). Each assistant turn must:
+1. Reference the exact tool being executed.
+2. Mention the factual values provided below verbatim (never invent or reuse placeholder IDs if the factual value differs).
+3. Embed the tool call as JSON like TOOL:{{"name": "...", "arguments": {{...}}}} using the provided arguments.
+4. If a field is empty or null, state that explicitly instead of guessing.
+
+Required factual mentions per tool:
+{"\n".join(required_facts) if required_facts else '- none'}
+
 Return JSON payload: {{"turns": [{{"role": "user|assistant", "content": "...", "tool_call": {{...}} }}], "task_name": "...", "summary": "..."}}.{retry_note}
 """.strip()
         return [{"role": "user", "content": user_prompt}]

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import random
 import re
 from datetime import date, timedelta
@@ -11,7 +12,9 @@ from uuid import uuid4
 from src.conversation_schema import Conversation, ConversationTurn, ExpectedResponse
 from src.crm_sandbox import MockCrmApi
 from src.evaluation.verification import VerificationMode, get_task_verification_mode
+from src.tool_schema import canonicalize_tool_arguments
 
+logger = logging.getLogger(__name__)
 TOOL_OUTPUT_FIELDS: Dict[str, tuple[str, ...]] = {
     "client_search": ("client_id",),
     "create_new_client": ("client_id",),
@@ -335,6 +338,12 @@ def _apply_tool_defaults(tool_name: str, arguments: Dict[str, Any]) -> Dict[str,
             arguments["close_date"] = _future_close_date(arguments["close_date"])
         if "probability" in arguments:
             arguments["probability"] = _normalise_probability(arguments["probability"])
+        allowed_update_fields = {"stage", "amount", "close_date", "owner", "probability", "notes"}
+        preserved_fields = {"opportunity_id"}
+        for key in list(arguments.keys()):
+            if key in preserved_fields or key in allowed_update_fields:
+                continue
+            arguments.pop(key, None)
     elif tool_name == "create_quote":
         if "status" not in arguments or not arguments["status"]:
             arguments["status"] = "Draft"
@@ -463,10 +472,28 @@ def _extract_turn_text(conversation_payload: Dict[str, Any], index: int, role: s
 def records_to_conversations(records: List[Dict]) -> List[Conversation]:
     conversations: List[Conversation] = []
     for record in records:
-        plan = record["workflow_plan"]["success_path"]
+        workflow_plan = record["workflow_plan"]
+        if isinstance(workflow_plan, str):
+            try:
+                workflow_plan = json.loads(workflow_plan)
+            except json.JSONDecodeError:
+                logger.warning("Skipping sample %s due to invalid workflow JSON.", record.get("sample_id"))
+                continue
+        plan = workflow_plan.get("success_path") or []
         arg_payloads = deepcopy(record.get("arguments", []))
-        if len(plan) < 2 or len(plan) != len(arg_payloads):
+        if len(plan) < 2:
+            logger.warning("Skipping sample %s because workflow has fewer than 2 steps.", record.get("sample_id"))
             continue
+        if len(plan) != len(arg_payloads):
+            min_len = min(len(plan), len(arg_payloads))
+            logger.warning(
+                "Truncating sample %s due to plan/argument drift (%s vs %s).",
+                record.get("sample_id"),
+                len(plan),
+                len(arg_payloads),
+            )
+            plan = plan[:min_len]
+            arg_payloads = arg_payloads[:min_len]
         outputs_registry: Dict[str, int] = {}
         tool_output_turns: Dict[str, Dict[str, int]] = {}
         seed_data: Dict[str, Dict[str, Dict[str, Any]]] = {}
@@ -491,7 +518,6 @@ def records_to_conversations(records: List[Dict]) -> List[Conversation]:
                 except (TypeError, ValueError):
                     continue
                 args[field] = f"{{{{turn_{turn_ref}.{output_field}}}}}"
-            args = _rewrite_to_templates(args, outputs_registry, tool_output_turns)
             args = _ensure_seed_values(
                 plan_step["tool_name"],
                 args,
@@ -501,6 +527,7 @@ def records_to_conversations(records: List[Dict]) -> List[Conversation]:
                 alias_registry=alias_registry,
             )
             args = _apply_tool_defaults(plan_step["tool_name"], args)
+            args = canonicalize_tool_arguments(plan_step["tool_name"], args)
             processed_arguments.append(args)
             for field_name in TOOL_OUTPUT_FIELDS.get(plan_step["tool_name"], ()):
                 outputs_registry[field_name] = idx
@@ -521,14 +548,22 @@ def records_to_conversations(records: List[Dict]) -> List[Conversation]:
                 )
             )
 
+        scenario_meta = record.get("scenario_metadata") or {}
+        step_hint = scenario_meta.get("complexity_hint")
+        complexity_level = _infer_complexity(step_hint) if isinstance(step_hint, int) and step_hint > 0 else _infer_complexity(len(turns))
+
         verification_mode = get_task_verification_mode(record["task_name"])
         conversations.append(
             Conversation(
                 conversation_id=record["sample_id"],
                 workflow_category=record.get("intent") or record["task_name"],
-                complexity_level=_infer_complexity(len(turns)),
+                complexity_level=complexity_level,
                 turns=turns,
                 initial_entities={"seed_data": seed_data},
+                contains_failure=bool(scenario_meta.get("contains_failure", False)),
+                failure_turn=scenario_meta.get("failure_turn"),
+                chain_id=scenario_meta.get("chain_id"),
+                segment_boundaries=scenario_meta.get("segment_boundaries"),
                 verification_mode=verification_mode if isinstance(verification_mode, VerificationMode) else VerificationMode.UNKNOWN,
                 expected_outcome=record["conversation"].get("summary", ""),
             )
