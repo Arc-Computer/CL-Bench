@@ -84,49 +84,75 @@ class ConversationSession:
         self._guidance_cache = self._retrieve_guidance_from_atlas()
 
     def _retrieve_guidance_from_atlas(self) -> List[str]:
-        """Retrieve learning guidance from Atlas ExecutionContext."""
+        """Retrieve learning guidance from Atlas ExecutionContext.
+        
+        Uses the official Atlas SDK method (resolve_playbook) to retrieve current
+        learning pamphlets, falling back to direct learning_state access if needed.
+        """
         try:
-            # Import Atlas ExecutionContext to access learning history
+            # Import Atlas SDK components
             from atlas.runtime.orchestration.execution_context import ExecutionContext
+            from atlas.learning.playbook import resolve_playbook
 
             context = ExecutionContext.get()
 
-            # Atlas pre-loads learning_history before adapter creation
-            learning_history = context.metadata.get("learning_history", {})
-
-            if not isinstance(learning_history, Mapping):
-                logger.debug("No learning_history found in ExecutionContext")
-                return []
-
-            # Extract student learnings from history entries
             guidance = []
-            entries = learning_history.get("entries", [])
-            if isinstance(entries, Sequence):
-                for entry in entries:
-                    if not isinstance(entry, Mapping):
-                        continue
 
-                    # Prioritize student_learning (more concise)
-                    student_learning = entry.get("student_learning")
+            # Primary: Use resolve_playbook() - the official Atlas SDK method
+            # This reads from execution_context.metadata["learning_state"]["student_learning"]
+            try:
+                playbook, digest, metadata = resolve_playbook("student", apply=True)
+                if playbook and isinstance(playbook, str):
+                    guidance.append(playbook.strip())
+                    logger.debug(
+                        "Retrieved student playbook via resolve_playbook() for conversation %s",
+                        self.conversation.conversation_id
+                    )
+            except Exception as playbook_exc:
+                logger.debug(
+                    "resolve_playbook() failed, falling back to direct access: %s",
+                    playbook_exc
+                )
+
+            # Fallback: Read directly from learning_state if resolve_playbook didn't work
+            if not guidance:
+                learning_state = context.metadata.get("learning_state", {})
+                if isinstance(learning_state, Mapping):
+                    student_learning = learning_state.get("student_learning")
                     if student_learning and isinstance(student_learning, str):
                         guidance.append(student_learning.strip())
-                        continue
+                        logger.debug(
+                            "Retrieved student_learning from learning_state for conversation %s",
+                            self.conversation.conversation_id
+                        )
 
-                    # Fallback to teacher_learning if student is empty
-                    teacher_learning = entry.get("teacher_learning")
-                    if teacher_learning and isinstance(teacher_learning, str):
-                        guidance.append(teacher_learning.strip())
+            # Legacy fallback: Check learning_history for historical entries
+            # (This is less ideal as it contains aggregated historical data, not current pamphlet)
+            if not guidance:
+                learning_history = context.metadata.get("learning_history", {})
+                if isinstance(learning_history, Mapping):
+                    entries = learning_history.get("entries", [])
+                    if isinstance(entries, Sequence):
+                        for entry in entries:
+                            if not isinstance(entry, Mapping):
+                                continue
+                            student_learning = entry.get("student_learning")
+                            if student_learning and isinstance(student_learning, str):
+                                guidance.append(student_learning.strip())
+                                break  # Only take first entry from history
 
             if guidance:
                 logger.info(
-                    "Retrieved %d guidance notes for conversation %s",
+                    "Retrieved %d guidance note(s) for conversation %s",
                     len(guidance),
                     self.conversation.conversation_id
                 )
             else:
                 logger.debug(
-                    "No guidance notes available for conversation %s",
-                    self.conversation.conversation_id
+                    "No guidance notes available for conversation %s (learning_state=%s, learning_history=%s)",
+                    self.conversation.conversation_id,
+                    "learning_state" in context.metadata,
+                    "learning_history" in context.metadata,
                 )
 
             return guidance
