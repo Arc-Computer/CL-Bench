@@ -63,6 +63,32 @@ ENTITY_PRIMARY_KEYS = {
     "Note": "note_id",
 }
 
+_REFERENCE_PATTERN = re.compile(
+    r"step(?P<step>\d+)\.(?:input|output)\.(?P<field>[a-z0-9_]+)",
+    re.IGNORECASE,
+)
+
+
+def _coerce_reference_spec(spec: Any) -> Dict[str, int | str] | None:
+    if isinstance(spec, dict):
+        try:
+            step = int(spec.get("from_step") or spec.get("step"))
+        except (TypeError, ValueError):
+            return None
+        field = spec.get("output_field") or spec.get("field")
+        if not field:
+            return None
+        return {"from_step": step, "output_field": str(field)}
+    if isinstance(spec, str):
+        match = _REFERENCE_PATTERN.fullmatch(spec.strip())
+        if not match:
+            return None
+        return {
+            "from_step": int(match.group("step")),
+            "output_field": match.group("field"),
+        }
+    return None
+
 
 def _infer_complexity(turn_count: int) -> str:
     if turn_count <= 3:
@@ -520,19 +546,10 @@ def records_to_conversations(records: List[Dict]) -> List[Conversation]:
                 args = deepcopy(arg_entry["arguments"])
                 references = arg_entry.get("references") or {}
                 for field, ref_spec in references.items():
-                    if not isinstance(ref_spec, dict):
+                    parsed = _coerce_reference_spec(ref_spec)
+                    if not parsed:
                         continue
-                    if field in args and args[field]:
-                        continue
-                    source_turn = ref_spec.get("from_step")
-                    output_field = ref_spec.get("output_field")
-                    if not source_turn or not output_field:
-                        continue
-                    try:
-                        turn_ref = int(source_turn)
-                    except (TypeError, ValueError):
-                        continue
-                    args[field] = f"{{{{turn_{turn_ref}.{output_field}}}}}"
+                    args[field] = f"{{{{turn_{parsed['from_step']}.{parsed['output_field']}}}}}"
                 args = _ensure_seed_values(
                     plan_step["tool_name"],
                     args,

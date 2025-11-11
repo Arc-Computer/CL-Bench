@@ -16,8 +16,11 @@ TODOs for full Atlas integration (tracked from docs/atlas_integration_plan.md):
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
+import logging
 import subprocess
+import time
 import uuid
 from dataclasses import asdict, is_dataclass
 from datetime import datetime, timezone
@@ -34,6 +37,8 @@ except ImportError:  # pragma: no cover - optional dependency
 from src.evaluation.conversation_harness import load_conversations_from_jsonl
 from src.integration import atlas_crm_adapter
 from src.integration.atlas_common import conversation_to_payload
+
+logger = logging.getLogger(__name__)
 
 
 def _to_primitive(value: Any) -> Any:
@@ -146,6 +151,13 @@ async def _run_single_task(
         "run_id": run_id,
         "dataset_revision": task_payload.get("dataset_revision"),
     }
+    workflow_tag = (conversation_payload.get("workflow_category") or "unknown").strip()
+    complexity_tag = (conversation_payload.get("complexity_level") or "unknown").strip()
+    tags = [tag for tag in {workflow_tag, complexity_tag} if tag]
+    if tags:
+        session_metadata["tags"] = tags
+    learning_seed = f"crm-benchmark::{workflow_tag}::{complexity_tag}"
+    session_metadata["learning_key_override"] = hashlib.sha256(learning_seed.encode("utf-8")).hexdigest()
 
     task_pointer = str(task_payload.get("task_id") or f"{run_id}-{uuid.uuid4().hex}")
     atlas_crm_adapter.register_structured_task(task_pointer, task_payload)
@@ -203,6 +215,14 @@ def run_atlas_baseline(
     run_id = f"{run_timestamp.strftime('%Y%m%dT%H%M%S')}-{uuid.uuid4().hex[:8]}"
     agent_config = {**DEFAULT_AGENT_CONFIG, **dict(agent_overrides or {})}
 
+    total_conversations = len(conversations)
+    logger.info(
+        "Atlas run starting with %d conversations (run_id=%s, dataset=%s)",
+        total_conversations,
+        run_id,
+        conversations_path,
+    )
+
     task_payloads: List[Dict[str, Any]] = []
     for payload in payloads:
         conversation_id = payload.get("conversation_id")
@@ -225,22 +245,56 @@ def run_atlas_baseline(
 
     async def _run_all() -> List[Dict[str, Any]]:
         results: List[Dict[str, Any]] = []
-        for payload in task_payloads:
+        total = len(task_payloads)
+        start_time = time.time()
+        for idx, payload in enumerate(task_payloads, start=1):
+            convo_id = payload.get("conversation", {}).get("conversation_id")
+            logger.info(
+                "Atlas progress %d/%d (%.1f%%) – starting conversation %s",
+                idx,
+                total,
+                (idx / total) * 100.0,
+                convo_id,
+            )
+            task_start = time.time()
             result = await _run_single_task(
                 payload,
                 config_path=config_path,
                 run_id=run_id,
             )
             results.append(result)
+            duration = time.time() - task_start
+            overall = time.time() - start_time
+            rate = idx / overall if overall else 0.0
+            eta = (total - idx) / rate if rate else float("inf")
+            eta_text = (
+                "N/A"
+                if eta == float("inf")
+                else time.strftime("%H:%M:%S", time.gmtime(int(max(0.0, eta))))
+            )
+            logger.info(
+                "Atlas progress %d/%d – finished %s in %.1fs (elapsed %.1fs, ETA %s)",
+                idx,
+                total,
+                convo_id,
+                duration,
+                overall,
+                eta_text,
+            )
         return results
 
     results = asyncio.run(_run_all())
+    logger.info(
+        "Atlas run complete: %d conversations processed. Writing outputs to %s",
+        len(results),
+        atlas_output_dir,
+    )
 
     timestamp = run_timestamp.isoformat()
     sessions_path = atlas_output_dir / "sessions.jsonl"
     with sessions_path.open("w", encoding="utf-8") as handle:
         for record in results:
-            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+            handle.write(json.dumps(_to_primitive(record), ensure_ascii=False) + "\n")
 
     runs_success = sum(1 for record in results if record["final_payload"].get("status") == "ok")
     harness_success = sum(

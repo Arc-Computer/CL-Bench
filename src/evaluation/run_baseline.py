@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import random
 from pathlib import Path
 from typing import List
@@ -58,6 +59,10 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s | %(levelname)s | %(message)s",
+    )
     args = parse_args()
 
     if not args.conversations.exists():

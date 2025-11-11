@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import date, datetime
+from decimal import Decimal
+from uuid import UUID
 from dataclasses import asdict, dataclass, field, is_dataclass
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Union
 
@@ -24,6 +27,12 @@ logger = logging.getLogger(__name__)
 def _to_primitive(value: Any) -> Any:
     if is_dataclass(value):
         return _to_primitive(asdict(value))
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, UUID):
+        return str(value)
+    if isinstance(value, Decimal):
+        return float(value)
     if isinstance(value, dict):
         return {k: _to_primitive(v) for k, v in value.items()}
     if isinstance(value, list):
@@ -64,12 +73,74 @@ class ConversationSession:
     segment_meta_lookup: Mapping[int, Mapping[str, Any]] = field(default_factory=dict)
     conversation_result: Optional[ConversationResult] = None
     _backend_torn_down: bool = field(default=False, init=False)
+    _guidance_cache: List[str] = field(default_factory=list, init=False)
 
     def __post_init__(self) -> None:
         ConversationHarness._seed_backend(self.api, self.conversation.initial_entities)
         self._agent_provider = self.harness._agent.provider_name  # type: ignore[attr-defined]
         self._agent_model = self.harness._agent.model_name  # type: ignore[attr-defined]
         self._judge_enabled = self.harness._judge is not None  # type: ignore[attr-defined]
+        # Retrieve guidance from Atlas learning system
+        self._guidance_cache = self._retrieve_guidance_from_atlas()
+
+    def _retrieve_guidance_from_atlas(self) -> List[str]:
+        """Retrieve learning guidance from Atlas ExecutionContext."""
+        try:
+            # Import Atlas ExecutionContext to access learning history
+            from atlas.runtime.orchestration.execution_context import ExecutionContext
+
+            context = ExecutionContext.get()
+
+            # Atlas pre-loads learning_history before adapter creation
+            learning_history = context.metadata.get("learning_history", {})
+
+            if not isinstance(learning_history, Mapping):
+                logger.debug("No learning_history found in ExecutionContext")
+                return []
+
+            # Extract student learnings from history entries
+            guidance = []
+            entries = learning_history.get("entries", [])
+            if isinstance(entries, Sequence):
+                for entry in entries:
+                    if not isinstance(entry, Mapping):
+                        continue
+
+                    # Prioritize student_learning (more concise)
+                    student_learning = entry.get("student_learning")
+                    if student_learning and isinstance(student_learning, str):
+                        guidance.append(student_learning.strip())
+                        continue
+
+                    # Fallback to teacher_learning if student is empty
+                    teacher_learning = entry.get("teacher_learning")
+                    if teacher_learning and isinstance(teacher_learning, str):
+                        guidance.append(teacher_learning.strip())
+
+            if guidance:
+                logger.info(
+                    "Retrieved %d guidance notes for conversation %s",
+                    len(guidance),
+                    self.conversation.conversation_id
+                )
+            else:
+                logger.debug(
+                    "No guidance notes available for conversation %s",
+                    self.conversation.conversation_id
+                )
+
+            return guidance
+
+        except ImportError:
+            logger.debug("Atlas SDK not available; guidance retrieval disabled")
+            return []
+        except Exception as exc:
+            logger.warning(
+                "Failed to retrieve guidance from Atlas: %s",
+                exc,
+                exc_info=True
+            )
+            return []
 
     # ------------------------------------------------------------------
     def plan_steps(self) -> Dict[str, Any]:
@@ -109,6 +180,7 @@ class ConversationSession:
             executed_turns=self.executed_turns,
             conversation_history=self.per_turn_records,
             segment_number=segment_number,
+            guidance=self._guidance_cache,
         )
         self.per_turn_records.append(outcome.record)
 
@@ -264,7 +336,7 @@ def _conversation_id_from_payload(task_payload: Mapping[str, Any]) -> str:
 
 
 def _response(**payload: Any) -> str:
-    return json.dumps(payload, ensure_ascii=False)
+    return json.dumps(_to_primitive(payload), ensure_ascii=False)
 
 
 def _compact_turn_record(record: Mapping[str, Any]) -> Dict[str, Any]:
@@ -285,7 +357,7 @@ def _compact_turn_record(record: Mapping[str, Any]) -> Dict[str, Any]:
     compact: Dict[str, Any] = {}
     for field in keep_fields:
         if field in record:
-            compact[field] = record[field]
+            compact[field] = _to_primitive(record[field])
     return compact
 
 
@@ -302,7 +374,7 @@ def _compact_conversation_result(result: Mapping[str, Any]) -> Dict[str, Any]:
     compact: Dict[str, Any] = {}
     for field in base_fields:
         if field in result:
-            compact[field] = result[field]
+            compact[field] = _to_primitive(result[field])
     per_turn = result.get("per_turn_results")
     if isinstance(per_turn, Sequence):
         compact["per_turn_results"] = [

@@ -27,7 +27,22 @@ def main() -> None:
     load_dotenv(dotenv_path=Path(".env"))
 
     pipeline = SchemaFirstPipeline(PipelineConfig())
-    records = pipeline.generate_batch(args.batch_size)
+
+    max_attempts = 3
+    records = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            records = pipeline.generate_batch(args.batch_size)
+            break
+        except ValueError as exc:
+            is_alignment_error = "Argument generation failed" in str(exc)
+            if not is_alignment_error or attempt == max_attempts:
+                raise
+            print(
+                f"[run_pilot] Attempt {attempt} failed due to plan/argument misalignment. Retrying "
+                f"({attempt}/{max_attempts})..."
+            )
+    assert records is not None  # for type checkers
 
     conversations = records_to_conversations(records)
     harness = ConversationHarness(

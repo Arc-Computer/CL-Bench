@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import random
+import re
 from uuid import uuid4
 from typing import Any, Dict, List, Optional
 
@@ -32,6 +33,49 @@ STYLE_PRESETS = [
 ]
 
 logger = logging.getLogger(__name__)
+
+_REFERENCE_PATTERN = re.compile(
+    r"step(?P<step>\d+)\.(?:input|output)\.(?P<field>[a-z0-9_]+)",
+    re.IGNORECASE,
+)
+
+
+def _parse_reference_spec(spec: Any) -> Dict[str, int | str] | None:
+    if isinstance(spec, dict):
+        try:
+            step = int(spec.get("from_step") or spec.get("step"))
+        except (TypeError, ValueError):
+            return None
+        field = spec.get("output_field") or spec.get("field")
+        if not field:
+            return None
+        return {"from_step": step, "output_field": str(field)}
+    if isinstance(spec, str):
+        match = _REFERENCE_PATTERN.fullmatch(spec.strip())
+        if not match:
+            return None
+        return {
+            "from_step": int(match.group("step")),
+            "output_field": match.group("field"),
+        }
+    return None
+
+
+def _normalize_argument_entries(entries: List[Dict[str, Any]]) -> None:
+    for entry in entries:
+        references = entry.get("references") or {}
+        if not isinstance(references, dict):
+            continue
+        normalized_refs: Dict[str, Dict[str, int | str]] = {}
+        for field, raw_spec in references.items():
+            parsed = _parse_reference_spec(raw_spec)
+            if not parsed:
+                continue
+            placeholder = f"{{{{turn_{parsed['from_step']}.{parsed['output_field']}}}}}"
+            entry.setdefault("arguments", {})
+            entry["arguments"][field] = placeholder
+            normalized_refs[field] = parsed
+        entry["references"] = normalized_refs
 
 
 class SchemaFirstPipeline:
@@ -268,11 +312,22 @@ class SchemaFirstPipeline:
                 style_value = existing_row.get("style_profile")
             if not style_value:
                 style_value = json.dumps(meta.get("style_profile") or random.choice(STYLE_PRESETS))
+            arguments_payload = row.get("arguments")
+            try:
+                argument_entries = (
+                    json.loads(arguments_payload)
+                    if isinstance(arguments_payload, str)
+                    else list(arguments_payload or [])
+                )
+            except (json.JSONDecodeError, TypeError):
+                argument_entries = []
+            _normalize_argument_entries(argument_entries)
+            normalized_arguments = json.dumps(argument_entries)
             argument_rows.append(
                 {
                     **row,
                     "workflow_plan": row["workflow_plan"],
-                    "arguments": row["arguments"],
+                    "arguments": normalized_arguments,
                     "style_profile": style_value,
                     "intent": meta["intent"],
                     "verification_mode": meta["verification_mode"],

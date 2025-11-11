@@ -159,15 +159,29 @@ class ConversationAgent:
     provider_name: str = "mock"
     model_name: str = "ground_truth"
 
-    def tool_call(self, context: AgentTurnContext) -> AgentToolCall:  # pragma: no cover - interface
-        """Return the tool call that should be executed for ``context.turn``."""
+    def tool_call(
+        self,
+        context: AgentTurnContext,
+        guidance: Optional[List[str]] = None
+    ) -> AgentToolCall:  # pragma: no cover - interface
+        """Return the tool call that should be executed for ``context.turn``.
+
+        Args:
+            context: Turn context with conversation history
+            guidance: Optional list of learning notes from previous sessions
+        """
         raise NotImplementedError
 
 
 class MockAgent(ConversationAgent):
     """Agent that simply replays the ground-truth tool calls from the dataset."""
 
-    def tool_call(self, context: AgentTurnContext) -> AgentToolCall:
+    def tool_call(
+        self,
+        context: AgentTurnContext,
+        guidance: Optional[List[str]] = None
+    ) -> AgentToolCall:
+        # MockAgent ignores guidance and replays ground truth
         turn = context.turn
         response_text = None
         if turn.expected_response:
@@ -211,16 +225,45 @@ class LiteLLMChatAgent(ConversationAgent):
         self._system_prompt = self._build_system_prompt()
 
     # ------------------------------------------------------------------
-    def tool_call(self, context: AgentTurnContext) -> AgentToolCall:
+    def tool_call(
+        self,
+        context: AgentTurnContext,
+        guidance: Optional[List[str]] = None
+    ) -> AgentToolCall:
         messages = [
             {"role": "system", "content": self._system_prompt},
-            {
-                "role": "user",
-                "content": json.dumps(self._build_user_payload(context), ensure_ascii=False),
-            },
         ]
+
+        # Insert guidance from previous learning sessions if available
+        if guidance:
+            guidance_content = self._format_guidance(guidance)
+            messages.append({"role": "system", "content": guidance_content})
+
+        messages.append({
+            "role": "user",
+            "content": json.dumps(self._build_user_payload(context), ensure_ascii=False),
+        })
+
         response = self._invoke_model(messages)
         return self._parse_response(response)
+
+    def _format_guidance(self, guidance: List[str]) -> str:
+        """Format guidance notes into a system message."""
+        if not guidance:
+            return ""
+
+        guidance_lines = []
+        guidance_lines.append("## Previous Learning Notes")
+        guidance_lines.append(
+            "The following insights were learned from previous CRM sessions. "
+            "Apply these lessons to avoid repeating mistakes:"
+        )
+        guidance_lines.append("")
+
+        for idx, note in enumerate(guidance, start=1):
+            guidance_lines.append(f"{idx}. {note}")
+
+        return "\n".join(guidance_lines)
 
     # ------------------------------------------------------------------
     def _build_system_prompt(self) -> str:

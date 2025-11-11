@@ -39,3 +39,6 @@ artifacts/qa/enriched_validation_*/
 
 # Log files
 *.log
+
+# Temporary script archives
+scripts/archive_temp*/

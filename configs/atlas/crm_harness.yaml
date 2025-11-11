@@ -37,7 +37,7 @@ rim:
     provider: openai
     model: gpt-4.1
     api_key_env: OPENAI_API_KEY
-    max_output_tokens: 1024
+    max_output_tokens: 2048
   judge_prompt: |
     Reward runs that reach the correct CRM state, follow required tools, and stay safe.
   variance_threshold: 0.15
@@ -45,11 +45,11 @@ rim:
 
 learning:
   llm:
-    provider: openai
-    model: gpt-4.1-mini
-    api_key_env: OPENAI_API_KEY
+    provider: gemini
+    model: gemini/gemini-2.5-flash
+    api_key_env: GEMINI_API_KEY
     temperature: 0.05
-    max_output_tokens: 2048
+    max_output_tokens: 1024
     timeout_seconds: 60
   history_limit: 5
   apply_to_prompts: true

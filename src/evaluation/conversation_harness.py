@@ -5,10 +5,14 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 import warnings
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, is_dataclass
+from datetime import date, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Literal, Mapping, Optional, Sequence, Union
+from uuid import UUID
 
 from src.conversation_schema import Conversation, ConversationResult, ConversationTurn
 from src.crm_backend import DatabaseConfig, PostgresCrmBackend
@@ -68,6 +72,27 @@ class TurnProcessOutcome:
     success: bool
     expected_failure: bool = False
     error_message: Optional[str] = None
+
+
+def _to_primitive(value: Any) -> Any:
+    """Convert Python objects to JSON-serializable primitives.
+    
+    Recursively converts datetime, UUID, Decimal, and dataclass instances
+    to JSON-safe types (strings, floats, dicts).
+    """
+    if is_dataclass(value):
+        return _to_primitive(asdict(value))
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, UUID):
+        return str(value)
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, dict):
+        return {k: _to_primitive(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_to_primitive(item) for item in value]
+    return value
 
 
 def _arguments_match_semantically(
@@ -158,7 +183,12 @@ class ConversationHarness:
     def run(self) -> List[ConversationResult]:
         """Execute all conversations and return their results."""
         results: List[ConversationResult] = []
-        for conversation in self._conversations:
+        total = len(self._conversations)
+        if total == 0:
+            logger.info("ConversationHarness received zero conversations; nothing to run.")
+            return results
+        start_time = time.time()
+        for index, conversation in enumerate(self._conversations, start=1):
             try:
                 result = self._run_single(conversation)
             except Exception as exc:  # pragma: no cover - logging path
@@ -189,6 +219,24 @@ class ConversationHarness:
                     },
                 )
             results.append(result)
+            if index % 10 == 0 or index == total:
+                elapsed = time.time() - start_time
+                rate = index / elapsed if elapsed else 0.0
+                eta = (total - index) / rate if rate else float("inf")
+                eta_text = (
+                    "N/A"
+                    if eta == float("inf")
+                    else time.strftime("%H:%M:%S", time.gmtime(int(max(0.0, eta))))
+                )
+                logger.info(
+                    "Harness progress %d/%d (%.1f%%). Elapsed %.1fs, ETA %s. Last conversation: %s",
+                    index,
+                    total,
+                    (index / total) * 100.0,
+                    elapsed,
+                    eta_text,
+                    conversation.conversation_id,
+                )
 
         if self._output_path:
             self._write_results(results)
@@ -311,6 +359,52 @@ class ConversationHarness:
         executed_turns: Dict[int, Dict[str, Any]],
         conversation_history: List[Dict[str, Any]],
         segment_number: Optional[int] = None,
+        guidance: Optional[List[str]] = None,
+    ) -> TurnProcessOutcome:
+        """Execute a single turn using semantic validation with an optional LLM judge."""
+        try:
+            return self._process_turn_with_judge_impl(
+                conversation=conversation,
+                api=api,
+                turn=turn,
+                previous_turn_outputs=previous_turn_outputs,
+                executed_turns=executed_turns,
+                conversation_history=conversation_history,
+                segment_number=segment_number,
+                guidance=guidance,
+            )
+        except Exception as exc:
+            # If using Postgres backend and transaction is aborted, rollback and restart
+            if isinstance(api, PostgresCrmBackend):
+                try:
+                    api.rollback_session()
+                    api.begin_session(reset=False)
+                    logger.warning(
+                        "Rolled back and restarted Postgres transaction after error in turn %d of %s: %s",
+                        turn.turn_id,
+                        conversation.conversation_id,
+                        exc,
+                    )
+                except Exception as cleanup_exc:
+                    logger.error(
+                        "Failed to cleanup Postgres transaction after error: %s",
+                        cleanup_exc,
+                        exc_info=True,
+                    )
+            # Re-raise the original exception
+            raise
+
+    def _process_turn_with_judge_impl(
+        self,
+        *,
+        conversation: Conversation,
+        api: Union[MockCrmApi, PostgresCrmBackend],
+        turn: ConversationTurn,
+        previous_turn_outputs: Dict[int, Dict[str, Any]],
+        executed_turns: Dict[int, Dict[str, Any]],
+        conversation_history: List[Dict[str, Any]],
+        segment_number: Optional[int] = None,
+        guidance: Optional[List[str]] = None,
     ) -> TurnProcessOutcome:
         """Execute a single turn using semantic validation with an optional LLM judge."""
         try:
@@ -336,7 +430,7 @@ class ConversationHarness:
         )
 
         try:
-            agent_call = self._agent.tool_call(context)
+            agent_call = self._agent.tool_call(context, guidance=guidance)
         except Exception as exc:  # pragma: no cover - defensive guard
             record: Dict[str, Any] = {
                 "turn_id": turn.turn_id,
@@ -353,7 +447,7 @@ class ConversationHarness:
             if segment_number is not None:
                 record["segment_number"] = segment_number
             return TurnProcessOutcome(
-                record=record,
+                record=_to_primitive(record),
                 success=False,
                 error_message=str(exc),
             )
@@ -393,7 +487,7 @@ class ConversationHarness:
             if segment_number is not None:
                 record["segment_number"] = segment_number
             return TurnProcessOutcome(
-                record=record,
+                record=_to_primitive(record),
                 success=False,
                 error_message=error_message,
             )
@@ -457,6 +551,23 @@ class ConversationHarness:
             error_message = str(exc)
             record["error"] = error_message
 
+            # If using Postgres backend, rollback and restart transaction to allow subsequent turns
+            if isinstance(api, PostgresCrmBackend):
+                try:
+                    api.rollback_session()
+                    api.begin_session(reset=False)
+                    logger.debug(
+                        "Rolled back and restarted Postgres transaction after tool error in turn %d of %s",
+                        turn.turn_id,
+                        conversation.conversation_id,
+                    )
+                except Exception as cleanup_exc:
+                    logger.warning(
+                        "Failed to cleanup Postgres transaction after tool error: %s",
+                        cleanup_exc,
+                        exc_info=True,
+                    )
+
             if not turn.expect_success:
                 executed_turns[turn.turn_id] = {
                     "tool_name": tool_name,
@@ -477,7 +588,7 @@ class ConversationHarness:
                 record["response_success"] = False
                 record["success"] = False
                 return TurnProcessOutcome(
-                    record=record,
+                    record=_to_primitive(record),
                     success=False,
                     expected_failure=True,
                     error_message=error_message,
@@ -501,7 +612,7 @@ class ConversationHarness:
             )
             record["expected_error_mismatch"] = turn.expected_error_substring
             return TurnProcessOutcome(
-                record=record,
+                record=_to_primitive(record),
                 success=False,
                 error_message=record["error"],
             )
@@ -603,7 +714,7 @@ class ConversationHarness:
         record["success"] = combined_success
         if not combined_success and record.get("verification") == "exact_match":
             record["verification"] = "failed"
-        return TurnProcessOutcome(record=record, success=combined_success)
+        return TurnProcessOutcome(record=_to_primitive(record), success=combined_success)
 
     # ------------------------------------------------------------------
     def _create_backend(self) -> Union[MockCrmApi, PostgresCrmBackend]:
@@ -696,7 +807,7 @@ class ConversationHarness:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with output_path.open("w", encoding="utf-8") as handle:
             for result in results:
-                handle.write(json.dumps(result.__dict__, default=str) + "\n")
+                handle.write(json.dumps(_to_primitive(result.__dict__), ensure_ascii=False) + "\n")
 
 
 def _aggregate_token_usage(per_turn: Sequence[Mapping[str, Any]]) -> Dict[str, int]:

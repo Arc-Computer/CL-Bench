@@ -99,6 +99,7 @@ Write a conversation with exactly {step_count * 2} turns (user then assistant pe
 2. Mention the factual values provided below verbatim (never invent or reuse placeholder IDs if the factual value differs).
 3. Embed the tool call as JSON like TOOL:{{"name": "...", "arguments": {{...}}}} using the provided arguments.
 4. If a field is empty or null, state that explicitly instead of guessing.
+5. When a tool argument shows a placeholder like {{turn_1.opportunity_id}}, treat it as "the value returned in that earlier step"—do not invent labels such as OP-001/CL-001. Refer to the entity descriptively (e.g., "the opportunity we just located") or repeat the exact value if provided.
 
 Required factual mentions per tool:
 {"\n".join(required_facts) if required_facts else '- none'}
