@@ -42,3 +42,6 @@ artifacts/qa/enriched_validation_*/
 
 # Temporary script archives
 scripts/archive_temp*/
+
+# Archive directory (typo in directory name)
+/archieve
