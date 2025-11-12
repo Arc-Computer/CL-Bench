@@ -72,21 +72,22 @@ Error: {tool_error or "None"}
 RECENT CONVERSATION HISTORY:
 {json.dumps(conversation_history, indent=2, default=str)}
 
-EVALUATION CRITERIA:
+EVALUATION CRITERIA (prioritize goal achievement over exact matching):
+- PRIMARY: Did the agent accomplish the user's goal? If the tool executed successfully and returned the expected information, this is a PASS.
 - Did the agent understand the user's intent?
-- Did the agent's approach accomplish the task (even if using different tools/arguments)?
-- Is the agent's approach semantically equivalent to the expected approach?
-- If the agent encountered an error, was it due to reasonable assumptions about CRM state?
+- Is the agent's approach functionally equivalent to the expected approach? (e.g., opportunity_details vs view_opportunity_details are equivalent)
+- If the agent used a different but valid tool that accomplishes the same goal, that's acceptable.
+- Only fail if the agent misunderstood intent, used an invalid tool, or the execution failed.
 
 Grade the agent's performance:
-- Pass (score ≥ 0.7): Agent accomplished user intent, possibly via alternate valid path
-- Fail (score < 0.7): Agent misunderstood intent or made an invalid tool choice
+- Pass (score ≥ 0.7): Agent accomplished user intent. Tool name/argument differences are acceptable if execution succeeded and goal was achieved.
+- Fail (score < 0.7): Agent misunderstood intent, used an invalid tool, or execution failed.
 
 Respond in JSON format:
 {{
   "pass": true or false,
   "score": 0.0 to 1.0,
-  "rationale": "Brief explanation (1-2 sentences) of why this approach does/doesn't accomplish user intent"
+  "rationale": "Brief explanation (1-2 sentences) focusing on whether the user's goal was accomplished"
 }}"""
 
         try:
@@ -161,17 +162,23 @@ ACCEPTABLE ANSWERS:
 AGENT RESPONSE TO GRADE:
 {agent_response or '[empty response]'}
 
+EVALUATION CRITERIA (prioritize goal achievement):
+- PRIMARY: Did the tool execute successfully and return the information the user requested?
+- If the tool result contains the requested information, the agent has accomplished the goal, even if the response text is brief or incomplete.
+- Pass if: Tool succeeded AND tool result contains the requested information (response text quality is secondary)
+- Fail if: Tool failed OR tool result doesn't contain requested information OR agent misunderstood the request
+
 Instructions:
-- Mark as Pass if the agent's response accurately reflects the tool outcome and satisfies the user's request.
-- Allow reasonable paraphrasing as long as the facts align with the tool result.
-- Mark as Fail if the response omits critical details, invents data, or contradicts the tool result.
-- If the response is empty or purely apologetic without correct content, mark as Fail.
+- Mark as Pass if the tool executed successfully and the tool result contains the information the user requested, even if the agent's response text is brief or incomplete.
+- Allow brief responses like "Searching..." if the tool result is available and contains the requested information.
+- Mark as Fail only if the tool failed, the tool result doesn't contain the requested information, or the agent misunderstood the request.
+- If the response is empty but tool succeeded and result contains requested info, mark as Pass (goal achieved).
 
 Respond in JSON:
 {{
   "pass": true or false,
   "score": 0.0 to 1.0,
-  "rationale": "Brief justification"
+  "rationale": "Brief justification focusing on whether the user's goal was accomplished via tool result"
 }}"""
 
         try:

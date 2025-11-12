@@ -22,20 +22,15 @@ build/
 # External dependencies
 external/atlas-sdk/
 
-# Artifacts - Archive directories (historical runs)
-artifacts/*/archive/
-
-# Artifacts - Intermediate/test baselines (customer will generate their own)
-artifacts/baselines/archive/
-artifacts/baselines/atlas_smoke/
-artifacts/baselines/live_gpt4mini/
-artifacts/baselines/smoke/
-artifacts/baselines/mock_*.jsonl
-
-# Artifacts - Intermediate QA runs (keep only final validation)
-artifacts/qa/20*/
-artifacts/qa/enriched_validation_*/
-!artifacts/qa/final_validation_full/
+# Artifacts - Exclude ALL artifacts except final clean dataset
+artifacts/legacy/
+artifacts/schema_pipeline/
+artifacts/archive/
+artifacts/deterministic/*
+# Keep only the final clean dataset for evaluation
+!artifacts/deterministic/final_conversations_final_clean.jsonl
+# Keep deterministic directory structure
+!artifacts/deterministic/
 
 # Log files
 *.log

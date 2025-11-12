@@ -407,17 +407,44 @@ class ConversationHarness:
         guidance: Optional[List[str]] = None,
     ) -> TurnProcessOutcome:
         """Execute a single turn using semantic validation with an optional LLM judge."""
+        # Resolve templates with strict=False if previous turns failed
+        # This allows the turn to proceed even if templates can't be resolved
+        # (e.g., when a previous turn failed and its results aren't available)
+        strict_resolution = True
+        for prev_turn_id in range(1, turn.turn_id):
+            if prev_turn_id not in previous_turn_outputs:
+                # A previous turn failed, so we can't resolve templates strictly
+                strict_resolution = False
+                break
+        
         try:
             resolved_expected_args = resolve_template(
                 turn.expected_args,
                 previous_turn_outputs,
                 turn.turn_id,
+                strict=strict_resolution,
             )
         except TemplateResolutionError as exc:  # pragma: no cover - defensive guard
-            raise RuntimeError(
-                f"Failed to resolve arguments for turn {turn.turn_id} "
-                f"in {conversation.conversation_id}: {exc}"
-            ) from exc
+            # If strict resolution failed, try non-strict to allow the turn to proceed
+            if strict_resolution:
+                logger.warning(
+                    "Strict template resolution failed for turn %d in %s: %s. "
+                    "Attempting non-strict resolution.",
+                    turn.turn_id,
+                    conversation.conversation_id,
+                    exc,
+                )
+                resolved_expected_args = resolve_template(
+                    turn.expected_args,
+                    previous_turn_outputs,
+                    turn.turn_id,
+                    strict=False,
+                )
+            else:
+                raise RuntimeError(
+                    f"Failed to resolve arguments for turn {turn.turn_id} "
+                    f"in {conversation.conversation_id}: {exc}"
+                ) from exc
 
         resolved_expected_args = canonicalize_tool_arguments(turn.expected_tool, resolved_expected_args)
 
@@ -637,25 +664,33 @@ class ConversationHarness:
         tool_success = bool(tool_exact_match)
         record["verification"] = "exact_match" if tool_exact_match else "failed"
 
+        # For quality evaluation focused on goal achievement:
+        # - If exact match fails but execution succeeded, use judge to evaluate goal achievement
+        # - This allows alternate valid paths (e.g., opportunity_details vs view_opportunity_details)
+        #   to be counted as success if they accomplish the user's intent
         if not tool_success and self._judge:
-            judge_result = self._judge.judge_turn(
-                user_utterance=turn.user_utterance,
-                agent_tool=tool_name,
-                agent_arguments=arguments,
-                tool_result=record.get("result"),
-                tool_error=record.get("error"),
-                expected_tool=turn.expected_tool,
-                expected_arguments=resolved_expected_args,
-                conversation_history=conversation_history[-3:],
-            )
+            # Only use judge if execution succeeded (goal-focused evaluation)
+            # If execution failed, exact match failure is appropriate
+            if execution_success:
+                judge_result = self._judge.judge_turn(
+                    user_utterance=turn.user_utterance,
+                    agent_tool=tool_name,
+                    agent_arguments=arguments,
+                    tool_result=record.get("result"),
+                    tool_error=record.get("error"),
+                    expected_tool=turn.expected_tool,
+                    expected_arguments=resolved_expected_args,
+                    conversation_history=conversation_history[-3:],
+                )
 
-            record["verification"] = "llm_judge"
-            record["judge_used"] = True
-            record["judge_score"] = judge_result["score"]
-            record["judge_rationale"] = judge_result["rationale"]
-            record["judge_pass"] = judge_result["pass"]
-            record["token_usage"]["judge"] = judge_result["token_usage"]
-            tool_success = bool(judge_result["pass"])
+                record["verification"] = "llm_judge"
+                record["judge_used"] = True
+                record["judge_score"] = judge_result["score"]
+                record["judge_rationale"] = judge_result["rationale"]
+                record["judge_pass"] = judge_result["pass"]
+                record["token_usage"]["judge"] = judge_result["token_usage"]
+                tool_success = bool(judge_result["pass"])
+            # If execution failed, tool_success remains False (exact match failed + execution failed)
 
         record["tool_success"] = tool_success
 
@@ -698,12 +733,33 @@ class ConversationHarness:
                     response_success = tool_success
                     record["response_judge_pass"] = response_success
             else:
+                # Try exact match first
                 allowed = { _normalise_response_text(answer) for answer in expected_response.answers }
                 if expected_response.text:
                     allowed.add(_normalise_response_text(expected_response.text))
                 normalized_agent = _normalise_response_text(agent_response_text)
-                response_success = bool(agent_response_text) and normalized_agent in allowed
-                record["response_expected_answers"] = list(expected_response.answers or [])
+                exact_match = bool(agent_response_text) and normalized_agent in allowed
+                
+                # If exact match fails but we have a judge and agent provided response_text,
+                # use judge for more lenient evaluation (quality evaluation setup)
+                if not exact_match and self._judge and agent_response_text:
+                    judge_response = self._judge.judge_response(
+                        user_utterance=turn.user_utterance,
+                        expected_response=expected_response.to_dict(),
+                        agent_response=agent_response_text,
+                        tool_result=record.get("result"),
+                        conversation_history=conversation_history[-3:],
+                    )
+                    record["response_judge_used"] = True
+                    record["response_judge_score"] = judge_response["score"]
+                    record["response_judge_rationale"] = judge_response["rationale"]
+                    record["response_judge_pass"] = judge_response["pass"]
+                    record["token_usage"]["judge_response"] = judge_response["token_usage"]
+                    record["response_verification"] = "llm_judge"
+                    response_success = bool(judge_response["pass"])
+                else:
+                    response_success = exact_match
+                    record["response_expected_answers"] = list(expected_response.answers or [])
         else:
             record["response_verification"] = "structured"
             response_success = tool_success

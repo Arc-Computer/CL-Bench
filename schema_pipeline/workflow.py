@@ -35,6 +35,7 @@ TOOL_ALIAS_MAP = {
     "opportunity_create": "create_new_opportunity",
     "opportunity_new": "create_new_opportunity",
     "opportunitysearch": "opportunity_search",
+    "opportunity_details": "view_opportunity_details",  # Normalize rare variant to common one
     "quote_create": "create_quote",
     "quote_new": "create_quote",
     "quotesearch": "quote_search",
