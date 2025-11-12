@@ -27,18 +27,26 @@ external/atlas-sdk/
 !external/atlas-sdk/atlas/config/
 !external/atlas-sdk/atlas/config/models.py
 
-# Artifacts - Exclude ALL artifacts except final clean dataset
+# Artifacts - Exclude ALL artifacts except final clean dataset and evaluation results
 artifacts/legacy/
 artifacts/schema_pipeline/
 artifacts/archive/
 artifacts/conversations_multi_turn/
-artifacts/baselines/
 artifacts/scenarios_single_turn/
 artifacts/deterministic/*
 # Keep only the final clean dataset for evaluation
 !artifacts/deterministic/final_conversations_final_clean.jsonl
 # Keep deterministic directory structure
 !artifacts/deterministic/
+
+# Keep final evaluation results (baselines, datasets, atlas)
+!artifacts/baselines/
+!artifacts/baselines/*.jsonl
+!artifacts/baselines/README.md
+!artifacts/datasets/
+!artifacts/datasets/*.jsonl
+!artifacts/atlas/
+!artifacts/README.md
 
 # Log files
 *.log
