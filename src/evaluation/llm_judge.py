@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from typing import Any, Callable, Dict, List, Optional
+from uuid import UUID
 
 try:  # pragma: no cover - optional dependency
     from litellm import completion as _litellm_completion
@@ -40,6 +41,20 @@ class LLMJudge:
         self.temperature = temperature
         self.max_tokens = max_tokens
 
+    @staticmethod
+    def _serialize_for_json(obj: Any) -> Any:
+        """Serialize object for JSON, handling UUIDs in keys and values."""
+        if isinstance(obj, UUID):
+            return str(obj)
+        elif isinstance(obj, dict):
+            return {str(k): LLMJudge._serialize_for_json(v) for k, v in obj.items()}
+        elif isinstance(obj, (list, tuple)):
+            return [LLMJudge._serialize_for_json(item) for item in obj]
+        elif isinstance(obj, (str, int, float, bool, type(None))):
+            return obj
+        else:
+            return str(obj)
+
     # ------------------------------------------------------------------
     def judge_turn(
         self,
@@ -65,12 +80,12 @@ Arguments: {json.dumps(expected_arguments, indent=2, default=str)}
 
 AGENT'S ACTUAL APPROACH:
 Tool: {agent_tool}
-Arguments: {json.dumps(agent_arguments, indent=2, default=str)}
-Result: {json.dumps(tool_result, default=str) if tool_result is not None else "N/A"}
+Arguments: {json.dumps(self._serialize_for_json(agent_arguments), indent=2)}
+Result: {json.dumps(self._serialize_for_json(tool_result), indent=2) if tool_result is not None else "N/A"}
 Error: {tool_error or "None"}
 
 RECENT CONVERSATION HISTORY:
-{json.dumps(conversation_history, indent=2, default=str)}
+{json.dumps(self._serialize_for_json(conversation_history), indent=2)}
 
 EVALUATION CRITERIA (prioritize goal achievement over exact matching):
 - PRIMARY: Did the agent accomplish the user's goal? If the tool executed successfully and returned the expected information, this is a PASS.
@@ -138,8 +153,8 @@ Respond in JSON format:
         requires_judge = expected_response.get("requires_judge", False)
 
         try:
-            tool_result_json = json.dumps(tool_result, indent=2, default=str) if tool_result is not None else "null"
-        except TypeError:
+            tool_result_json = json.dumps(self._serialize_for_json(tool_result), indent=2) if tool_result is not None else "null"
+        except (TypeError, ValueError):
             tool_result_json = str(tool_result)
 
         prompt = f"""You are grading the assistant's natural-language reply for a CRM workflow.
@@ -148,7 +163,7 @@ USER REQUEST:
 {user_utterance}
 
 RECENT CONVERSATION HISTORY:
-{json.dumps(conversation_history, indent=2, default=str)}
+{json.dumps(self._serialize_for_json(conversation_history), indent=2)}
 
 GROUND-TRUTH TOOL RESULT:
 {tool_result_json}
@@ -157,7 +172,7 @@ REFERENCE RESPONSE (authoritative guidance):
 {expected_text}
 
 ACCEPTABLE ANSWERS:
-{json.dumps(answers, indent=2, default=str)}
+{json.dumps(self._serialize_for_json(answers), indent=2)}
 
 AGENT RESPONSE TO GRADE:
 {agent_response or '[empty response]'}
