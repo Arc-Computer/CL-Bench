@@ -76,7 +76,7 @@ USER REQUEST:
 
 EXPECTED APPROACH (ground truth from dataset):
 Tool: {expected_tool}
-Arguments: {json.dumps(expected_arguments, indent=2, default=str)}
+Arguments: {json.dumps(self._serialize_for_json(expected_arguments), indent=2)}
 
 AGENT'S ACTUAL APPROACH:
 Tool: {agent_tool}
