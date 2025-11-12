@@ -130,20 +130,28 @@ Atlas wraps the existing ConversationHarness so the teacher can grade final CRM 
 
 > **Heads up:** Atlas depends on `litellm>=1.77.7`. If you also work on Curator generation (which pins `litellm==1.61.3`), use separate virtualenvs to avoid dependency conflicts.
 
-### Run Baseline Evaluation
+### Run Evaluations
+
+**For complete evaluation command reference, see `docs/evaluation_execution_commands.md`.**
+
+**Quick start after setup:**
 
 ```bash
-# Load API keys (at minimum OPENAI_API_KEY or ANTHROPIC_API_KEY for the model you plan to exercise)
+# Load environment
 set -a; source .env; set +a
 
-# Example: run GPT-4.1 on the full multi-turn dataset with the LLM judge enabled
-python -m src.evaluation.run_baseline \
-    --conversations artifacts/conversations_multi_turn/20251105T144453Z/full/chains.jsonl \
-    --agent gpt4.1 \
-    --model gpt-4.1 \
-    --seed 42 \
-    --output artifacts/baselines/20251106_gpt4.1_full.jsonl
+# Run baseline evaluation (example)
+python3 -m src.evaluation.run_baseline \
+    --conversations artifacts/deterministic/final_conversations_final_clean.jsonl \
+    --agent claude \
+    --model claude-sonnet-4-5-20250929 \
+    --backend postgres \
+    --output artifacts/evaluation/baseline_claude_sonnet_4_5.jsonl \
+    --temperature 0.0 \
+    --max-output-tokens 800
 ```
+
+**Important**: Always run smoke tests first (see `docs/evaluation_execution_commands.md` Phase 1).
 
 Helpful variations:
 
