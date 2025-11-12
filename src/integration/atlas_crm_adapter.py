@@ -25,18 +25,25 @@ logger = logging.getLogger(__name__)
 
 
 def _to_primitive(value: Any) -> Any:
-    if is_dataclass(value):
-        return _to_primitive(asdict(value))
+    """Convert Python objects to JSON-serializable primitives."""
+    if value is None:
+        return None
     if isinstance(value, (datetime, date)):
         return value.isoformat()
     if isinstance(value, UUID):
         return str(value)
     if isinstance(value, Decimal):
         return float(value)
+    if isinstance(value, bool):
+        return value  # Preserve booleans as-is
+    if is_dataclass(value):
+        return _to_primitive(asdict(value))
     if isinstance(value, dict):
         return {k: _to_primitive(v) for k, v in value.items()}
     if isinstance(value, list):
         return [_to_primitive(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_to_primitive(item) for item in value)
     return value
 
 
@@ -379,6 +386,7 @@ def _compact_turn_record(record: Mapping[str, Any]) -> Dict[str, Any]:
         "expect_success",
         "segment_number",
         "verification",
+        "token_usage",  # CRITICAL: Must preserve token_usage for aggregation
     ]
     compact: Dict[str, Any] = {}
     for field in keep_fields:

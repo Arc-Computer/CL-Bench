@@ -1,6 +1,0 @@
-# Minimal deps for dataset_judge + mock baseline
-pydantic>=2.12.3,<3
-email-validator>=2.3.0,<3
-python-dotenv>=1.0.0,<2
-litellm>=1.61.3,<2
-openai>=2.6.1,<3

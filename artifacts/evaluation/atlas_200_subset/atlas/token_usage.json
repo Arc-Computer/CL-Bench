@@ -1,22 +1,22 @@
 {
   "totals": {
-    "prompt_tokens": 2525793,
-    "completion_tokens": 172447,
-    "total_tokens": 2698240
+    "prompt_tokens": 2854675,
+    "completion_tokens": 194646,
+    "total_tokens": 3049321
   },
   "by_role": {
     "student": {},
     "teacher": {
-      "prompt_tokens": 2525793,
-      "completion_tokens": 172447,
-      "total_tokens": 2698240
+      "prompt_tokens": 2854675,
+      "completion_tokens": 194646,
+      "total_tokens": 3049321
     },
     "learning": {},
     "judge": {}
   },
   "sessions_with_data": {
     "student": 0,
-    "teacher": 193,
+    "teacher": 218,
     "learning": 0,
     "judge": 0
   }

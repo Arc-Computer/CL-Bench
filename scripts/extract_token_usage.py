@@ -176,7 +176,9 @@ def extract_all_token_usage(sessions: List[Dict[str, Any]]) -> Dict[str, Any]:
         
         # Fallback to per-turn extraction
         if not any(judge_tokens.values()):
-            conv_result = session.get("conversation_result", {})
+            conv_result = session.get("conversation_result")
+            if conv_result is None:
+                conv_result = {}
             per_turn = conv_result.get("per_turn_results", [])
             for turn in per_turn:
                 turn_tokens = turn.get("token_usage", {})
