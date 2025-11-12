@@ -26,6 +26,9 @@ external/atlas-sdk/
 artifacts/legacy/
 artifacts/schema_pipeline/
 artifacts/archive/
+artifacts/conversations_multi_turn/
+artifacts/baselines/
+artifacts/scenarios_single_turn/
 artifacts/deterministic/*
 # Keep only the final clean dataset for evaluation
 !artifacts/deterministic/final_conversations_final_clean.jsonl
