@@ -4,11 +4,11 @@
 
 **Date:** November 11, 2025
 
-**Prepared by:** Arc Intelligence Jarrod Barnes 
+**Prepared by:** Arc Intelligence
 
 ## Executive Summary
 
-This joint evaluation between Reply and Arc Intelligence was conducted to test whether inference-time continual learning and on-policy distillation can meaningfully improve reliability and efficiency in state-modifying enterprise systems, such as the CRM workflow built by Reply and recreated by Arc.
+This joint evaluation between Reply and Arc Intelligence was conducted to test whether inference-time continual learning and on-policy distillation can meaningfully improve reliability and efficiency in state-modifying enterprise systems, such as the CRM workflows. 
 
 The study replicated a real production environment currently achieving ~78–81% reliability, providing a realistic and sample testbed for continual learning under the same task complexity, schema, and data constraints faced in client deployments.
 
@@ -32,15 +32,7 @@ The methodology ensures reproducibility and transparency—every conversation ca
 
 ---
 
-### 1.2 Problem Context
-
-- **Baseline challenges:** Reply’s deployed CRM agents already clear ~78–81 % success, but squeezing out the remaining 15–20 % requires expensive weekly trace reviews, handcrafted prompt tweaks, and manual QA of DB state deltas. European enterprise buyers will not tolerate <90 % reliability for state mutations, so human-in-the-loop patching has become the bottleneck.
-- **Limitations of existing approaches:** Context-training alone (Databricks ALHF, JEPA-style quality-diversity evolvers) yields fragile gains, especially when agents must *write* to CRM tables. Customers rarely expose large test environments, so uncontrolled evaluation runs risk polluting shared staging DBs; this prevents meaningful continual-learning experiments.
-- **Relevance to Reply’s workflows:** The benchmark replicates the exact scenario Federico’s team described: an agent that already manipulates opportunities, quotes, contracts, and notes in production, yet stalls before 90 %. Reply needs proof that automated reward synthesis + student/teacher supervision can replace the current manual “download traces → categorize → hand-edit prompts → redeploy” loop. The mid-November Worldwide Retreat demands a credible demo that continual learning is the “automobile,” not another faster horse.
-
----
-
-### 1.3 Methodology Overview
+### 1.2 Methodology Overview
 
 Our synthetic dataset is generated entirely in-repo so it mirrors Reply’s CRM semantics while remaining fully reproducible:
 
@@ -51,7 +43,6 @@ Our synthetic dataset is generated entirely in-repo so it mirrors Reply’s CRM 
 5. **Utterance + Replay Loop** – Conversations are authored with placeholders, then `ConversationHarness` replays every turn against the Postgres CRM backend. During replay we seed deterministic CRM records, resolve placeholders into live GUIDs, and rewrite assistant turns with ground-truth values, ensuring datasets contain only executable traces.
 
 Evaluation stages:
-- **Smoke Tests:** 5 conversations per baseline agent and 5 scenarios for Atlas to verify LLM judge functionality and learning loop activation.
 - **Baseline:** Claude 4.5 Sonnet, GPT‑4.1, and GPT‑4.1 mini agents execute all 1,200 clean conversations via ConversationHarness (Postgres backend, judge enabled).
 - **Atlas Runtime:** The same 1,200 conversation dataset feeds `run_atlas_baseline`, which wraps the CRM harness with Atlas’ student/teacher loop (student GPT‑4.1 mini, teacher GPT‑4.1, paired mode).
 - **Atlas + GKD:** Once Atlas sessions are captured, Atlas Core distills teacher interventions back into an improved student; those distilled checkpoints re-enter the harness for the final pass.
@@ -64,7 +55,7 @@ Metrics captured per stage:
 
 ---
 
-### 1.4 Key Findings
+### 1.3 Key Findings
 
 | Evaluation Stage | Task Success (%) | Avg Tokens | Cost per Episode | Reliability Gain |
 | --- | --- | --- | --- | --- |
@@ -76,7 +67,7 @@ Metrics captured per stage:
 
 ---
 
-### 1.5 Key Learnings
+### 1.4 Key Learnings
 
 - 
 - 
@@ -85,7 +76,7 @@ Metrics captured per stage:
 
 ---
 
-### 1.6 Conclusion
+### 1.5 Conclusion
 
 - 
 
@@ -357,18 +348,6 @@ Upon completion, Reply will receive:
 - Documentation for running future evaluations
 
 This handoff enables Reply's R&D teams to replicate the methodology across additional use cases, reducing future setup time and engineering overhead.
-
----
-
-## Delivery Checklist
-
-| Deliverable | Owner | Status | Due |
-| --- | --- | --- | --- |
-| Technical Results Summary | Jarrod | ☐ |  |
-| Executive Summary + Business Context | Steph | ☐ |  |
-| Full Report PDF | Jarrod + Steph | ☐ |  |
-| Slack Summary to Reply | Steph | ☐ |  |
-| Case Study Template Finalized for Reuse | Steph | ☐ |  |
 
 The objective was to validate continual learning as a credible mechanism for achieving **high-reliability (≈95%) performance** without full model retraining or manual prompt engineering.
 
