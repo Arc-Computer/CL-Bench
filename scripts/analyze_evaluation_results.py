@@ -105,33 +105,61 @@ def calculate_atlas_metrics(sessions: List[Dict[str, Any]]) -> Dict[str, Any]:
             "task_success_rate": 0.0,
             "learning_growth": {},
             "reward_trends": {},
+            "cue_hits": 0,
+            "action_adoptions": 0,
+            "failed_adoptions": 0,
+            "token_usage": {},
         }
 
     successful = 0
     reward_scores = []
     learning_lengths = []
+    cue_hits_total = 0
+    action_adoptions_total = 0
+    failed_adoptions_total = 0
+    token_totals = defaultdict(int)
 
     for session in sessions:
         # Parse conversation result if available
-        final_answer = session.get("final_answer", "")
-        if isinstance(final_answer, str):
-            try:
-                answer_dict = json.loads(final_answer)
-                conv_result = answer_dict.get("conversation_result", {})
-                if conv_result.get("overall_success", False):
-                    successful += 1
-                reward = conv_result.get("reward_signal", 0.0)
+        conv_result = session.get("conversation_result", {})
+        if isinstance(conv_result, dict) and conv_result.get("overall_success", False):
+            successful += 1
+        
+        # Also check final_payload for success status
+        final_payload = session.get("final_payload", {})
+        if isinstance(final_payload, dict):
+            if final_payload.get("status") == "ok":
+                conv_result_inner = final_payload.get("conversation_result", {})
+                if isinstance(conv_result_inner, dict) and conv_result_inner.get("overall_success", False):
+                    successful += 0  # Already counted above
+                reward = conv_result_inner.get("reward_signal", 0.0) if isinstance(conv_result_inner, dict) else 0.0
                 if reward:
                     reward_scores.append(reward)
-            except (json.JSONDecodeError, TypeError):
-                pass
-
+        
+        # Extract Atlas metadata
+        atlas_metadata = session.get("atlas_metadata", {})
+        
+        # Extract learning usage (cue hits, action adoptions)
+        learning_usage = atlas_metadata.get("learning_usage", {})
+        if isinstance(learning_usage, dict):
+            cue_hits_total += learning_usage.get("cue_hits", 0)
+            action_adoptions_total += learning_usage.get("action_adoptions", 0)
+            failed_adoptions_total += learning_usage.get("failed_adoptions", 0)
+        
+        # Extract token usage
+        token_usage = atlas_metadata.get("token_usage", {})
+        if isinstance(token_usage, dict):
+            for key, value in token_usage.items():
+                if isinstance(value, (int, float)):
+                    token_totals[key] += int(value)
+        
         # Extract learning state if available
-        metadata = session.get("metadata", {})
-        learning_state = metadata.get("learning_state", {})
-        student_learning = learning_state.get("student_learning", "")
-        if student_learning:
-            learning_lengths.append(len(student_learning))
+        session_metadata = atlas_metadata.get("session_metadata", {})
+        learning_state = session_metadata.get("learning_state", {})
+        if isinstance(learning_state, dict):
+            student_learning = learning_state.get("student_learning", "")
+            if student_learning:
+                learning_lengths.append(len(str(student_learning)))
 
     task_success_rate = (successful / total * 100.0) if total > 0 else 0.0
 
@@ -159,6 +187,10 @@ def calculate_atlas_metrics(sessions: List[Dict[str, Any]]) -> Dict[str, Any]:
         "task_success_rate": task_success_rate,
         "learning_growth": learning_growth,
         "reward_trends": reward_trends,
+        "cue_hits": cue_hits_total,
+        "action_adoptions": action_adoptions_total,
+        "failed_adoptions": failed_adoptions_total,
+        "token_usage": dict(token_totals),
     }
 
 

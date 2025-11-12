@@ -228,6 +228,8 @@ python3 scripts/run_atlas_evaluation.py \
 
 ### 4.1 Analysis Command
 
+**Note:** The current evaluation focuses on Baseline and Atlas Runtime phases. The "Atlas + GKD" phase mentioned in the case study (distillation with Atlas Core) is a future enhancement and not included in this evaluation run.
+
 **Command:**
 ```bash
 python3 scripts/analyze_evaluation_results.py \
@@ -249,7 +251,7 @@ python3 scripts/analyze_evaluation_results.py \
 - Turn-level success rate
 - Judge usage statistics
 - Token usage and cost estimates
-- Atlas-specific: learning growth, reward trends, playbook entries
+- Atlas-specific: learning growth, reward trends, cue hits, action adoptions, token usage
 
 ## Optional: Real-time Progress Monitoring
 
