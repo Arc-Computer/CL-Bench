@@ -1,0 +1,3 @@
+[console_scripts]
+curator-viewer=bespokelabs.curator.viewer.__main__:main
+

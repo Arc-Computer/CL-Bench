@@ -1,0 +1,28 @@
+Metadata-Version: 2.4
+Name: arc-atlas
+Version: 0.1.15
+Summary: Teacher/Student orchestration toolkit for Bring-Your-Own-Agent workflows.
+Project-URL: Documentation, https://docs.arc.computer/introduction
+Project-URL: Source, https://github.com/Arc-Computer/atlas-sdk
+Project-URL: Issues, https://github.com/Arc-Computer/atlas-sdk/issues
+Keywords: autonomy,agents,langchain,langgraph,reasoning,reward-models
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: Apache Software License
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Classifier: Topic :: Software Development :: Libraries
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: asyncpg>=0.29.0
+Requires-Dist: httpx>=0.25.0
+Requires-Dist: langchain-core>=0.3.76
+Requires-Dist: langgraph>=0.6.8
+Requires-Dist: litellm>=1.77.7
+Requires-Dist: python-dotenv>=1.0.1
+Requires-Dist: pydantic>=2.11.9
+Provides-Extra: dev
+Requires-Dist: pytest>=7.4; extra == "dev"
+Requires-Dist: pytest-asyncio>=0.21; extra == "dev"

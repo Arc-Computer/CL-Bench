@@ -1,0 +1,247 @@
+{
+  "external": {
+    "providers": {
+      "klusterai": {
+        "cost": {
+
+          "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8": {
+            "max_tokens": 1048576,
+            "input_cost_per_million": {
+              "*": 0.2,
+              "24h": 0.25,
+              "48h": 0.20,
+              "72h": 0.15
+            },
+            "output_cost_per_million": {
+              "*": 0.8,
+              "24h": 0.25,
+              "48h": 0.20,
+              "72h": 0.15
+            }
+          },
+          "meta-llama/Llama-4-Scout-17B-16E-Instruct": {
+            "max_tokens": 131072,
+            "input_cost_per_million": {
+              "*": 0.08,
+              "24h": 0.15,
+              "48h": 0.12,
+              "72h": 0.10
+            },
+            "output_cost_per_million": {
+              "*": 0.45,
+              "24h": 0.15,
+              "48h": 0.12,
+              "72h": 0.10
+            }
+          },
+          "deepseek-ai/DeepSeek-V3-0324": {
+            "max_tokens": 163840,
+            "input_cost_per_million": {
+              "*": 0.7,
+              "24h": 0.63,
+              "48h": 0.50,
+              "72h": 0.35
+            },
+            "output_cost_per_million": {
+              "*": 1.4,
+              "24h": 0.63,
+              "48h": 0.50,
+              "72h": 0.35
+            }
+          },
+          "deepseek-ai/DeepSeek-V3": {
+            "max_tokens": 163840,
+            "input_cost_per_million": {
+              "*": 1.25,
+              "24h": 0.63,
+              "48h": 0.50,
+              "72h": 0.35
+            },
+            "output_cost_per_million": {
+              "*": 1.25,
+              "24h": 0.63,
+              "48h": 0.50,
+              "72h": 0.35
+            }
+          },
+          "deepseek-ai/DeepSeek-R1": {
+            "max_tokens": 163840,
+            "input_cost_per_million": {
+              "*": 3.00,
+              "24h": 3.50,
+              "48h": 3.00,
+              "72h": 2.50
+            },
+            "output_cost_per_million": {
+              "*": 5.00,
+              "24h": 3.50,
+              "48h": 3.00,
+              "72h": 2.50
+            }
+          },
+          "google/gemma-3-27b-it": {
+            "max_tokens": 64000,
+            "input_cost_per_million": {
+              "*": 0.35,
+              "24h": 0.30,
+              "48h": 0.25,
+              "72h": 0.20
+            },
+            "output_cost_per_million": {
+              "*": 0.35,
+              "24h": 0.30,
+              "48h": 0.25,
+              "72h": 0.20
+            }
+          },
+          "klusterai/Meta-Llama-3.1-8B-Instruct-Turbo": {
+            "max_tokens": 131000,
+            "input_cost_per_million": {
+              "*": 0.35,
+              "24h": 0.30,
+              "48h": 0.25,
+              "72h": 0.20
+            },
+            "output_cost_per_million": {
+              "*": 0.35,
+              "24h": 0.30,
+              "48h": 0.25,
+              "72h": 0.20
+            }
+          },
+          "klusterai/Meta-Llama-3.1-8B-Instruct-Turbo": {
+            "max_tokens": 131072,
+            "input_cost_per_million": {
+              "*": 0.18,
+              "24h": 0.05,
+              "48h": 0.04,
+              "72h": 0.03
+            },
+            "output_cost_per_million": {
+              "*": 0.18,
+              "24h": 0.05,
+              "48h": 0.04,
+              "72h": 0.03
+            }
+          },
+          "klusterai/Meta-Llama-3.3-70B-Instruct-Turbo": {
+            "max_tokens": 131000,
+            "input_cost_per_million": {
+              "*": 0.70,
+              "24h": 0.20,
+              "48h": 0.18,
+              "72h": 0.15
+            },
+            "output_cost_per_million": {
+              "*": 0.70,
+              "24h": 0.20,
+              "48h": 0.18,
+              "72h": 0.15
+            }
+          },
+          "klusterai/Meta-Llama-3.1-405B-Instruct-Turbo": {
+            "max_tokens": 131000,
+            "input_cost_per_million": {
+              "*": 3.50,
+              "24h": 0.99,
+              "48h": 0.89,
+              "72h": 0.79
+            },
+            "output_cost_per_million": {
+              "*": 3.50,
+              "24h": 0.99,
+              "48h": 0.89,
+              "72h": 0.79
+            }
+          },
+          "Qwen/Qwen2.5-VL-7B-Instruct": {
+            "max_tokens": 32768,
+            "input_cost_per_million": {
+              "*": 0.30,
+              "24h": 0.15,
+              "48h": 0.10,
+              "72h": 0.05
+            },
+            "output_cost_per_million": {
+              "*": 0.30,
+              "24h": 0.15,
+              "48h": 0.10,
+              "72h": 0.05
+            }
+          }
+        },
+        "strategy": "combined"
+      },
+      "inference.net": {
+        "cost": {
+          "meta-llama/llama-3.2-1b-instruct/fp-8": {
+            "max_tokens": 8192,
+            "input_cost_per_million": {
+              "*": 0.015,
+              "24h": 0.015
+            }
+          },
+          "meta-llama/llama-3.2-3b-instruct/fp-8": {
+            "max_tokens": 8192,
+            "input_cost_per_million": {
+              "*": 0.03,
+              "24h": 0.03
+            }
+          },
+          "meta-llama/llama-3.1-8b-instruct/fp-8": {
+            "max_tokens": 8192,
+            "input_cost_per_million": {
+              "*": 0.045,
+              "24h": 0.045
+            }
+          },
+          "meta-llama/llama-3.1-8b-instruct/fp-16": {
+            "max_tokens": 8192,
+            "input_cost_per_million": {
+              "*": 0.05,
+              "24h": 0.05
+            }
+          },
+          "meta-llama/llama-3.2-11b-instruct/fp-16": {
+            "max_tokens": 8192,
+            "input_cost_per_million": {
+              "*": 0.055,
+              "24h": 0.055
+            }
+          },
+          "mistralai/mistral-nemo-12b-instruct/fp-8": {
+            "max_tokens": 8192,
+            "input_cost_per_million": {
+              "*": 0.10,
+              "24h": 0.10
+            }
+          },
+          "meta-llama/llama-3.1-70b-instruct/fp-8": {
+            "max_tokens": 8192,
+            "input_cost_per_million": {
+              "*": 0.30,
+              "24h": 0.30
+            }
+          }
+        },
+        "strategy": "combined"
+      }
+    }
+  },
+  "online": {
+    "default": {
+      "ratelimit": {
+        "max_tokens_per_minute": {
+          "combined": 100000,
+          "seperate": {
+            "input": 100000,
+            "output": 40000
+          }
+        },
+        "max_requests_per_minute": 200,
+        "max_concurrent_requests": 200
+      },
+    "strategy": "combined"
+    }
+  }
+}

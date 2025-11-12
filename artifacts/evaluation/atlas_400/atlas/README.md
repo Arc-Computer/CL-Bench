@@ -1,0 +1,12 @@
+# Atlas Baseline Run
+- Generated: 2025-11-12T18:09:37.698534+00:00
+- Run ID: `20251112T180937-14606dbc`
+- Config: `configs/atlas/crm_harness.yaml`
+- Conversations: `artifacts/datasets/evaluation_400.jsonl`
+- Dataset revision: `a003b1ec50bb93609761c04cddb43d2688f68c71`
+- Atlas successes: 0/400
+- Harness successes: 0/400
+- Tasks file: `artifacts/evaluation/atlas_400/atlas/tasks.jsonl`
+- Execution modes: {}
+- Token usage: {}
+- Reward mean: None

@@ -1,0 +1,5 @@
+[console_scripts]
+arc-atlas = atlas.cli.export:main
+atlas = atlas.cli.main:main
+atlas-export = atlas.cli.export:main
+atlas.export = atlas.cli.export:main

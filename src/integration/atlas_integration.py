@@ -36,6 +36,7 @@ except ImportError:  # pragma: no cover - optional dependency
 
 from src.evaluation.conversation_harness import load_conversations_from_jsonl
 from src.integration import atlas_crm_adapter
+from src.integration import atlas_crm_adapter_registration  # Register CRM harness adapter
 from src.integration.atlas_common import conversation_to_payload
 
 logger = logging.getLogger(__name__)
@@ -432,7 +433,7 @@ def run_atlas_baseline(
     }
 
     metrics = {
-        "timestamp": timestamp,
+        "timestamp": run_timestamp.isoformat(),
         "total_conversations": len(results),
         "atlas_successful_runs": runs_success,
         "harness_successes": harness_success,
@@ -458,7 +459,7 @@ def run_atlas_baseline(
     readme_path = atlas_output_dir / "README.md"
     readme = [
         "# Atlas Baseline Run",
-        f"- Generated: {timestamp}",
+        f"- Generated: {run_timestamp.isoformat()}",
         f"- Run ID: `{run_id}`",
         f"- Config: `{config_path}`",
         f"- Conversations: `{conversations_path}`",
