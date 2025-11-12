@@ -91,6 +91,14 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+> **Dependencies note:** The base `requirements.txt` is tuned for the Curator generation pipeline, which depends on `anthropic<0.48` and the current `0.1.x` releases of `bespokelabs-curator`. If you need newer Anthropic/LiteLLM versions for Atlas SDK work, install `requirements-atlas.txt` (ideally in a separate virtualenv) after the core requirements.
+
+For judge-only or mock-baseline runs (no scenario generation), use the lightweight `requirements-judge.txt` to avoid pulling the full Curator/HuggingFace stack:
+
+```bash
+pip install -r requirements-judge.txt
+```
+
 ### Set Up Postgres Backend (Optional)
 
 For testing with a real database:
@@ -102,6 +110,25 @@ docker compose up -d
 ```
 
 Default credentials are in `.env.example` (safe for local development).
+
+### Atlas Setup (runtime + telemetry)
+
+Atlas wraps the existing ConversationHarness so the teacher can grade final CRM outcomes. Follow these steps (see `docs/atlas_integration.md` for the full runbook and smoke-test checklist):
+
+1. **Install Atlas SDK in editable mode**
+   ```bash
+   pip install -e external/atlas-sdk[dev]
+   ```
+   This aligns with the vendor quick-start (`external/atlas-sdk/README.md`) and lets you modify the bundled CRM adapter.
+2. **Export required env vars** – copy `configs/atlas/.env.example` into your shell (or append to `.env`). At minimum set:
+   - `OPENAI_API_KEY` (student + teacher models, GPT‑4.1 family)
+   - `GEMINI_API_KEY` (Gemini 2.5 Flash/Pro for judges + learning)
+   - `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME=crm_sandbox` (student backend)
+   - `STORAGE__DATABASE_URL=postgresql://atlas:atlas@localhost:5433/atlas` (Atlas telemetry DB)
+3. **Verify Postgres connectivity** – run a single harness conversation with `--backend postgres` to ensure the CRM DB seeds/reset correctly (see `src/evaluation/conversation_harness.py:596-603`).
+4. **Review configs/docs** – `configs/atlas/crm_harness.yaml` pins the default student/teacher/judge models (GPT‑4.1 / GPT‑4.1‑mini / Gemini 2.5) and forces `orchestration.forced_mode: paired` so the capability probe stays off. The workflow, dataset revision tagging, and artifact locations are detailed in `docs/atlas_integration.md`.
+
+> **Heads up:** Atlas depends on `litellm>=1.77.7`. If you also work on Curator generation (which pins `litellm==1.61.3`), use separate virtualenvs to avoid dependency conflicts.
 
 ### Run Baseline Evaluation
 
@@ -161,6 +188,8 @@ The harness can grade natural-language responses alongside tool execution when c
 
 Set `expected_response.evaluation` to `"judge"` (or `"requires_judge": true`) to delegate grading to GPT‑4.1 via LiteLLM. The baseline log records execution accuracy, response accuracy, and the blended metric so teams can track regression over time.
 
+Each per-turn harness record now includes `tool_success`, `response_success`, and the legacy `success` field (the conjunction of both). Conversation metadata publishes `tool_success_rate`, `response_success_rate`, and `combined_success_rate` alongside the historical `task_success_rate`, enabling Issue 42 Stage 1 reports to distinguish tool execution fidelity from response quality.
+
 ### Programmatic Usage
 
 ```python
@@ -215,12 +244,14 @@ To scale the pipeline, define additional workflow templates/chains, run the gene
 ### Current Artifact Snapshot
 
 - **Single-turn scenarios** (validated 60/40 mix): `artifacts/scenarios_single_turn/scenarios_clean.jsonl` (495 records)
-- **Chained conversations** (1,500 conversations; 900 simple / 450 medium / 150 complex; 40% expected failures): `artifacts/conversations_multi_turn/chains.jsonl`
-- **Manifest**: `artifacts/conversations_multi_turn/20251105T144453Z/full/manifest.json`
-- **Analytics report**: `artifacts/conversations_multi_turn/20251105T144453Z/full/report.md`
-- **Verification log**: `artifacts/conversations_multi_turn/20251105T144453Z/full/verification_report.json`
-- **Lint summary**: `artifacts/conversations_multi_turn/20251105T144453Z/full/lint_report.json`
-- **Quality summary**: `artifacts/conversations_multi_turn/20251105T144453Z/full/quality_checks.md`
+- **Chained conversations** (1,500 conversations; 900 simple / 450 medium / 150 complex; 40% expected failures): `artifacts/conversations_multi_turn/20251107T134304Z/full/chains_eval_enriched.jsonl`
+- **Manifest**: `artifacts/conversations_multi_turn/20251107T134304Z/full/manifest.json`
+- **Analytics report**: `artifacts/conversations_multi_turn/20251107T134304Z/full/report.md`
+- **Verification log**: `artifacts/conversations_multi_turn/20251107T134304Z/full/verification_report.json`
+- **Lint summary**: `artifacts/conversations_multi_turn/20251107T134304Z/full/lint_report.json`
+- **Quality summary**: `artifacts/conversations_multi_turn/20251107T134304Z/full/quality_checks.md`
+
+**Dataset Quality Note**: The eval split has been enriched with detailed expected responses derived from actual tool execution results, improving LLM judge pass rates from 45.7% to 58.7%. For baseline evaluations, use `chains_eval_5to10.jsonl` (133 conversations, 852 turns, avg 6.4 turns) which provides multi-turn conversations (5-10 turns) with zero execution errors and enriched responses.
 
 **Complexity Dimensions**: The benchmark measures two orthogonal difficulty axes. *Complex* chains test long-context tracking over 3-segment workflows (8-12 turns) with terminal failures. *Medium* chains test error recovery through mid-chain failures that require reasoning with partial context and handling template references to failed turns. Both dimensions are essential for production-robust agents.
 

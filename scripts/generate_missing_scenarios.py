@@ -9,7 +9,7 @@ import argparse
 import json
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Mapping, Optional
 
 from datasets import Dataset
 from pydantic import BaseModel, Field
@@ -38,6 +38,7 @@ class Scenario(BaseModel):
     expected_error_substring: str | None = Field(
         default=None, description="Expected error substring if expect_success=False"
     )
+    expected_response: Dict[str, Any] = Field(default_factory=dict, description="Expected assistant response metadata")
 
 
 class ScenariosResponse(BaseModel):
@@ -67,10 +68,14 @@ class ScenarioGenerator(curator.LLM):
         if backend_params:
             merged_backend.update(backend_params)
 
-        default_generation = {
-            "temperature": 0.7,
-            "max_output_tokens": 2000,
-        }
+        normalized_model = model_name.lower()
+        default_generation: Dict[str, Any] = {"temperature": 0.7}
+        if any(prefix in normalized_model for prefix in ("gpt-4.1", "gpt-4o", "gpt-5", "o1", "o3")):
+            default_generation["max_completion_tokens"] = 2000
+        elif "gpt" in normalized_model:
+            default_generation["max_tokens"] = 2000
+        else:
+            default_generation["max_output_tokens"] = 2000
         merged_generation = dict(default_generation)
         if generation_params:
             merged_generation.update(generation_params)
@@ -98,6 +103,9 @@ Each scenario must include:
 - setup_entities: Pre-existing entities needed (e.g., {{"client_id": "..."}})
 - expect_success: {success_type == "success"}
 - expected_error_substring: Error substring if failure scenario
+- expected_response: {{ "text": "...", "evaluation": "structured" or "judge", "answers": ["..."], "requires_judge": false }}
+  * For success scenarios, provide a clear acknowledgment that reflects the tool result.
+  * For failure scenarios, explain the error surfaced to the user.
 
 For upload_document tool, expected_args should include:
 - entity_type: "Client", "Contact", "Opportunity", "Quote", or "Contract"
@@ -116,8 +124,62 @@ Return scenarios as JSON following the ScenariosResponse schema."""
             scenario_dict["expected_tool"] = tool_name  # Ensure tool name matches
             scenario_dict["verification_mode"] = "database"
             scenario_dict["failure_category"] = None if scenario_dict["expect_success"] else "validation"
+            _normalise_expected_response(scenario_dict)
             scenarios.append(scenario_dict)
         return scenarios
+
+
+def _summarize_expected_response(
+    tool_name: str,
+    expected_args: Mapping[str, Any],
+    expect_success: bool,
+    expected_error: Optional[str],
+) -> str:
+    """Create a concise natural-language summary for the tool outcome."""
+    arg_items: List[str] = []
+    for key, value in list(expected_args.items())[:3]:
+        if isinstance(value, Mapping):
+            arg_items.append(f"{key}=…")
+        else:
+            arg_items.append(f"{key}={value}")
+    argument_summary = ", ".join(arg_items)
+    if expect_success:
+        if argument_summary:
+            return f"Completed {tool_name} with {argument_summary}"
+        return f"Completed {tool_name} successfully"
+    error_text = expected_error or "validation error"
+    return f"{tool_name} failed as expected: {error_text}"
+
+
+def _normalise_expected_response(scenario: Dict[str, Any]) -> None:
+    """Ensure every scenario carries a well-formed expected_response stanza."""
+    payload = scenario.get("expected_response") or {}
+    expect_success = bool(scenario.get("expect_success", True))
+    expected_args = scenario.get("expected_args", {}) or {}
+    expected_error = scenario.get("expected_error_substring")
+
+    requires_judge = bool(payload.get("requires_judge", False))
+    evaluation = str(payload.get("evaluation", "judge" if requires_judge else "structured")).lower()
+    if requires_judge:
+        evaluation = "judge"
+    elif evaluation not in {"structured", "judge"}:
+        evaluation = "structured"
+
+    text = str(payload.get("text", "")).strip()
+    if not text:
+        text = _summarize_expected_response(scenario.get("expected_tool", ""), expected_args, expect_success, expected_error)
+
+    answers = payload.get("answers") or []
+    normalised_answers = [str(answer).strip() for answer in answers if str(answer).strip()]
+    if evaluation == "structured" and not normalised_answers:
+        normalised_answers = [text]
+
+    scenario["expected_response"] = {
+        "text": text,
+        "evaluation": evaluation,
+        "answers": normalised_answers,
+        "requires_judge": evaluation == "judge" or requires_judge,
+    }
 
 
 def validate_scenario(scenario: Dict[str, Any]) -> bool:
@@ -130,6 +192,7 @@ def validate_scenario(scenario: Dict[str, Any]) -> bool:
             expected_tool=scenario["expected_tool"],
             expected_args=scenario.get("expected_args", {}),
             expect_success=scenario.get("expect_success", True),
+            expected_response=scenario.get("expected_response"),
         )
 
         conversation = Conversation(
@@ -148,11 +211,16 @@ def validate_scenario(scenario: Dict[str, Any]) -> bool:
             return False
 
         result = results[0]
+        per_turn = (result.per_turn_results or [None])[0] or {}
+
         if scenario.get("expect_success", True):
-            return result.overall_success
-        else:
-            # For failure scenarios, check that execution failed appropriately
-            return not result.overall_success or result.failed_at_turn == 1
+            return bool(per_turn.get("tool_success")) and bool(per_turn.get("response_success"))
+
+        return (
+            not result.overall_success
+            and per_turn.get("verification") == "expected_failure_diagnostic"
+            and bool(per_turn.get("tool_success"))
+        )
 
     except Exception as exc:
         print(f"  Validation failed: {exc}")
@@ -197,20 +265,24 @@ def main() -> None:
     generator = ScenarioGenerator(model_name=args.model_name)
 
     # Generate success scenarios
-    print(f"Generating {args.success_count} success scenarios for {args.tool}...")
-    success_dataset = Dataset.from_list([
-        {"tool_name": args.tool, "count": args.success_count, "success_type": "success"}
-    ])
-    success_result = generator(success_dataset)
-    success_scenarios = list(success_result.dataset)
+    success_scenarios = []
+    if args.success_count > 0:
+        print(f"Generating {args.success_count} success scenarios for {args.tool}...")
+        success_dataset = Dataset.from_list([
+            {"tool_name": args.tool, "count": args.success_count, "success_type": "success"}
+        ])
+        success_result = generator(success_dataset)
+        success_scenarios = list(success_result.dataset)
 
     # Generate failure scenarios
-    print(f"Generating {args.failure_count} failure scenarios for {args.tool}...")
-    failure_dataset = Dataset.from_list([
-        {"tool_name": args.tool, "count": args.failure_count, "success_type": "failure"}
-    ])
-    failure_result = generator(failure_dataset)
-    failure_scenarios = list(failure_result.dataset)
+    failure_scenarios = []
+    if args.failure_count > 0:
+        print(f"Generating {args.failure_count} failure scenarios for {args.tool}...")
+        failure_dataset = Dataset.from_list([
+            {"tool_name": args.tool, "count": args.failure_count, "success_type": "failure"}
+        ])
+        failure_result = generator(failure_dataset)
+        failure_scenarios = list(failure_result.dataset)
 
     # Validate scenarios
     print("Validating scenarios...")

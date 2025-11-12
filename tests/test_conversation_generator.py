@@ -104,6 +104,9 @@ def _assert_harness_success(conversation: Conversation, template_key: str):
         f"Conversation {conversation.conversation_id} for template '{template_key}' "
         f"failed at turn {result.failed_at_turn}: {result.error_message}"
     )
+    for turn in result.per_turn_results:
+        assert turn.get("tool_success") is True
+        assert turn.get("response_success") is True
 
 
 def test_client_management_smoke(repo, curator, rng):
@@ -165,3 +168,6 @@ def test_failure_conversation_expected(repo, curator, rng):
     assert not result.overall_success
     assert result.metadata.get("expected_failure") is True
     assert result.failed_at_turn == 1
+    failure_turn = result.per_turn_results[0]
+    assert failure_turn.get("tool_success") is True
+    assert failure_turn.get("response_success") is False

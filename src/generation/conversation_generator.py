@@ -8,9 +8,12 @@ import logging
 import random
 import uuid
 from dataclasses import dataclass
-from typing import Any, Dict, List, Mapping, MutableMapping, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Mapping, MutableMapping, Optional, Sequence, Tuple
 
-from datasets import Dataset
+try:
+    from datasets import Dataset
+except ImportError:  # pragma: no cover - optional dependency
+    Dataset = None  # type: ignore
 
 from src.conversation_schema import Conversation, ConversationTurn
 from src.conversation_templates import TurnTemplate, WorkflowTemplate
@@ -23,10 +26,14 @@ from src.crm_sandbox import (
     Opportunity,
     Quote,
 )
-from src.generation.curator_utterances import CuratorUtteranceGenerator
 from src.pipeline.scenario_repository import ENTITY_ID_KEYS, ScenarioRecord, ScenarioRepository
 from src.reference_resolver import TemplateResolutionError, resolve_template, validate_template_references
 from src.evaluation.verification import VerificationMode
+
+if TYPE_CHECKING:  # pragma: no cover - only for typing
+    from src.generation.curator_utterances import CuratorUtteranceGenerator
+else:  # pragma: no cover - runtime fallback when curator isn't installed
+    CuratorUtteranceGenerator = Any
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +98,9 @@ def instantiate_conversation(
 ) -> Conversation:
     """Generate a single conversation instance for the provided workflow template."""
 
+    if CuratorUtteranceGenerator is Any or Dataset is None:  # pragma: no cover
+        raise ImportError("CuratorUtteranceGenerator is unavailable. Install bespokelabs-curator to generate conversations.")
+
     if conversation_id is None:
         conversation_id = f"CONV-{uuid.uuid4().hex[:8].upper()}"
 
@@ -140,11 +150,15 @@ def instantiate_conversation(
             raise RuntimeError(f"Curator returned empty utterance for {conversation_id} turn {turn_index}.")
 
         expected_error = context.scenario.raw.get("expected_error_substring")
+        expected_response_payload = context.scenario.raw.get("expected_response") or {}
         if context.scenario.expect_success:
             tool_result = _simulate_tool_execution(context.turn_template.tool_name, resolved_args, api)
             reference_payload = _extract_reference_payload(tool_result)
             previous_turn_outputs[turn_index] = reference_payload
-            assistant_summary = _summarize_tool_execution(context.turn_template.tool_name, resolved_args)
+            assistant_summary = expected_response_payload.get("text") or _summarize_tool_execution(
+                context.turn_template.tool_name,
+                resolved_args,
+            )
         else:
             try:
                 _simulate_tool_execution(context.turn_template.tool_name, resolved_args, api)
@@ -160,7 +174,7 @@ def instantiate_conversation(
                         ) from exc
                 reference_payload = {}
                 previous_turn_outputs[turn_index] = reference_payload
-                assistant_summary = (
+                assistant_summary = expected_response_payload.get("text") or (
                     _summarize_tool_execution(context.turn_template.tool_name, resolved_args)
                     + " (expected failure)"
                 )
@@ -191,6 +205,7 @@ def instantiate_conversation(
                 expect_success=context.scenario.expect_success,
                 expected_error_substring=context.scenario.raw.get("expected_error_substring"),
                 failure_category=context.scenario.raw.get("failure_category"),
+                expected_response=expected_response_payload,
             )
         )
         if not context.scenario.expect_success and not contains_failure:
@@ -447,7 +462,10 @@ def _build_client(entity_id: str, metadata: Mapping[str, Any], _: Optional[str])
     name = metadata.get("name")
     if not isinstance(name, str) or not name.strip():
         raise ValueError(f"Client {entity_id} missing human-readable name metadata.")
-    owner = _require_metadata_value(metadata, "owner", "Client", entity_id)
+    owner = metadata.get("owner")
+    if not owner:
+        # Some legacy seed payloads omit owner; fall back to a deterministic placeholder
+        owner = metadata.get("owner_name") or "Unassigned Owner"
     return Client(
         client_id=entity_id,
         name=name.strip(),
@@ -538,9 +556,15 @@ def _build_quote(entity_id: str, metadata: Mapping[str, Any], _: Optional[str]) 
         amount = float(amount)
     except (TypeError, ValueError):
         raise ValueError(f"Quote {entity_id} has non-numeric amount metadata: {amount!r}")
+    name = metadata.get("name")
+    if isinstance(name, str):
+        name = name.strip()
+    if not name:
+        name = f"Quote {entity_id[:8]}"
     return Quote(
         quote_id=entity_id,
         opportunity_id=opportunity_id,
+        name=name,
         amount=amount,
         status=status,
     )

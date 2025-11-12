@@ -126,6 +126,12 @@ def parse_args() -> argparse.Namespace:
         help="Directory where the conversations.jsonl file will be written",
     )
     parser.add_argument("--model-name", default="gpt-4.1-mini", help="Curator-backed model name")
+    parser.add_argument(
+        "--success-ratio",
+        type=float,
+        default=0.9,
+        help="Probability of sampling success scenarios for workflow generation (ignored for chains).",
+    )
     parser.add_argument("--smoke-test", action="store_true", help="Generate a small deterministic sample (10 conversations)")
     return parser.parse_args()
 
@@ -299,6 +305,8 @@ def generate_workflow_conversations(
     repo: ScenarioRepository,
     curator: CuratorUtteranceGenerator,
     rng: random.Random,
+    *,
+    success_ratio: float,
 ) -> List:
     conversations = []
     for template_key, desired_count in plan.items():
@@ -311,6 +319,7 @@ def generate_workflow_conversations(
                 curator,
                 rng,
                 conversation_id=conversation_id,
+                success_ratio=success_ratio,
             )
 
             harness = ConversationHarness([conversation])
@@ -372,7 +381,8 @@ def generate_chain_conversations(
     if conversations:
         ratio = failure_conversations / len(conversations)
         allowed_deviation = max(CHAIN_RATIO_TOLERANCE, 1.0 / len(conversations))
-        if abs(ratio - CHAIN_FAILURE_RATIO) > allowed_deviation:
+        disable_ratio_check = os.environ.get("DISABLE_CHAIN_FAILURE_RATIO") == "1"
+        if not disable_ratio_check and abs(ratio - CHAIN_FAILURE_RATIO) > allowed_deviation:
             raise RuntimeError(
                 f"Chained generation produced failure ratio {ratio:.3f}, "
                 f"expected {CHAIN_FAILURE_RATIO:.2f}±{allowed_deviation:.2f}."
@@ -415,7 +425,13 @@ def main() -> None:
     if args.mode == "workflow":
         plan = compute_plan(total_count, args.smoke_test)
         curator = CuratorUtteranceGenerator(model_name=args.model_name)
-        conversations = generate_workflow_conversations(plan, repo, curator, rng)
+        conversations = generate_workflow_conversations(
+            plan,
+            repo,
+            curator,
+            rng,
+            success_ratio=args.success_ratio,
+        )
         output_dir = args.output_dir
         output_filename = "conversations.jsonl"
         summary_counts = Counter(conv.workflow_category for conv in conversations)

@@ -9,15 +9,19 @@ for live LLM providers, deterministic mocks, or scripted behaviours.
 
 from __future__ import annotations
 
+import asyncio
 import csv
 import inspect
 import json
 import os
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, is_dataclass
+from datetime import date, datetime
+from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
 from textwrap import dedent
 from typing import Any, Dict, List, Mapping, Optional, Sequence
+from uuid import UUID
 
 from src.crm_sandbox import MockCrmApi
 
@@ -138,6 +142,7 @@ class AgentToolCall:
     raw_response: Optional[str] = None
     token_usage: Dict[str, int] = field(default_factory=dict)
     reasoning: Optional[str] = None
+    response_text: Optional[str] = None
 
 
 @dataclass
@@ -157,19 +162,37 @@ class ConversationAgent:
     provider_name: str = "mock"
     model_name: str = "ground_truth"
 
-    def tool_call(self, context: AgentTurnContext) -> AgentToolCall:  # pragma: no cover - interface
-        """Return the tool call that should be executed for ``context.turn``."""
+    def tool_call(
+        self,
+        context: AgentTurnContext,
+        guidance: Optional[List[str]] = None
+    ) -> AgentToolCall:  # pragma: no cover - interface
+        """Return the tool call that should be executed for ``context.turn``.
+
+        Args:
+            context: Turn context with conversation history
+            guidance: Optional list of learning notes from previous sessions
+        """
         raise NotImplementedError
 
 
 class MockAgent(ConversationAgent):
     """Agent that simply replays the ground-truth tool calls from the dataset."""
 
-    def tool_call(self, context: AgentTurnContext) -> AgentToolCall:
+    def tool_call(
+        self,
+        context: AgentTurnContext,
+        guidance: Optional[List[str]] = None
+    ) -> AgentToolCall:
+        # MockAgent ignores guidance and replays ground truth
         turn = context.turn
+        response_text = None
+        if turn.expected_response:
+            response_text = turn.expected_response.text
         return AgentToolCall(
             tool_name=turn.expected_tool,
             arguments=context.expected_arguments,
+            response_text=response_text,
         )
 
 
@@ -205,16 +228,67 @@ class LiteLLMChatAgent(ConversationAgent):
         self._system_prompt = self._build_system_prompt()
 
     # ------------------------------------------------------------------
-    def tool_call(self, context: AgentTurnContext) -> AgentToolCall:
+    def tool_call(
+        self,
+        context: AgentTurnContext,
+        guidance: Optional[List[str]] = None
+    ) -> AgentToolCall:
         messages = [
             {"role": "system", "content": self._system_prompt},
-            {
-                "role": "user",
-                "content": json.dumps(self._build_user_payload(context), ensure_ascii=False),
-            },
         ]
+
+        # Insert guidance from previous learning sessions if available
+        if guidance:
+            guidance_content = self._format_guidance(guidance)
+            messages.append({"role": "system", "content": guidance_content})
+
+        messages.append({
+            "role": "user",
+            "content": json.dumps(self._build_user_payload(context), ensure_ascii=False),
+        })
+
         response = self._invoke_model(messages)
         return self._parse_response(response)
+
+    def _serialize_for_json(self, value: Any) -> Any:
+        """Convert Python objects to JSON-serializable primitives.
+        
+        Recursively converts datetime, UUID, Decimal, and dataclass instances
+        to JSON-safe types (strings, floats, dicts).
+        """
+        if value is None:
+            return None
+        if is_dataclass(value):
+            return self._serialize_for_json(asdict(value))
+        if isinstance(value, (datetime, date)):
+            return value.isoformat()
+        if isinstance(value, UUID):
+            return str(value)
+        if isinstance(value, Decimal):
+            return float(value)
+        if isinstance(value, dict):
+            return {k: self._serialize_for_json(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [self._serialize_for_json(item) for item in value]
+        return value
+
+    def _format_guidance(self, guidance: List[str]) -> str:
+        """Format guidance notes into a system message."""
+        if not guidance:
+            return ""
+
+        guidance_lines = []
+        guidance_lines.append("## Previous Learning Notes")
+        guidance_lines.append(
+            "The following insights were learned from previous CRM sessions. "
+            "Apply these lessons to avoid repeating mistakes:"
+        )
+        guidance_lines.append("")
+
+        for idx, note in enumerate(guidance, start=1):
+            guidance_lines.append(f"{idx}. {note}")
+
+        return "\n".join(guidance_lines)
 
     # ------------------------------------------------------------------
     def _build_system_prompt(self) -> str:
@@ -228,21 +302,23 @@ class LiteLLMChatAgent(ConversationAgent):
 
         return dedent(
             f"""
-            You are an AI assistant operating inside the Arc CRM sandbox. For each turn, select the CRM tool and arguments that best satisfy the user’s request, using prior tool results and conversation context.
+            You are an AI assistant operating inside the Arc CRM sandbox. For each turn, select the CRM tool and arguments that best satisfy the user's request, using prior tool results and conversation context.
 
             Return exactly one JSON object per turn with this shape:
             {{
               "tool_name": "<tool identifier>",
               "arguments": {{ "<parameter>": <value>, ... }},
-              "reasoning": "<brief rationale tied to the user request>"
+              "reasoning": "<brief rationale tied to the user request>",
+              "response_text": "<optional natural language response to the user>"
             }}
             Do not include any text outside the JSON object.
 
             Guidelines:
             - Reuse identifiers from previous tool outputs when appropriate; avoid inventing new IDs unless the tool you call will create them.
             - Obey CRM schema constraints (enum values, numeric fields, required relationships). If a required identifier is unknown, call a lookup tool first.
-            - If the user’s request is expected to fail (e.g., canceling a non-existent record), still call the tool that best reflects the request and let the CRM response surface the error.
+            - If the user's request is expected to fail (e.g., canceling a non-existent record), still call the tool that best reflects the request and let the CRM response surface the error.
             - Issue exactly one tool call per turn. If a request needs multiple steps, focus on the next step that advances the task.
+            - If the user payload includes an "expected_response" field, provide a natural language response in "response_text" that accurately reflects the tool result and addresses the user's request.
 
             CRM schema summary:
             {schema_section}
@@ -258,31 +334,43 @@ class LiteLLMChatAgent(ConversationAgent):
         history: List[Dict[str, Any]] = []
         for prior_turn in context.prior_turns:
             record = context.previous_results.get(prior_turn.turn_id, {})
+            # Serialize result to ensure JSON compatibility (datetime, UUID, Decimal, etc.)
+            result = record.get("result")
+            if result is not None:
+                result = self._serialize_for_json(result)
             history.append(
                 {
                     "turn_id": prior_turn.turn_id,
                     "user_utterance": prior_turn.user_utterance,
                     "tool_name": record.get("tool_name"),
-                    "arguments": record.get("arguments"),
-                    "result": record.get("result"),
+                    "arguments": self._serialize_for_json(record.get("arguments")),
+                    "result": result,
                     "error": record.get("error"),
                     "success": record.get("success"),
                 }
             )
 
+        current_turn_payload: Dict[str, Any] = {
+            "turn_id": context.turn.turn_id,
+            "user_utterance": context.turn.user_utterance,
+            "expect_success": context.turn.expect_success,
+        }
+        
+        # Include expected_response if present to guide the agent
+        if context.turn.expected_response:
+            current_turn_payload["expected_response"] = {
+                "text": context.turn.expected_response.text,
+                "answers": context.turn.expected_response.answers,
+                "evaluation": context.turn.expected_response.evaluation,
+            }
+        
         payload: Dict[str, Any] = {
             "conversation_id": context.conversation.conversation_id,
             "workflow_category": context.conversation.workflow_category,
             "complexity_level": context.conversation.complexity_level,
             "success_criteria": context.conversation.success_criteria,
             "history": history,
-            "current_turn": {
-                "turn_id": context.turn.turn_id,
-                "user_utterance": context.turn.user_utterance,
-                "expected_tool_hint": context.turn.expected_tool,
-                "expected_arguments_hint": context.expected_arguments,
-                "expect_success": context.turn.expect_success,
-            },
+            "current_turn": current_turn_payload,
         }
         if context.conversation.cumulative_context:
             payload["cumulative_context"] = context.conversation.cumulative_context
@@ -324,12 +412,18 @@ class LiteLLMChatAgent(ConversationAgent):
 
         token_usage = self._normalise_token_usage(response.get("usage", {}))
 
+        response_text = None
+        candidate_response = payload.get("response_text") or payload.get("response") or payload.get("assistant_response")
+        if isinstance(candidate_response, str):
+            response_text = candidate_response.strip()
+
         return AgentToolCall(
             tool_name=tool_name.strip(),
             arguments=arguments,
             raw_response=text_content,
             token_usage=token_usage,
             reasoning=reasoning_text,
+            response_text=response_text,
         )
 
     @staticmethod
@@ -414,6 +508,7 @@ class LiteLLMClaudeAgent(LiteLLMChatAgent):
         max_output_tokens: int = 800,
         schema_path: Optional[Path] = None,
         tasks_path: Optional[Path] = None,
+        tool_catalog_limit: int = 50,  # Show all tools by default (we have 38)
     ) -> None:
         default_model = os.getenv("CRM_BASELINE_CLAUDE_MODEL", "claude-sonnet-4-5-20250929")
         super().__init__(
@@ -423,6 +518,7 @@ class LiteLLMClaudeAgent(LiteLLMChatAgent):
             max_output_tokens=max_output_tokens,
             schema_path=schema_path,
             tasks_path=tasks_path,
+            tool_catalog_limit=tool_catalog_limit,
         )
 
 

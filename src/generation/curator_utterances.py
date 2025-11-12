@@ -47,10 +47,14 @@ class CuratorUtteranceGenerator(curator.LLM):
         if backend_params:
             merged_backend.update(backend_params)
 
-        default_generation = {
-            "temperature": 0.3,
-            "max_output_tokens": 120,
-        }
+        normalized_model = model_name.lower()
+        default_generation: Dict[str, Any] = {"temperature": 0.3}
+        if any(prefix in normalized_model for prefix in ("gpt-4.1", "gpt-4o", "gpt-5", "o1", "o3")):
+            default_generation["max_completion_tokens"] = 120
+        elif "gpt" in normalized_model:
+            default_generation["max_tokens"] = 120
+        else:
+            default_generation["max_output_tokens"] = 120
         merged_generation = dict(default_generation)
         if generation_params:
             merged_generation.update(generation_params)

@@ -246,6 +246,7 @@ class Opportunity(CRMBaseModel):
     owner: Optional[str] = None
     probability: Optional[float] = Field(default=None, ge=0, le=100)
     notes: Optional[str] = None
+    created_at: Optional[datetime] = None
 
     @field_validator("opportunity_id", mode="before")
     @classmethod
@@ -261,6 +262,7 @@ class Opportunity(CRMBaseModel):
 class Quote(CRMBaseModel):
     quote_id: str = Field(default_factory=_create_id)
     opportunity_id: str
+    name: Optional[str] = None
     version: Optional[str] = None
     amount: Optional[float] = Field(default=None, ge=0)
     status: Optional[QuoteStatus] = None
@@ -453,6 +455,8 @@ class MockCrmApi:
             raise ValueError(f"Opportunity not found with ID '{opportunity_id}'.")
         _validate_amount(amount, "Quote amount")
         status_value = _validate_enum_value(status, QuoteStatus, "Quote status")
+        opportunity_name = self.opportunities[opportunity_id].name or "Quote"
+        kwargs.setdefault("name", f"{opportunity_name} Quote")
         quote = Quote(opportunity_id=opportunity_id, amount=amount, status=status_value, **kwargs)
         self.quotes[quote.quote_id] = quote
         return quote

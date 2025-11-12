@@ -856,7 +856,7 @@ class PostgresCrmBackend:
             name=f"{source.name} (Clone)",
             client_id=source.client_id,
             amount=source.amount,
-            stage=source.stage.value if source.stage else "Prospecting",
+            stage=source.stage if source.stage else "Prospecting",
             owner=source.owner,
             probability=source.probability,
             close_date=source.close_date,
