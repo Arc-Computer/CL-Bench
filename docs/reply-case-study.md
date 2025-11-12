@@ -291,10 +291,15 @@ The complete dataset of 1,200 conversations is available at:
 
 **LLM Judge Configuration**
 
-The evaluation uses an LLM-based judge (GPT-4.1) to evaluate task completion when exact tool/argument matching fails but execution succeeds. The judge is configured to prioritize goal achievement over process adherence:
+The evaluation uses an LLM-based judge (GPT-4.1) to evaluate task completion when exact tool/argument matching fails but execution succeeds. The judge balances goal achievement with process correctness to ensure production-ready evaluation standards:
 
 - **Judge Model**: GPT-4.1 (OpenAI), temperature 0.0, max tokens 500
-- **Evaluation Criteria**: The judge evaluates whether the user's goal was accomplished, not whether the exact tool call matched expectations
+- **Evaluation Criteria**: The judge evaluates both goal achievement (70% weight) and process correctness (30% weight):
+  - **Goal Achievement (70%)**: Did the agent accomplish the user's goal? Did the tool execute successfully and return expected information?
+  - **Process Correctness (30%)**: Tool selection appropriateness, argument accuracy (>70% match expected), workflow adherence
+- **Pass Threshold**: Score ≥ 0.8 (raised from 0.7 for more realistic evaluation)
+- **Failure Conditions**: Intent misunderstanding, invalid/wrong tool, execution failure, significant argument mismatches (>50% incorrect), wrong tool category, incomplete responses
+- **Response Quality**: Response must address user's question, include key information, and be complete (not just placeholder text)
 - **Usage Pattern**: Judge activates when exact match verification fails but tool execution succeeds, providing a nuanced assessment of task completion
 - **Rationale Quality**: Judge provides detailed rationales explaining approval/rejection decisions, enabling analysis of failure modes
 
