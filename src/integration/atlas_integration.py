@@ -86,59 +86,111 @@ DEFAULT_AGENT_CONFIG: Dict[str, Any] = {
 
 
 def _store_student_and_judge_token_usage(conversation_result: Optional[Dict[str, Any]]) -> None:
-    """Extract student and judge token usage from conversation_result and store in ExecutionContext metadata.
+    """Extract student, judge, and reward token usage and store in ExecutionContext metadata.
     
-    This aggregates token usage from:
-    - conversation_result.metadata.agent.token_usage (student agent calls, aggregated from per-turn)
-    - per_turn_results[].token_usage (top-level agent tokens, if available)
-    - per_turn_results[].token_usage.judge (judge tool evaluation calls)
-    - per_turn_results[].token_usage.judge_response (judge response evaluation calls)
+    This aggregates token usage from multiple sources:
+    1. Student tokens from ExecutionContext.metadata['token_usage'] (flat structure from Atlas SDK)
+    2. Student tokens from conversation_result.metadata.agent.token_usage (harness aggregation)
+    3. Student tokens from per_turn_results[].token_usage (top-level, if available)
+    4. Reward tokens from ExecutionContext.metadata['session_reward_audit'][].raw_response.usage
+    5. Judge tokens from per_turn_results[].token_usage.judge and .judge_response
+    6. Learning tokens are already in ExecutionContext.metadata['token_usage']['learning']
     """
-    if ExecutionContext is None or not conversation_result:
+    if ExecutionContext is None:
         return
+    
+    def safe_int(value: Any) -> int:
+        """Safely convert value to int, handling strings and None."""
+        try:
+            return int(value) if value is not None else 0
+        except (TypeError, ValueError):
+            return 0
     
     try:
         context = ExecutionContext.get()
         
-        # Initialize token_usage in metadata if not present
+        # ====================================================================
+        # STEP 1: Extract student tokens from ExecutionContext (flat structure)
+        # ====================================================================
+        # Atlas SDK stores student tokens in ExecutionContext.metadata['token_usage']
+        # as a flat structure: {prompt_tokens, completion_tokens, total_tokens, calls}
+        # IMPORTANT: Extract this BEFORE modifying the dict structure
+        ec_token_usage_raw = context.metadata.get("token_usage", {})
+        student_tokens_from_ec = {}
+        
+        if isinstance(ec_token_usage_raw, dict):
+            # Check if top-level token keys exist (student tokens from Atlas SDK)
+            # These might coexist with nested keys (like 'learning'), so we check for them directly
+            has_top_level_tokens = (
+                "prompt_tokens" in ec_token_usage_raw 
+                or "completion_tokens" in ec_token_usage_raw 
+                or "total_tokens" in ec_token_usage_raw
+            )
+            # Only extract if 'student' key doesn't already exist (avoid double-counting)
+            has_student_key = "student" in ec_token_usage_raw
+            
+            if has_top_level_tokens and not has_student_key:
+                # Extract top-level student tokens (flat structure from Atlas SDK)
+                # These are stored directly by student.py._apply_usage_payload()
+                prompt = safe_int(ec_token_usage_raw.get("prompt_tokens"))
+                completion = safe_int(ec_token_usage_raw.get("completion_tokens"))
+                total = safe_int(ec_token_usage_raw.get("total_tokens"))
+                
+                # Only extract if we have meaningful values
+                if prompt > 0 or completion > 0 or total > 0:
+                    student_tokens_from_ec = {
+                        "prompt_tokens": prompt,
+                        "completion_tokens": completion,
+                        "total_tokens": total if total > 0 else (prompt + completion),
+                    }
+        
+        # Initialize token_usage in metadata if not present (or ensure it's a dict)
         if "token_usage" not in context.metadata:
+            context.metadata["token_usage"] = {}
+        elif not isinstance(context.metadata["token_usage"], dict):
+            # If it's not a dict (shouldn't happen, but defensive), reset it
             context.metadata["token_usage"] = {}
         
         token_usage = context.metadata["token_usage"]
         
-        # Extract student token usage from conversation_result.metadata.agent.token_usage
-        # (This is aggregated by build_regular_conversation_result from per_turn_results)
-        metadata = conversation_result.get("metadata", {})
-        agent_metadata = metadata.get("agent", {})
-        agent_token_usage = agent_metadata.get("token_usage", {})
+        # ====================================================================
+        # STEP 2: Extract student tokens from conversation_result (harness)
+        # ====================================================================
+        student_tokens_from_conv = {}
+        if conversation_result:
+            metadata = conversation_result.get("metadata", {})
+            agent_metadata = metadata.get("agent", {})
+            agent_token_usage = agent_metadata.get("token_usage", {})
+            
+            if isinstance(agent_token_usage, dict) and any(agent_token_usage.values()):
+                student_tokens_from_conv = {
+                    "prompt_tokens": safe_int(agent_token_usage.get("prompt_tokens")),
+                    "completion_tokens": safe_int(agent_token_usage.get("completion_tokens")),
+                    "total_tokens": safe_int(agent_token_usage.get("total_tokens")),
+                }
+            
+            # Also try extracting from per_turn_results directly
+            per_turn = conversation_result.get("per_turn_results", [])
+            student_tokens_from_turns = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+            
+            for turn in per_turn:
+                turn_token_usage = turn.get("token_usage", {})
+                if isinstance(turn_token_usage, dict):
+                    # Extract top-level agent tokens (if present)
+                    for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                        value = turn_token_usage.get(key)
+                        if value is not None:
+                            student_tokens_from_turns[key] += safe_int(value)
+            
+            if any(student_tokens_from_turns.values()):
+                # Merge with conversation_result tokens (prefer conversation_result if both exist)
+                if not student_tokens_from_conv:
+                    student_tokens_from_conv = student_tokens_from_turns
         
-        # Also try extracting from per_turn_results directly if metadata doesn't have it
-        per_turn = conversation_result.get("per_turn_results", [])
-        student_tokens_from_turns = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        # Combine student tokens (prefer ExecutionContext if available, fallback to conversation_result)
+        final_student_tokens = student_tokens_from_ec if any(student_tokens_from_ec.values()) else student_tokens_from_conv
         
-        for turn in per_turn:
-            turn_token_usage = turn.get("token_usage", {})
-            if isinstance(turn_token_usage, dict):
-                # Extract top-level agent tokens (if present)
-                # These are stored directly in token_usage, not nested
-                for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
-                    value = turn_token_usage.get(key)
-                    if value is not None:
-                        try:
-                            # Handle string values (from JSON deserialization)
-                            student_tokens_from_turns[key] += int(value)
-                        except (TypeError, ValueError):
-                            pass
-        
-        # Use aggregated tokens from metadata if available, otherwise use per-turn aggregation
-        if isinstance(agent_token_usage, dict) and any(agent_token_usage.values()):
-            final_student_tokens = agent_token_usage
-        elif any(student_tokens_from_turns.values()):
-            final_student_tokens = student_tokens_from_turns
-        else:
-            final_student_tokens = {}
-        
-        if final_student_tokens:
+        if final_student_tokens and any(final_student_tokens.values()):
             # Initialize student token usage
             if "student" not in token_usage:
                 token_usage["student"] = {
@@ -152,26 +204,61 @@ def _store_student_and_judge_token_usage(conversation_result: Optional[Dict[str,
             student_usage["completion_tokens"] += final_student_tokens.get("completion_tokens", 0)
             student_usage["total_tokens"] += final_student_tokens.get("total_tokens", 0)
         
-        # Extract judge token usage from per-turn records (nested in judge/judge_response)
+        # ====================================================================
+        # STEP 3: Extract reward tokens from session_reward_audit
+        # ====================================================================
+        reward_audit = context.metadata.get("session_reward_audit", [])
+        reward_tokens = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        
+        if isinstance(reward_audit, list):
+            for audit_entry in reward_audit:
+                if isinstance(audit_entry, dict):
+                    raw_response = audit_entry.get("raw_response", {})
+                    if isinstance(raw_response, dict):
+                        usage = raw_response.get("usage", {})
+                        if isinstance(usage, dict):
+                            reward_tokens["prompt_tokens"] += safe_int(usage.get("prompt_tokens"))
+                            reward_tokens["completion_tokens"] += safe_int(usage.get("completion_tokens"))
+                            reward_tokens["total_tokens"] += safe_int(usage.get("total_tokens"))
+        
+        if any(reward_tokens.values()):
+            if "reward" not in token_usage:
+                token_usage["reward"] = {
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "total_tokens": 0,
+                }
+            
+            reward_usage = token_usage["reward"]
+            reward_usage["prompt_tokens"] += reward_tokens["prompt_tokens"]
+            reward_usage["completion_tokens"] += reward_tokens["completion_tokens"]
+            reward_usage["total_tokens"] += reward_tokens["total_tokens"]
+        
+        # ====================================================================
+        # STEP 4: Extract judge tokens from per_turn_results
+        # ====================================================================
         judge_tokens = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         
-        for turn in per_turn:
-            turn_token_usage = turn.get("token_usage", {})
-            if isinstance(turn_token_usage, dict):
-                # Extract judge and judge_response token usage (nested)
-                for judge_key in ("judge", "judge_response"):
-                    judge_usage = turn_token_usage.get(judge_key, {})
-                    if isinstance(judge_usage, dict):
-                        # Handle string values (from JSON deserialization)
-                        def safe_int(value):
-                            try:
-                                return int(value) if value is not None else 0
-                            except (TypeError, ValueError):
-                                return 0
-                        
-                        judge_tokens["prompt_tokens"] += safe_int(judge_usage.get("prompt_tokens"))
-                        judge_tokens["completion_tokens"] += safe_int(judge_usage.get("completion_tokens"))
-                        judge_tokens["total_tokens"] += safe_int(judge_usage.get("total_tokens"))
+        if conversation_result:
+            per_turn = conversation_result.get("per_turn_results", [])
+            for turn in per_turn:
+                turn_token_usage = turn.get("token_usage", {})
+                if isinstance(turn_token_usage, dict):
+                    # Extract judge and judge_response token usage (nested)
+                    for judge_key in ("judge", "judge_response"):
+                        judge_usage = turn_token_usage.get(judge_key, {})
+                        if isinstance(judge_usage, dict):
+                            prompt = safe_int(judge_usage.get("prompt_tokens"))
+                            completion = safe_int(judge_usage.get("completion_tokens"))
+                            total = safe_int(judge_usage.get("total_tokens"))
+                            
+                            judge_tokens["prompt_tokens"] += prompt
+                            judge_tokens["completion_tokens"] += completion
+                            # Use provided total_tokens, or calculate from prompt + completion if missing
+                            if total > 0:
+                                judge_tokens["total_tokens"] += total
+                            else:
+                                judge_tokens["total_tokens"] += prompt + completion
         
         if any(judge_tokens.values()):
             if "judge" not in token_usage:
@@ -184,10 +271,17 @@ def _store_student_and_judge_token_usage(conversation_result: Optional[Dict[str,
             judge_usage = token_usage["judge"]
             judge_usage["prompt_tokens"] += judge_tokens["prompt_tokens"]
             judge_usage["completion_tokens"] += judge_tokens["completion_tokens"]
-            judge_usage["total_tokens"] += judge_tokens["total_tokens"]
+            # Calculate total if not already set correctly
+            if judge_tokens["total_tokens"] > 0:
+                judge_usage["total_tokens"] += judge_tokens["total_tokens"]
+            else:
+                judge_usage["total_tokens"] += judge_tokens["prompt_tokens"] + judge_tokens["completion_tokens"]
+        
+        # Note: Learning tokens are already stored in token_usage['learning'] by synthesizer.py
+        # No need to extract them here
     
     except Exception as exc:
-        logger.debug("Failed to store student/judge token usage: %s", exc)
+        logger.debug("Failed to store student/judge/reward token usage: %s", exc)
 
 
 def _extract_atlas_metadata() -> Dict[str, Any]:

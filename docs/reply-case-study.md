@@ -87,6 +87,10 @@ This rigor ensures the evaluation identifies real consistency gaps where inferen
 | GPT-4.1 Mini | **71.5%** | **21.0%** | 41.6% | 7.3% | 1.0% |
 | **Atlas (194/400, 48.5%)** | **95.9%** | **89.7%** | **85.3%** | **59.7%** | **30.9%** |
 
+![Figure 1: Consistency Gap Analysis](../artifacts/visualizations/consistency_gap_bridge_bars.png)
+
+**Figure 1: Consistency Gap Analysis.** Baseline models demonstrate conversational success (71-76%) but collapse at perfect execution (0-7%). Atlas bridges the consistency gap through continual learning, achieving 95.9% conversational success, 85.3% turn-level consistency, and 30.9% perfect execution—representing a 30.9x improvement over GPT-4.1 Mini baseline.
+
 **Key Insights:**
 
 1. **Capability Demonstration**: Baseline models successfully execute CRM tools in 71-76% of conversations, demonstrating strong interaction capability. Turn-level tool success rates (39-46%) show models can effectively use the CRM toolset.
