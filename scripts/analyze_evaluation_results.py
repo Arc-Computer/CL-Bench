@@ -348,6 +348,23 @@ def generate_markdown_report(
         lines.append(f"- **Max Reward:** {rt['max']:.3f}")
         lines.append(f"- **Sessions with Rewards:** {rt['count']}")
         lines.append("")
+    
+    if atlas_metrics.get("cue_hits", 0) > 0 or atlas_metrics.get("action_adoptions", 0) > 0:
+        lines.append("### Learning Usage")
+        lines.append("")
+        lines.append(f"- **Cue Hits:** {atlas_metrics.get('cue_hits', 0)}")
+        lines.append(f"- **Action Adoptions:** {atlas_metrics.get('action_adoptions', 0)}")
+        lines.append(f"- **Failed Adoptions:** {atlas_metrics.get('failed_adoptions', 0)}")
+        lines.append("")
+    
+    if atlas_metrics.get("token_usage"):
+        lines.append("### Atlas Token Usage")
+        lines.append("")
+        lines.append("| Metric | Value |")
+        lines.append("|--------|-------|")
+        for key, value in atlas_metrics["token_usage"].items():
+            lines.append(f"| {key} | {value:,} |")
+        lines.append("")
 
     return "\n".join(lines)
 
