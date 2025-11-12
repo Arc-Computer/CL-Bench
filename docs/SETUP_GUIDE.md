@@ -59,7 +59,7 @@ pip install -e external/atlas-sdk[dev]
 
 **File**: `external/atlas-sdk/atlas/config/models.py`
 
-**Location**: Add a `model_validator` to the `StorageConfig` class (around line 533, after the `apply_schema_on_connect` field):
+**Location**: Add a `model_validator` to the `StorageConfig` class (at line 533, after the `apply_schema_on_connect` field at line 531):
 
 ```python
 @model_validator(mode="before")
@@ -189,11 +189,11 @@ The evaluation uses the final clean dataset:
 # Verify dataset exists
 ls -lh artifacts/deterministic/final_conversations_final_clean.jsonl
 
-# Check dataset size (should be ~1,200 conversations)
+# Check dataset size (should be exactly 1,200 conversations)
 wc -l artifacts/deterministic/final_conversations_final_clean.jsonl
 ```
 
-**Expected**: ~1,200 conversations (one per line in JSONL format)
+**Expected**: Exactly 1,200 conversations (one per line in JSONL format)
 
 ## Step 8: Pre-Flight Checks
 
