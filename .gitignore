@@ -21,6 +21,11 @@ build/
 
 # External dependencies
 external/atlas-sdk/
+# Exception: Track our modifications to support STORAGE__DATABASE_URL env var override
+# Need to un-ignore parent directories first
+!external/atlas-sdk/atlas/
+!external/atlas-sdk/atlas/config/
+!external/atlas-sdk/atlas/config/models.py
 
 # Artifacts - Exclude ALL artifacts except final clean dataset
 artifacts/legacy/
