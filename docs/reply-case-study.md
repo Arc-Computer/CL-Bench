@@ -49,8 +49,9 @@ Our synthetic dataset is generated entirely in-repo so it mirrors Reply’s CRM 
 5. **Utterance + Replay Loop** – Conversations are authored with placeholders, then `ConversationHarness` replays every turn against the Postgres CRM backend. During replay we seed deterministic CRM records, resolve placeholders into live GUIDs, and rewrite assistant turns with ground-truth values, ensuring datasets contain only executable traces.
 
 Evaluation stages:
-- **Baseline:** Claude 4.5 Sonnet, GPT‑4.1, and GPT‑4.1 mini agents execute the 519 clean conversations via ConversationHarness (Postgres backend, judge enabled).
-- **Atlas Runtime:** The same dataset feeds `run_atlas_baseline`, which wraps the CRM harness with Atlas’ student/teacher loop (student GPT‑4.1 mini, teacher GPT‑4.1, paired mode).
+- **Smoke Tests:** 5 conversations per baseline agent and 5 scenarios for Atlas to verify LLM judge functionality and learning loop activation.
+- **Baseline:** Claude 4.5 Sonnet, GPT‑4.1, and GPT‑4.1 mini agents execute all 1,200 clean conversations via ConversationHarness (Postgres backend, judge enabled).
+- **Atlas Runtime:** The same 1,200 conversation dataset feeds `run_atlas_baseline`, which wraps the CRM harness with Atlas’ student/teacher loop (student GPT‑4.1 mini, teacher GPT‑4.1, paired mode).
 - **Atlas + GKD:** Once Atlas sessions are captured, Atlas Core distills teacher interventions back into an improved student; those distilled checkpoints re-enter the harness for the final pass.
 
 Metrics captured per stage:

@@ -234,6 +234,9 @@ async def evaluate_atlas_learning_loop() -> Dict[str, Any]:
     learning_key = None
     previous_learning_state = None
     
+    # Track running success rate
+    successful_scenarios = 0
+    
     for i, conversation in enumerate(conversations, 1):
         print(f"\n{'='*80}")
         print(f"SCENARIO {i}/{len(conversations)}: {conversation.conversation_id}")
@@ -241,6 +244,11 @@ async def evaluate_atlas_learning_loop() -> Dict[str, Any]:
         print(f"Complexity: {conversation.complexity_level}")
         print(f"Turns: {len(conversation.turns)}")
         print(f"Workflow: {conversation.workflow_category}")
+        
+        # Display running success rate
+        if i > 1:
+            running_success_rate = (successful_scenarios / (i - 1) * 100.0) if (i - 1) > 0 else 0.0
+            print(f"Running Success Rate: {running_success_rate:.1f}% ({successful_scenarios}/{i-1})")
         
         scenario_result = {
             "scenario": i,
@@ -321,6 +329,10 @@ async def evaluate_atlas_learning_loop() -> Dict[str, Any]:
             scenario_result["success"] = overall_success
             scenario_result["reward_score"] = reward_signal
             
+            # Update running success count
+            if overall_success:
+                successful_scenarios += 1
+            
             # Get session reward from Atlas
             session_reward = context.metadata.get("session_reward")
             if isinstance(session_reward, dict):
@@ -328,8 +340,11 @@ async def evaluate_atlas_learning_loop() -> Dict[str, Any]:
                 scenario_result["atlas_reward_score"] = atlas_reward_score
                 print(f"\n   Atlas reward score: {atlas_reward_score:.2f}")
             
+            # Calculate and display running success rate
+            running_success_rate = (successful_scenarios / i * 100.0) if i > 0 else 0.0
             print(f"   Conversation success: {overall_success}")
             print(f"   Reward signal: {reward_signal:.2f}")
+            print(f"   Running Success Rate: {running_success_rate:.1f}% ({successful_scenarios}/{i})")
             
             # Check learning state after session - query from DATABASE (not context, as context is cleared after arun)
             # Wait a moment for async operations (including database persistence) to complete

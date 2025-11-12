@@ -219,24 +219,31 @@ class ConversationHarness:
                     },
                 )
             results.append(result)
-            if index % 10 == 0 or index == total:
-                elapsed = time.time() - start_time
-                rate = index / elapsed if elapsed else 0.0
-                eta = (total - index) / rate if rate else float("inf")
-                eta_text = (
-                    "N/A"
-                    if eta == float("inf")
-                    else time.strftime("%H:%M:%S", time.gmtime(int(max(0.0, eta))))
-                )
-                logger.info(
-                    "Harness progress %d/%d (%.1f%%). Elapsed %.1fs, ETA %s. Last conversation: %s",
-                    index,
-                    total,
-                    (index / total) * 100.0,
-                    elapsed,
-                    eta_text,
-                    conversation.conversation_id,
-                )
+            
+            # Calculate running success rate
+            successes = sum(1 for r in results if r.overall_success)
+            success_rate = (successes / index * 100.0) if index > 0 else 0.0
+            
+            # Log every conversation with running success rate
+            elapsed = time.time() - start_time
+            rate = index / elapsed if elapsed else 0.0
+            eta = (total - index) / rate if rate else float("inf")
+            eta_text = (
+                "N/A"
+                if eta == float("inf")
+                else time.strftime("%H:%M:%S", time.gmtime(int(max(0.0, eta))))
+            )
+            logger.info(
+                "[%d/%d] Conversation: %s | Success: %s | Running Success Rate: %.1f%% (%d/%d) | ETA: %s",
+                index,
+                total,
+                conversation.conversation_id,
+                "✓" if result.overall_success else "✗",
+                success_rate,
+                successes,
+                index,
+                eta_text,
+            )
 
         if self._output_path:
             self._write_results(results)
