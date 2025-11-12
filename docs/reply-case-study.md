@@ -230,6 +230,63 @@ The entire dataset generation pipeline is deterministic and reproducible:
 - **Pipeline Artifacts**: Intermediate artifacts (skeletons, replay results, paraphrased conversations) are preserved for auditability
 - **Execution Environment**: Database state is reset per conversation, ensuring isolation and reproducibility
 
+**Example Complex Conversation**
+
+The following example illustrates a complex conversation (7 turns) demonstrating cross-entity workflows, state mutations, and cross-turn entity references:
+
+**Conversation ID**: `SKEL-CREATE NEW OPPORTUNITY_complex_0_0_58c1d043`  
+**Workflow Category**: Opportunity Management  
+**Complexity**: Complex (7 turns)
+
+**Turn 1 - Client Search:**
+- **User**: "Find client Acme Corporation"
+- **Expected Tool**: `client_search`
+- **Expected Arguments**: `{"criteria": {"name": "Acme Corporation"}}`
+- **Expected Response**: Confirms client exists with `client_id=705c2933-40ad-4199-a1cd-cce9b8619640`
+
+**Turn 2 - Create Opportunity:**
+- **User**: "I need to add a new deal: Q4 Sales Opportunity"
+- **Expected Tool**: `create_new_opportunity`
+- **Expected Arguments**: `{"name": "Q4 Sales Opportunity", "client_id": "{{turn_1.client_id}}", "stage": "Prospecting", "amount": 100000}`
+- **Cross-Turn Reference**: Uses `{{turn_1.client_id}}` template token, resolved to the client ID from Turn 1
+- **Expected Response**: Creates opportunity with `opportunity_id=bb2da624-36f3-4969-8a73-582cba35e3e1`
+
+**Turn 3 - Modify Opportunity:**
+- **User**: "Modify opportunity {{turn_2.opportunity_id}}"
+- **Expected Tool**: `modify_opportunity`
+- **Expected Arguments**: `{"opportunity_id": "{{turn_2.opportunity_id}}", "stage": "Qualification", "probability": 30}`
+- **Cross-Turn Reference**: References opportunity created in Turn 2
+- **State Mutation**: Updates opportunity stage from "Prospecting" to "Qualification"
+
+**Turn 4 - Create Quote:**
+- **User**: "Create a quote for opportunity {{turn_3.opportunity_id}}"
+- **Expected Tool**: `create_quote`
+- **Expected Arguments**: `{"opportunity_id": "{{turn_3.opportunity_id}}", "amount": 100000, "status": "Draft"}`
+- **Cross-Entity Operation**: Creates a quote linked to the opportunity
+- **Expected Response**: Creates quote with `quote_id=fda3fcf8-d68a-44c2-9545-40b61ce4b39a`
+
+**Turn 5 - View Opportunity Details:**
+- **User**: "What's the status of opportunity {{turn_4.opportunity_id}}?"
+- **Expected Tool**: `view_opportunity_details`
+- **Expected Arguments**: `{"opportunity_id": "{{turn_4.opportunity_id}}"}`
+- **Verification**: Confirms opportunity state after modifications
+
+**Turns 6-7**: Additional search operations to verify state and demonstrate multi-turn query patterns.
+
+**Key Characteristics:**
+- **Cross-Entity Workflow**: Spans clients, opportunities, and quotes
+- **State Mutations**: Creates and modifies CRM records
+- **Cross-Turn References**: Uses template tokens (`{{turn_N.field}}`) to reference entities from previous turns
+- **Template Resolution**: All template tokens resolve to valid UUIDs during execution
+- **Schema Compliance**: All tool arguments respect production CRM schema constraints
+
+**Full Dataset Access**
+
+The complete dataset of 1,200 conversations is available at:
+- **File Path**: `artifacts/deterministic/final_conversations_final_clean.jsonl`
+- **Format**: JSONL (one JSON object per line)
+- **Schema**: Each conversation follows the structure shown above, with full turn-level details, expected responses, and initial entity state
+
 ### B. Evaluation Methodology Details
 
 **LLM Judge Configuration**
