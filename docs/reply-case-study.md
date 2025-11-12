@@ -114,24 +114,6 @@ Together these components recreate Reply’s CRM stack end-to-end: synthetic dat
 
 The evaluation follows a rigorous, multi-stage protocol designed to isolate the impact of continual learning while maintaining reproducibility and operational realism. The design prioritizes statistical rigor through a large sample size (1,200 conversations) and controlled comparisons across three baseline models and the Atlas learning system.
 
-**Sample Size Justification**
-
-The evaluation uses 1,200 conversations per evaluation stage, which exceeds the minimum viable sample size for statistically meaningful results. Statistical power analysis indicates that approximately 400-500 conversations represent the minimum viable sample size for this evaluation, balancing three critical requirements:
-
-1. **Statistical Power**: To detect a 10% improvement (80% → 90% success rate) with 80% statistical power and 95% confidence, approximately 200 conversations per group (baseline and Atlas) are required. For more precise detection of smaller improvements (5-7.5%), 500-800 conversations per group are needed.
-
-2. **Learning Accumulation**: Atlas's inference-time learning accumulates over conversations. Early conversations (1-50) show minimal learning benefit, mid-stage conversations (50-200) demonstrate accumulating improvements, and later conversations (200+) exhibit stable, consistent learning. A minimum of 300-400 conversations ensures meaningful learning accumulation is visible and measurable.
-
-3. **Baseline Stability**: Reliable baseline metrics require sufficient sample size to achieve narrow confidence intervals. With 400 conversations, the 95% confidence interval for an 80% success rate has a margin of error of approximately ±4%, providing stable baseline metrics for comparison.
-
-The 1,200-conversation dataset provides:
-- **Statistical Power**: Can detect improvements as small as 5% with high confidence
-- **Learning Analysis**: Sufficient data to analyze learning growth trends, cue hits, and action adoptions across the full evaluation
-- **Baseline Confidence**: Very high confidence in baseline metrics (±2.3% margin of error)
-- **Publication Quality**: Exceeds minimum requirements for credible research evaluation
-
-For time-constrained or cost-sensitive evaluations, a minimum viable subset of 400-500 conversations would still provide statistically meaningful results, though with reduced precision for detecting smaller improvements.
-
 **Execution Steps**
 
 1. **Pre-Evaluation Validation (Smoke Tests)**: Before launching the full evaluation, we executed targeted smoke tests to verify system integrity. Each baseline agent processed 5 conversations to confirm LLM judge functionality, database connectivity, and result serialization. Similarly, Atlas underwent a 5-scenario validation to ensure the learning loop activates correctly, telemetry persists to the database, and guidance re-injection works as expected. These smoke tests serve as quality gates, preventing wasted compute on misconfigured runs.
