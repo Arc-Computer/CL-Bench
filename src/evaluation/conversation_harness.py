@@ -99,6 +99,8 @@ def _to_primitive(value: Any) -> Any:
         return str(value)
     if isinstance(value, Decimal):
         return float(value)
+    if isinstance(value, bool):
+        return value  # Preserve booleans as-is (JSON handles them natively)
     if isinstance(value, dict):
         # Convert keys to strings if they're UUIDs or other non-string types
         result = {}
@@ -268,30 +270,30 @@ class ConversationHarness:
                 except Exception as exc:  # pragma: no cover - logging path
                     logger.exception("Conversation %s failed", conversation.conversation_id)
                     result = ConversationResult(
-                        conversation_id=conversation.conversation_id,
-                        overall_success=False,
-                        turns_executed=1,
-                        failed_at_turn=1,
-                        per_turn_results=[
-                            {
-                                "turn_id": 1,
-                                "success": False,
-                                "error": str(exc),
-                                "verification": "pre_execution_error",
-                                "tool_success": False,
-                                "response_success": False,
-                            }
-                        ],
-                        reward_signal=0.0,
-                        error_message=str(exc),
-                        metadata={
-                            "verification_mode": conversation.verification_mode.value,
-                            "agent": {
-                                "provider": self._agent.provider_name,
-                                "model": self._agent.model_name,
-                            },
+                    conversation_id=conversation.conversation_id,
+                    overall_success=False,
+                    turns_executed=1,
+                    failed_at_turn=1,
+                    per_turn_results=[
+                        {
+                            "turn_id": 1,
+                            "success": False,
+                            "error": str(exc),
+                            "verification": "pre_execution_error",
+                            "tool_success": False,
+                            "response_success": False,
+                        }
+                    ],
+                    reward_signal=0.0,
+                    error_message=str(exc),
+                    metadata={
+                        "verification_mode": conversation.verification_mode.value,
+                        "agent": {
+                            "provider": self._agent.provider_name,
+                            "model": self._agent.model_name,
                         },
-                    )
+                    },
+                )
                 
                 results.append(result)
                 
@@ -329,7 +331,7 @@ class ConversationHarness:
         finally:
             if output_file:
                 output_file.close()
-        
+
         # Return all results (existing + newly processed)
         return list(existing_results.values()) + results
 
