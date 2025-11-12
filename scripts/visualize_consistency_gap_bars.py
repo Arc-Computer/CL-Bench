@@ -1,34 +1,20 @@
 #!/usr/bin/env python3
 """
 Generate Diagram 1: Consistency Gap Bridge (Grouped Bar Chart)
-Academic-quality visualization showing baseline capability vs Atlas's bridging of the consistency gap
+Visualization showing baseline capability vs Atlas's bridging of the consistency gap
 """
 
 import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
 
-# Publication-quality settings
-plt.rcParams.update({
-    'font.family': 'serif',
-    'font.serif': ['Times New Roman', 'DejaVu Serif'],
-    'font.size': 11,
-    'axes.labelsize': 12,
-    'axes.titlesize': 13,
-    'xtick.labelsize': 11,
-    'ytick.labelsize': 11,
-    'legend.fontsize': 10,
-    'figure.titlesize': 14,
-    'figure.dpi': 300,
-    'savefig.dpi': 300,
-    'savefig.bbox': 'tight',
-    'axes.linewidth': 1.0,
-    'grid.linewidth': 0.5,
-})
+# Ensure output directory exists
+output_dir = Path('artifacts/visualizations')
+output_dir.mkdir(parents=True, exist_ok=True)
 
 # Data from reply-case-study.md (194/400 conversations, 48.5% complete)
 models = ['Claude 4.5\nSonnet', 'GPT-4.1', 'GPT-4.1\nMini', 'Atlas']
-colors = ['#000000', '#4D4D4D', '#A0A0A0', '#2E86AB']  # Black, Dark Grey, Light Grey, Blue
+colors = ['#475569', '#94a3b8', '#cbd5e1', '#3b82f6']  # Dark gray, medium gray, light gray, Arc blue
 
 # Three metrics (groups)
 capability_data = [76.0, 72.5, 71.5, 95.9]  # Conversations w/ ≥1 tool success
@@ -52,12 +38,12 @@ for i, (model, color) in enumerate(zip(models, colors)):
 
     # Determine bar properties
     if model == 'Atlas':
-        edgecolor = '#1a5a7a'  # Darker blue for subtle border
-        linewidth = 1.5
+        edgecolor = 'white'  # White border for clean look
+        linewidth = 2
         alpha = 1.0
     else:
-        edgecolor = '#333333'
-        linewidth = 0.5
+        edgecolor = 'white'
+        linewidth = 2
         alpha = 1.0
 
     bars = ax.bar(
@@ -82,6 +68,9 @@ for i, (model, color) in enumerate(zip(models, colors)):
         else:  # Bar has zero height - show label at baseline
             label_y = 2
 
+        # Match text color to bar color for visual consistency
+        text_color = color if model == 'Atlas' else '#334155'  # Use darker gray for text readability
+
         ax.text(
             bar.get_x() + bar.get_width() / 2,
             label_y,
@@ -90,7 +79,7 @@ for i, (model, color) in enumerate(zip(models, colors)):
             va='bottom',
             fontsize=fontsize,
             fontweight=fontweight,
-            color=color if model == 'Atlas' else '#333333'
+            color=text_color
         )
 
 # Styling
@@ -140,10 +129,6 @@ ax.spines['bottom'].set_linewidth(1.0)
 
 # Tight layout
 plt.tight_layout()
-
-# Save outputs
-output_dir = Path('artifacts/visualizations')
-output_dir.mkdir(parents=True, exist_ok=True)
 
 # Save as SVG (vector, for papers)
 svg_path = output_dir / 'consistency_gap_bridge_bars.svg'
