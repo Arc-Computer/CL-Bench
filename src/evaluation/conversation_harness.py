@@ -181,73 +181,130 @@ class ConversationHarness:
 
     # ------------------------------------------------------------------
     def run(self) -> List[ConversationResult]:
-        """Execute all conversations and return their results."""
+        """Execute all conversations and return their results.
+        
+        Supports resume functionality: if output_path exists, loads existing results
+        and skips already-processed conversations. Writes results incrementally
+        after each conversation to enable crash recovery.
+        """
+        # Load existing results if output file exists (resume support)
+        existing_results: Dict[str, ConversationResult] = {}
+        if self._output_path and Path(self._output_path).exists():
+            try:
+                existing_results = self._load_existing_results()
+                logger.info(
+                    "Found %d existing results in %s, will resume from remaining conversations",
+                    len(existing_results),
+                    self._output_path,
+                )
+            except Exception as exc:
+                logger.warning("Failed to load existing results, starting fresh: %s", exc)
+
         results: List[ConversationResult] = []
         total = len(self._conversations)
         if total == 0:
             logger.info("ConversationHarness received zero conversations; nothing to run.")
             return results
-        start_time = time.time()
-        for index, conversation in enumerate(self._conversations, start=1):
-            try:
-                result = self._run_single(conversation)
-            except Exception as exc:  # pragma: no cover - logging path
-                logger.exception("Conversation %s failed", conversation.conversation_id)
-                result = ConversationResult(
-                    conversation_id=conversation.conversation_id,
-                    overall_success=False,
-                    turns_executed=1,
-                    failed_at_turn=1,
-                    per_turn_results=[
-                        {
-                            "turn_id": 1,
-                            "success": False,
-                            "error": str(exc),
-                            "verification": "pre_execution_error",
-                            "tool_success": False,
-                            "response_success": False,
-                        }
-                    ],
-                    reward_signal=0.0,
-                    error_message=str(exc),
-                    metadata={
-                        "verification_mode": conversation.verification_mode.value,
-                        "agent": {
-                            "provider": self._agent.provider_name,
-                            "model": self._agent.model_name,
-                        },
-                    },
-                )
-            results.append(result)
-            
-            # Calculate running success rate
-            successes = sum(1 for r in results if r.overall_success)
-            success_rate = (successes / index * 100.0) if index > 0 else 0.0
-            
-            # Log every conversation with running success rate
-            elapsed = time.time() - start_time
-            rate = index / elapsed if elapsed else 0.0
-            eta = (total - index) / rate if rate else float("inf")
-            eta_text = (
-                "N/A"
-                if eta == float("inf")
-                else time.strftime("%H:%M:%S", time.gmtime(int(max(0.0, eta))))
-            )
-            logger.info(
-                "[%d/%d] Conversation: %s | Success: %s | Running Success Rate: %.1f%% (%d/%d) | ETA: %s",
-                index,
-                total,
-                conversation.conversation_id,
-                "✓" if result.overall_success else "✗",
-                success_rate,
-                successes,
-                index,
-                eta_text,
-            )
-
+        
+        # Filter out already-processed conversations
+        remaining_conversations = [
+            conv for conv in self._conversations
+            if conv.conversation_id not in existing_results
+        ]
+        
+        if not remaining_conversations:
+            logger.info("All conversations already processed, returning existing results")
+            return list(existing_results.values())
+        
+        logger.info(
+            "Processing %d conversations (%d already completed, %d remaining)",
+            total,
+            len(existing_results),
+            len(remaining_conversations),
+        )
+        
+        # Prepare output file for incremental writing
+        output_file = None
         if self._output_path:
-            self._write_results(results)
-        return results
+            output_path = Path(self._output_path)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            # Open in append mode if file exists, otherwise create new
+            output_file = output_path.open("a" if output_path.exists() else "w", encoding="utf-8")
+        
+        start_time = time.time()
+        processed_count = len(existing_results)
+        
+        try:
+            for index, conversation in enumerate(remaining_conversations, start=1):
+                try:
+                    result = self._run_single(conversation)
+                except Exception as exc:  # pragma: no cover - logging path
+                    logger.exception("Conversation %s failed", conversation.conversation_id)
+                    result = ConversationResult(
+                        conversation_id=conversation.conversation_id,
+                        overall_success=False,
+                        turns_executed=1,
+                        failed_at_turn=1,
+                        per_turn_results=[
+                            {
+                                "turn_id": 1,
+                                "success": False,
+                                "error": str(exc),
+                                "verification": "pre_execution_error",
+                                "tool_success": False,
+                                "response_success": False,
+                            }
+                        ],
+                        reward_signal=0.0,
+                        error_message=str(exc),
+                        metadata={
+                            "verification_mode": conversation.verification_mode.value,
+                            "agent": {
+                                "provider": self._agent.provider_name,
+                                "model": self._agent.model_name,
+                            },
+                        },
+                    )
+                
+                results.append(result)
+                
+                # Write result immediately (incremental writing for crash recovery)
+                if output_file:
+                    output_file.write(json.dumps(_to_primitive(result.__dict__), ensure_ascii=False) + "\n")
+                    output_file.flush()  # Ensure data is written to disk
+                
+                # Calculate running success rate (including existing results)
+                all_results = list(existing_results.values()) + results
+                successes = sum(1 for r in all_results if r.overall_success)
+                current_index = processed_count + index
+                success_rate = (successes / current_index * 100.0) if current_index > 0 else 0.0
+                
+                # Log every conversation with running success rate
+                elapsed = time.time() - start_time
+                rate = index / elapsed if elapsed else 0.0
+                eta = (len(remaining_conversations) - index) / rate if rate else float("inf")
+                eta_text = (
+                    "N/A"
+                    if eta == float("inf")
+                    else time.strftime("%H:%M:%S", time.gmtime(int(max(0.0, eta))))
+                )
+                logger.info(
+                    "[%d/%d] Conversation: %s | Success: %s | Running Success Rate: %.1f%% (%d/%d) | ETA: %s",
+                    current_index,
+                    total,
+                    conversation.conversation_id,
+                    "✓" if result.overall_success else "✗",
+                    success_rate,
+                    successes,
+                    current_index,
+                    eta_text,
+                )
+        finally:
+            if output_file:
+                output_file.close()
+        
+        # Return all results (existing + newly processed)
+        return list(existing_results.values()) + results
 
     def _run_single(self, conversation: Conversation) -> ConversationResult:
         """Run a single conversation, handling both regular and chained conversations."""
@@ -865,7 +922,36 @@ class ConversationHarness:
         )
         api._execute(query, params)
 
+    def _load_existing_results(self) -> Dict[str, ConversationResult]:
+        """Load existing results from output file for resume support."""
+        existing_results: Dict[str, ConversationResult] = {}
+        output_path = Path(self._output_path)
+        if not output_path.exists():
+            return existing_results
+        
+        try:
+            with output_path.open("r", encoding="utf-8") as handle:
+                for line in handle:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        data = json.loads(line)
+                        # Reconstruct ConversationResult from dict
+                        result = ConversationResult(**data)
+                        existing_results[result.conversation_id] = result
+                    except (json.JSONDecodeError, TypeError, ValueError) as exc:
+                        logger.warning("Failed to parse result line, skipping: %s", exc)
+                        continue
+        except Exception as exc:
+            logger.warning("Failed to load existing results: %s", exc)
+        
+        return existing_results
+
     def _write_results(self, results: Iterable[ConversationResult]) -> None:
+        """Write results to file (legacy method, now handled incrementally in run())."""
+        # This method is kept for backward compatibility but results are now
+        # written incrementally in run() for crash recovery support
         output_path = Path(self._output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with output_path.open("w", encoding="utf-8") as handle:

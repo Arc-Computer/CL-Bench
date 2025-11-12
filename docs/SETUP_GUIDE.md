@@ -345,6 +345,47 @@ python3 scripts/evaluate_atlas_learning_loop.py
 
 Once smoke tests pass, you're ready to run full evaluations. See `docs/evaluation_execution_commands.md` for complete command reference.
 
+## Crash Recovery & Resume Support
+
+**Both baseline and Atlas evaluations support automatic resume functionality:**
+
+- **Incremental Writing**: Results are written immediately after each conversation completes
+- **Automatic Resume**: If a run crashes or is interrupted, simply re-run the same command - it will automatically detect existing results and skip already-processed conversations
+- **Progress Preservation**: Running success rates and ETAs account for previously completed conversations
+
+**How It Works:**
+1. On startup, the evaluation checks if the output file already exists
+2. If it exists, loads existing results and identifies already-processed conversation IDs
+3. Filters out completed conversations from the remaining work
+4. Continues processing only the remaining conversations
+5. Appends new results to the existing file
+
+**Example Resume Scenario:**
+```bash
+# First run processes 500 conversations, then crashes
+python3 -m src.evaluation.run_baseline \
+  --conversations artifacts/deterministic/final_conversations_final_clean.jsonl \
+  --agent claude \
+  --model claude-sonnet-4-5-20250929 \
+  --backend postgres \
+  --output artifacts/evaluation/baseline_claude_sonnet_4_5.jsonl
+
+# Re-run the same command - it will automatically resume from conversation 501
+# Logs will show: "Found 500 existing results, will resume from remaining conversations"
+python3 -m src.evaluation.run_baseline \
+  --conversations artifacts/deterministic/final_conversations_final_clean.jsonl \
+  --agent claude \
+  --model claude-sonnet-4-5-20250929 \
+  --backend postgres \
+  --output artifacts/evaluation/baseline_claude_sonnet_4_5.jsonl
+```
+
+**Important Notes:**
+- Do NOT delete or modify the output file while a run is in progress
+- If you want to start fresh, delete the output file before running
+- Individual conversation failures are caught and logged, but don't stop the entire run
+- Results are flushed to disk after each conversation for maximum crash safety
+
 ## Troubleshooting
 
 ### Issue: "ModuleNotFoundError: No module named 'atlas'"

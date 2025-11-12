@@ -243,58 +243,128 @@ def run_atlas_baseline(
         for payload in task_payloads:
             tasks_file.write(json.dumps(payload, ensure_ascii=False) + "\n")
 
-    async def _run_all() -> List[Dict[str, Any]]:
-        results: List[Dict[str, Any]] = []
-        total = len(task_payloads)
-        start_time = time.time()
-        for idx, payload in enumerate(task_payloads, start=1):
-            convo_id = payload.get("conversation", {}).get("conversation_id")
+    # Load existing results for resume support
+    sessions_path = atlas_output_dir / "sessions.jsonl"
+    existing_results: Dict[str, Dict[str, Any]] = {}
+    if sessions_path.exists():
+        try:
+            with sessions_path.open("r", encoding="utf-8") as handle:
+                for line in handle:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        record = json.loads(line)
+                        convo_id = record.get("conversation_id")
+                        if convo_id:
+                            existing_results[convo_id] = record
+                    except (json.JSONDecodeError, TypeError, ValueError) as exc:
+                        logger.warning("Failed to parse existing session line, skipping: %s", exc)
+                        continue
             logger.info(
-                "Atlas progress %d/%d (%.1f%%) – starting conversation %s",
-                idx,
-                total,
-                (idx / total) * 100.0,
-                convo_id,
+                "Found %d existing Atlas results in %s, will resume from remaining conversations",
+                len(existing_results),
+                sessions_path,
             )
-            task_start = time.time()
-            result = await _run_single_task(
-                payload,
-                config_path=config_path,
-                run_id=run_id,
-            )
-            results.append(result)
-            duration = time.time() - task_start
-            overall = time.time() - start_time
-            rate = idx / overall if overall else 0.0
-            eta = (total - idx) / rate if rate else float("inf")
-            eta_text = (
-                "N/A"
-                if eta == float("inf")
-                else time.strftime("%H:%M:%S", time.gmtime(int(max(0.0, eta))))
-            )
-            logger.info(
-                "Atlas progress %d/%d – finished %s in %.1fs (elapsed %.1fs, ETA %s)",
-                idx,
-                total,
-                convo_id,
-                duration,
-                overall,
-                eta_text,
-            )
-        return results
+        except Exception as exc:
+            logger.warning("Failed to load existing Atlas results, starting fresh: %s", exc)
 
-    results = asyncio.run(_run_all())
+    # Filter out already-processed conversations
+    remaining_task_payloads = [
+        payload for payload in task_payloads
+        if payload.get("conversation", {}).get("conversation_id") not in existing_results
+    ]
+    
+    if not remaining_task_payloads:
+        logger.info("All Atlas conversations already processed, returning existing results")
+        results = list(existing_results.values())
+    else:
+        logger.info(
+            "Processing %d Atlas conversations (%d already completed, %d remaining)",
+            len(task_payloads),
+            len(existing_results),
+            len(remaining_task_payloads),
+        )
+
+        async def _run_all() -> List[Dict[str, Any]]:
+            results: List[Dict[str, Any]] = []
+            total = len(remaining_task_payloads)
+            start_time = time.time()
+            
+            # Open sessions file in append mode only if we have existing results (resume mode)
+            # Otherwise open in write mode (fresh start)
+            sessions_file = sessions_path.open("a" if existing_results else "w", encoding="utf-8")
+            
+            try:
+                for idx, payload in enumerate(remaining_task_payloads, start=1):
+                    convo_id = payload.get("conversation", {}).get("conversation_id")
+                    logger.info(
+                        "Atlas progress %d/%d (%.1f%%) – starting conversation %s",
+                        idx,
+                        total,
+                        (idx / total) * 100.0,
+                        convo_id,
+                    )
+                    task_start = time.time()
+                    try:
+                        result = await _run_single_task(
+                            payload,
+                            config_path=config_path,
+                            run_id=run_id,
+                        )
+                    except Exception as exc:
+                        logger.exception("Atlas task %s failed", convo_id)
+                        result = {
+                            "conversation_id": convo_id,
+                            "final_payload": {
+                                "status": "error",
+                                "error": str(exc),
+                            },
+                            "conversation_result": None,
+                            "task_payload": payload,
+                            "atlas_metadata": {},
+                            "raw_result": None,
+                        }
+                    
+                    results.append(result)
+                    
+                    # Write result immediately (incremental writing for crash recovery)
+                    sessions_file.write(json.dumps(_to_primitive(result), ensure_ascii=False) + "\n")
+                    sessions_file.flush()  # Ensure data is written to disk
+                    
+                    duration = time.time() - task_start
+                    overall = time.time() - start_time
+                    rate = idx / overall if overall else 0.0
+                    eta = (total - idx) / rate if rate else float("inf")
+                    eta_text = (
+                        "N/A"
+                        if eta == float("inf")
+                        else time.strftime("%H:%M:%S", time.gmtime(int(max(0.0, eta))))
+                    )
+                    logger.info(
+                        "Atlas progress %d/%d – finished %s in %.1fs (elapsed %.1fs, ETA %s)",
+                        idx,
+                        total,
+                        convo_id,
+                        duration,
+                        overall,
+                        eta_text,
+                    )
+            finally:
+                sessions_file.close()
+            
+            return results
+
+        new_results = asyncio.run(_run_all())
+        results = list(existing_results.values()) + new_results
+    
     logger.info(
-        "Atlas run complete: %d conversations processed. Writing outputs to %s",
+        "Atlas run complete: %d conversations processed (%d existing + %d new). Outputs written to %s",
         len(results),
+        len(existing_results),
+        len(results) - len(existing_results),
         atlas_output_dir,
     )
-
-    timestamp = run_timestamp.isoformat()
-    sessions_path = atlas_output_dir / "sessions.jsonl"
-    with sessions_path.open("w", encoding="utf-8") as handle:
-        for record in results:
-            handle.write(json.dumps(_to_primitive(record), ensure_ascii=False) + "\n")
 
     runs_success = sum(1 for record in results if record["final_payload"].get("status") == "ok")
     harness_success = sum(
