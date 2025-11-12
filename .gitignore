@@ -39,6 +39,10 @@ artifacts/deterministic/*
 # Keep deterministic directory structure
 !artifacts/deterministic/
 
+# Exclude specific evaluation directories
+artifacts/evaluation/atlas_400/
+artifacts/evaluation/atlas_400_results/
+
 # Keep final evaluation results (baselines, datasets, atlas)
 !artifacts/baselines/
 !artifacts/baselines/*.jsonl
