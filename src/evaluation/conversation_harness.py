@@ -77,9 +77,20 @@ class TurnProcessOutcome:
 def _to_primitive(value: Any) -> Any:
     """Convert Python objects to JSON-serializable primitives.
     
-    Recursively converts datetime, UUID, Decimal, and dataclass instances
-    to JSON-safe types (strings, floats, dicts).
+    Recursively converts datetime, UUID, Decimal, dataclass instances, and
+    Pydantic models to JSON-safe types (strings, floats, dicts).
     """
+    if value is None:
+        return None
+    
+    # Handle Pydantic models (must check before dataclass since Pydantic models can be dataclasses)
+    try:
+        from pydantic import BaseModel
+        if isinstance(value, BaseModel):
+            return _to_primitive(value.model_dump(mode='json'))
+    except ImportError:
+        pass
+    
     if is_dataclass(value):
         return _to_primitive(asdict(value))
     if isinstance(value, (datetime, date)):
@@ -89,9 +100,25 @@ def _to_primitive(value: Any) -> Any:
     if isinstance(value, Decimal):
         return float(value)
     if isinstance(value, dict):
-        return {k: _to_primitive(v) for k, v in value.items()}
+        # Convert keys to strings if they're UUIDs or other non-string types
+        result = {}
+        for k, v in value.items():
+            key = str(k) if not isinstance(k, (str, int, float, bool)) or k is None else k
+            result[key] = _to_primitive(v)
+        return result
     if isinstance(value, list):
         return [_to_primitive(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_to_primitive(item) for item in value)
+    
+    # Fallback: try to convert unknown types to string
+    try:
+        # Check if it's a Pydantic AnyUrl or similar
+        if hasattr(value, '__str__'):
+            return str(value)
+    except Exception:
+        pass
+    
     return value
 
 
