@@ -113,20 +113,19 @@ Default credentials are in `.env.example` (safe for local development).
 
 ### Atlas Setup (runtime + telemetry)
 
-Atlas wraps the existing ConversationHarness so the teacher can grade final CRM outcomes. Follow these steps (see `docs/atlas_integration.md` for the full runbook and smoke-test checklist):
+**For complete setup instructions, see `docs/SETUP_GUIDE.md`.**
+
+Atlas wraps the existing ConversationHarness so the teacher can grade final CRM outcomes. Quick summary:
 
 1. **Install Atlas SDK in editable mode**
    ```bash
    pip install -e external/atlas-sdk[dev]
    ```
-   This aligns with the vendor quick-start (`external/atlas-sdk/README.md`) and lets you modify the bundled CRM adapter.
-2. **Export required env vars** – copy `configs/atlas/.env.example` into your shell (or append to `.env`). At minimum set:
-   - `OPENAI_API_KEY` (student + teacher models, GPT‑4.1 family)
-   - `GEMINI_API_KEY` (Gemini 2.5 Flash/Pro for judges + learning)
-   - `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME=crm_sandbox` (student backend)
-   - `STORAGE__DATABASE_URL=postgresql://atlas:atlas@localhost:5433/atlas` (Atlas telemetry DB)
-3. **Verify Postgres connectivity** – run a single harness conversation with `--backend postgres` to ensure the CRM DB seeds/reset correctly (see `src/evaluation/conversation_harness.py:596-603`).
-4. **Review configs/docs** – `configs/atlas/crm_harness.yaml` pins the default student/teacher/judge models (GPT‑4.1 / GPT‑4.1‑mini / Gemini 2.5) and forces `orchestration.forced_mode: paired` so the capability probe stays off. The workflow, dataset revision tagging, and artifact locations are detailed in `docs/atlas_integration.md`.
+2. **Apply required modification** (see `docs/SETUP_GUIDE.md` Step 4) to `external/atlas-sdk/atlas/config/models.py` for environment variable override support.
+3. **Configure `.env`** with API keys and database credentials (see `docs/SETUP_GUIDE.md` Step 6).
+4. **Set up PostgreSQL databases** (`crm_sandbox` and `atlas`) - see `docs/SETUP_GUIDE.md` Step 5.
+
+For detailed runbook and smoke-test checklist, see `docs/atlas_integration.md`.
 
 > **Heads up:** Atlas depends on `litellm>=1.77.7`. If you also work on Curator generation (which pins `litellm==1.61.3`), use separate virtualenvs to avoid dependency conflicts.
 
