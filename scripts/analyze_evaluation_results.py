@@ -264,6 +264,17 @@ def print_console_summary(
         print(f"\nReward Trends:")
         print(f"  Mean: {rt['mean']:.3f}")
         print(f"  Range: {rt['min']:.3f} - {rt['max']:.3f}")
+    
+    if atlas_metrics.get("cue_hits", 0) > 0 or atlas_metrics.get("action_adoptions", 0) > 0:
+        print(f"\nLearning Usage:")
+        print(f"  Cue Hits: {atlas_metrics.get('cue_hits', 0)}")
+        print(f"  Action Adoptions: {atlas_metrics.get('action_adoptions', 0)}")
+        print(f"  Failed Adoptions: {atlas_metrics.get('failed_adoptions', 0)}")
+    
+    if atlas_metrics.get("token_usage"):
+        print(f"\nToken Usage:")
+        for key, value in atlas_metrics["token_usage"].items():
+            print(f"  {key}: {value:,}")
 
     print("\n" + "=" * 80)
 
