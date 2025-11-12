@@ -18,7 +18,7 @@ class LLMJudge:
     def __init__(
         self,
         *,
-        model: str = "gpt-4.1-mini",
+        model: str = "gpt-4.1",
         temperature: float = 0.0,
         max_tokens: int = 500,
         completion_fn: Optional[Callable[..., Any]] = None,
