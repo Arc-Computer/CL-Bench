@@ -120,7 +120,7 @@ The evaluation follows a rigorous, multi-stage protocol designed to isolate the 
 
 2. **Baseline Establishment**: Three state-of-the-art models establish performance baselines: Claude 4.5 Sonnet (Anthropic's flagship model), GPT-4.1 (OpenAI's latest), and GPT-4.1 mini (cost-optimized variant). Each model processes the identical 1,200-conversation dataset through the same `ConversationHarness` with identical configuration (Postgres backend, LLM judge enabled, temperature 0.0). This controlled comparison isolates model capability from infrastructure differences. The three baselines run in parallel to accelerate evaluation while maintaining isolation—each uses separate output files and different API providers, eliminating shared rate limits or database conflicts.
 
-3. **Atlas Runtime Evaluation**: After baseline completion, the same 1,200 conversations feed into Atlas's student/teacher learning loop. The student (GPT-4.1 mini) executes tasks while the teacher (GPT-4.1) provides supervision in paired orchestration mode. Atlas's adaptive learning system captures reward signals, synthesizes guidance cues, and persists learning state to a dedicated PostgreSQL database. This phase measures inference-time learning improvements without requiring model retraining.
+3. **Atlas Runtime Evaluation**: After baseline completion, a representative subset of 400 conversations (sampled with seed=42) feeds into Atlas's student/teacher learning loop. The subset maintains the full dataset's complexity distribution: 76.5% hard tasks (50.7% medium, 25.8% complex) with an average of 5.0 turns per conversation. The student (GPT-4.1 mini) executes tasks while the teacher (GPT-4.1) provides supervision in paired orchestration mode. Atlas's adaptive learning system captures reward signals, synthesizes guidance cues, and persists learning state to a dedicated PostgreSQL database. This phase measures inference-time learning improvements without requiring model retraining.
 
 4. **Results Aggregation and Analysis**: Upon completion, a unified analysis script aggregates metrics across all evaluation stages. The analysis generates three outputs: a console summary for quick review, a detailed markdown report with tables and statistical comparisons, and a JSON summary for programmatic processing. Metrics include task success rates (conversation and turn level), token usage and cost estimates, judge usage patterns, and Atlas-specific telemetry (learning growth, reward trends, cue hits, action adoptions).
 
@@ -188,10 +188,17 @@ The table below outlines potential next steps and partnership pathways between A
 
 The evaluation dataset consists of 1,200 multi-turn conversations generated through a deterministic, schema-grounded pipeline. The dataset mirrors Reply's production CRM workflows while maintaining full reproducibility—every conversation can be regenerated from the same seed data and schema definitions.
 
-**Complexity Distribution:**
+**Complexity Distribution (Full Dataset - 1,200 conversations):**
 - **Simple Conversations (280)**: 1-3 turns, focused on single-entity operations (e.g., "Create a new opportunity for Acme Corp")
 - **Medium Conversations (625)**: 4-6 turns, involving cross-entity workflows (e.g., "Search for client, create opportunity, generate quote")
 - **Complex Conversations (295)**: 7-10 turns, multi-step processes with state mutations and cross-turn references (e.g., "Find opportunity, update stage, create quote, upload document, add note")
+
+**Atlas Evaluation Subset (400 conversations, seed=42):**
+- **Simple Conversations (94, 23.5%)**: 1-3 turns
+- **Medium Conversations (203, 50.7%)**: 4-6 turns
+- **Complex Conversations (103, 25.8%)**: 7-10 turns
+- **Hard Tasks (Medium + Complex)**: 306/400 (76.5%), matching full dataset distribution (76.7%)
+- **Average Turns**: 5.0 per conversation
 
 **Workflow Coverage:**
 The dataset spans 9 distinct workflow categories derived from Reply's production task definitions (`data/Agent_tasks.csv`):
