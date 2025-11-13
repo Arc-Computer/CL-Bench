@@ -16,7 +16,30 @@ This guide walks through the complete workflow for running the CRM benchmark ins
   - Optional: `ATLAS_OFFLINE_MODE=1` during local dry-runs (unset for real LLM validation).
 - **System packages**: `psycopg` is already listed in repo requirements; ensure Postgres CLI tools are available if you plan to inspect databases manually.
 
-> Copy `configs/atlas/.env.example` to `.env` (or your shell profile) and adjust credentials. The repo’s `.env` already contains the necessary API keys—duplicate the values there so Atlas picks them up.
+> Copy `configs/atlas/.env.example` to `.env` (or your shell profile) and adjust credentials. The repo's `.env` already contains the necessary API keys—duplicate the values there so Atlas picks them up.
+
+### Required Atlas SDK Modification
+
+**Important**: The Atlas SDK requires a local modification to support environment variable override for the storage database URL. After installing the SDK, apply this change:
+
+**File**: `external/atlas-sdk/atlas/config/models.py`
+
+**Location**: Add a `model_validator` to the `StorageConfig` class (around line 533):
+
+```python
+@model_validator(mode="before")
+@classmethod
+def _override_with_env_var(cls, data: Any) -> Any:
+    """Override database_url with STORAGE__DATABASE_URL if set."""
+    import os
+    if isinstance(data, dict):
+        env_url = os.getenv("STORAGE__DATABASE_URL")
+        if env_url:
+            data = {**data, "database_url": env_url}
+    return data
+```
+
+This ensures that `STORAGE__DATABASE_URL` from `.env` overrides the YAML config value, allowing environment-specific database URLs without modifying config files.
 
 ## 2. Install / Update Atlas SDK
 

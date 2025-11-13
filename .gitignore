@@ -5,6 +5,7 @@ __pycache__
 .vscode
 .idea
 .cursor
+/venv
 
 # Python
 *.pyc
@@ -21,19 +22,36 @@ build/
 
 # External dependencies
 external/atlas-sdk/
+# Exception: Track our modifications to support STORAGE__DATABASE_URL env var override
+# Need to un-ignore parent directories first
+!external/atlas-sdk/atlas/
+!external/atlas-sdk/atlas/config/
+!external/atlas-sdk/atlas/config/models.py
 
-# Artifacts - Exclude ALL artifacts except final clean dataset
+# Artifacts - Exclude ALL artifacts except final clean dataset and evaluation results
 artifacts/legacy/
 artifacts/schema_pipeline/
 artifacts/archive/
 artifacts/conversations_multi_turn/
-artifacts/baselines/
 artifacts/scenarios_single_turn/
 artifacts/deterministic/*
 # Keep only the final clean dataset for evaluation
 !artifacts/deterministic/final_conversations_final_clean.jsonl
 # Keep deterministic directory structure
 !artifacts/deterministic/
+
+# Exclude specific evaluation directories
+artifacts/evaluation/atlas_400/
+artifacts/evaluation/atlas_400_results/
+
+# Keep final evaluation results (baselines, datasets, atlas)
+!artifacts/baselines/
+!artifacts/baselines/*.jsonl
+!artifacts/baselines/README.md
+!artifacts/datasets/
+!artifacts/datasets/*.jsonl
+!artifacts/atlas/
+!artifacts/README.md
 
 # Log files
 *.log

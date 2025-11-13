@@ -77,9 +77,20 @@ class TurnProcessOutcome:
 def _to_primitive(value: Any) -> Any:
     """Convert Python objects to JSON-serializable primitives.
     
-    Recursively converts datetime, UUID, Decimal, and dataclass instances
-    to JSON-safe types (strings, floats, dicts).
+    Recursively converts datetime, UUID, Decimal, dataclass instances, and
+    Pydantic models to JSON-safe types (strings, floats, dicts).
     """
+    if value is None:
+        return None
+    
+    # Handle Pydantic models (must check before dataclass since Pydantic models can be dataclasses)
+    try:
+        from pydantic import BaseModel
+        if isinstance(value, BaseModel):
+            return _to_primitive(value.model_dump(mode='json'))
+    except ImportError:
+        pass
+    
     if is_dataclass(value):
         return _to_primitive(asdict(value))
     if isinstance(value, (datetime, date)):
@@ -88,10 +99,28 @@ def _to_primitive(value: Any) -> Any:
         return str(value)
     if isinstance(value, Decimal):
         return float(value)
+    if isinstance(value, bool):
+        return value  # Preserve booleans as-is (JSON handles them natively)
     if isinstance(value, dict):
-        return {k: _to_primitive(v) for k, v in value.items()}
+        # Convert keys to strings if they're UUIDs or other non-string types
+        result = {}
+        for k, v in value.items():
+            key = str(k) if not isinstance(k, (str, int, float, bool)) or k is None else k
+            result[key] = _to_primitive(v)
+        return result
     if isinstance(value, list):
         return [_to_primitive(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_to_primitive(item) for item in value)
+    
+    # Fallback: try to convert unknown types to string
+    try:
+        # Check if it's a Pydantic AnyUrl or similar
+        if hasattr(value, '__str__'):
+            return str(value)
+    except Exception:
+        pass
+    
     return value
 
 
@@ -181,19 +210,66 @@ class ConversationHarness:
 
     # ------------------------------------------------------------------
     def run(self) -> List[ConversationResult]:
-        """Execute all conversations and return their results."""
+        """Execute all conversations and return their results.
+        
+        Supports resume functionality: if output_path exists, loads existing results
+        and skips already-processed conversations. Writes results incrementally
+        after each conversation to enable crash recovery.
+        """
+        # Load existing results if output file exists (resume support)
+        existing_results: Dict[str, ConversationResult] = {}
+        if self._output_path and Path(self._output_path).exists():
+            try:
+                existing_results = self._load_existing_results()
+                logger.info(
+                    "Found %d existing results in %s, will resume from remaining conversations",
+                    len(existing_results),
+                    self._output_path,
+                )
+            except Exception as exc:
+                logger.warning("Failed to load existing results, starting fresh: %s", exc)
+
         results: List[ConversationResult] = []
         total = len(self._conversations)
         if total == 0:
             logger.info("ConversationHarness received zero conversations; nothing to run.")
             return results
+        
+        # Filter out already-processed conversations
+        remaining_conversations = [
+            conv for conv in self._conversations
+            if conv.conversation_id not in existing_results
+        ]
+        
+        if not remaining_conversations:
+            logger.info("All conversations already processed, returning existing results")
+            return list(existing_results.values())
+        
+        logger.info(
+            "Processing %d conversations (%d already completed, %d remaining)",
+            total,
+            len(existing_results),
+            len(remaining_conversations),
+        )
+        
+        # Prepare output file for incremental writing
+        output_file = None
+        if self._output_path:
+            output_path = Path(self._output_path)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            # Open in append mode if file exists, otherwise create new
+            output_file = output_path.open("a" if output_path.exists() else "w", encoding="utf-8")
+        
         start_time = time.time()
-        for index, conversation in enumerate(self._conversations, start=1):
-            try:
-                result = self._run_single(conversation)
-            except Exception as exc:  # pragma: no cover - logging path
-                logger.exception("Conversation %s failed", conversation.conversation_id)
-                result = ConversationResult(
+        processed_count = len(existing_results)
+        
+        try:
+            for index, conversation in enumerate(remaining_conversations, start=1):
+                try:
+                    result = self._run_single(conversation)
+                except Exception as exc:  # pragma: no cover - logging path
+                    logger.exception("Conversation %s failed", conversation.conversation_id)
+                    result = ConversationResult(
                     conversation_id=conversation.conversation_id,
                     overall_success=False,
                     turns_executed=1,
@@ -218,29 +294,46 @@ class ConversationHarness:
                         },
                     },
                 )
-            results.append(result)
-            if index % 10 == 0 or index == total:
+                
+                results.append(result)
+                
+                # Write result immediately (incremental writing for crash recovery)
+                if output_file:
+                    output_file.write(json.dumps(_to_primitive(result.__dict__), ensure_ascii=False) + "\n")
+                    output_file.flush()  # Ensure data is written to disk
+                
+                # Calculate running success rate (including existing results)
+                all_results = list(existing_results.values()) + results
+                successes = sum(1 for r in all_results if r.overall_success)
+                current_index = processed_count + index
+                success_rate = (successes / current_index * 100.0) if current_index > 0 else 0.0
+                
+                # Log every conversation with running success rate
                 elapsed = time.time() - start_time
                 rate = index / elapsed if elapsed else 0.0
-                eta = (total - index) / rate if rate else float("inf")
+                eta = (len(remaining_conversations) - index) / rate if rate else float("inf")
                 eta_text = (
                     "N/A"
                     if eta == float("inf")
                     else time.strftime("%H:%M:%S", time.gmtime(int(max(0.0, eta))))
                 )
                 logger.info(
-                    "Harness progress %d/%d (%.1f%%). Elapsed %.1fs, ETA %s. Last conversation: %s",
-                    index,
+                    "[%d/%d] Conversation: %s | Success: %s | Running Success Rate: %.1f%% (%d/%d) | ETA: %s",
+                    current_index,
                     total,
-                    (index / total) * 100.0,
-                    elapsed,
-                    eta_text,
                     conversation.conversation_id,
+                    "✓" if result.overall_success else "✗",
+                    success_rate,
+                    successes,
+                    current_index,
+                    eta_text,
                 )
+        finally:
+            if output_file:
+                output_file.close()
 
-        if self._output_path:
-            self._write_results(results)
-        return results
+        # Return all results (existing + newly processed)
+        return list(existing_results.values()) + results
 
     def _run_single(self, conversation: Conversation) -> ConversationResult:
         """Run a single conversation, handling both regular and chained conversations."""
@@ -858,7 +951,36 @@ class ConversationHarness:
         )
         api._execute(query, params)
 
+    def _load_existing_results(self) -> Dict[str, ConversationResult]:
+        """Load existing results from output file for resume support."""
+        existing_results: Dict[str, ConversationResult] = {}
+        output_path = Path(self._output_path)
+        if not output_path.exists():
+            return existing_results
+        
+        try:
+            with output_path.open("r", encoding="utf-8") as handle:
+                for line in handle:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        data = json.loads(line)
+                        # Reconstruct ConversationResult from dict
+                        result = ConversationResult(**data)
+                        existing_results[result.conversation_id] = result
+                    except (json.JSONDecodeError, TypeError, ValueError) as exc:
+                        logger.warning("Failed to parse result line, skipping: %s", exc)
+                        continue
+        except Exception as exc:
+            logger.warning("Failed to load existing results: %s", exc)
+        
+        return existing_results
+
     def _write_results(self, results: Iterable[ConversationResult]) -> None:
+        """Write results to file (legacy method, now handled incrementally in run())."""
+        # This method is kept for backward compatibility but results are now
+        # written incrementally in run() for crash recovery support
         output_path = Path(self._output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with output_path.open("w", encoding="utf-8") as handle:

@@ -1,0 +1,53 @@
+{
+  "sample_size": 20,
+  "sessions_with_reward_data": 20,
+  "total_conversations": 200,
+  "by_component": {
+    "reward": {
+      "model": "gpt-4.1-mini",
+      "sessions_with_data": 20,
+      "avg_tokens_per_conv": {
+        "prompt_tokens": 12849.55,
+        "completion_tokens": 832.15,
+        "total_tokens": 13681.7
+      },
+      "total_tokens_estimated": {
+        "prompt_tokens": 2569910,
+        "completion_tokens": 166430,
+        "total_tokens": 2736340
+      },
+      "cost_usd": {
+        "prompt_tokens": 2569910,
+        "completion_tokens": 166430,
+        "total_tokens": 2736340,
+        "input_cost_usd": 1.027964,
+        "output_cost_usd": 0.266288,
+        "total_cost_usd": 1.2942520000000002
+      }
+    },
+    "student": {
+      "model": "gpt-4.1-mini",
+      "status": "not_tracked",
+      "note": "Student token usage not available in existing sessions"
+    },
+    "judge": {
+      "model": "gpt-4.1",
+      "status": "not_tracked",
+      "note": "Judge token usage not available in existing sessions"
+    },
+    "learning": {
+      "model": "gemini-2.5-flash",
+      "status": "not_tracked",
+      "note": "Learning synthesis token usage not available in existing sessions"
+    }
+  },
+  "total_cost_usd": 1.2942520000000002,
+  "cost_per_conversation": 0.006471260000000001,
+  "methodology": "Sample-based estimation: Extracted token usage from first N sessions, calculated averages, and extrapolated to total conversations.",
+  "limitations": [
+    "Only reward evaluation tokens are available in existing sessions",
+    "Student, judge, and learning synthesis tokens were not tracked",
+    "Cost estimate is partial and represents only reward evaluation overhead",
+    "Future evaluations will include complete token tracking for all components"
+  ]
+}

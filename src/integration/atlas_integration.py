@@ -23,7 +23,9 @@ import subprocess
 import time
 import uuid
 from dataclasses import asdict, is_dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from decimal import Decimal
+from uuid import UUID
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
@@ -36,12 +38,24 @@ except ImportError:  # pragma: no cover - optional dependency
 
 from src.evaluation.conversation_harness import load_conversations_from_jsonl
 from src.integration import atlas_crm_adapter
+from src.integration import atlas_crm_adapter_registration  # Register CRM harness adapter
 from src.integration.atlas_common import conversation_to_payload
 
 logger = logging.getLogger(__name__)
 
 
 def _to_primitive(value: Any) -> Any:
+    """Convert Python objects to JSON-serializable primitives."""
+    if value is None:
+        return None
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, UUID):
+        return str(value)
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, bool):
+        return value  # Preserve booleans as-is
     if is_dataclass(value):
         return _to_primitive(asdict(value))
     if hasattr(value, "model_dump"):
@@ -58,6 +72,8 @@ def _to_primitive(value: Any) -> Any:
         return {k: _to_primitive(v) for k, v in value.items()}
     if isinstance(value, list):
         return [_to_primitive(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_to_primitive(item) for item in value)
     return value
 
 
@@ -67,6 +83,205 @@ DEFAULT_AGENT_CONFIG: Dict[str, Any] = {
     "temperature": 0.0,
     "max_output_tokens": 800,
 }
+
+
+def _store_student_and_judge_token_usage(conversation_result: Optional[Dict[str, Any]]) -> None:
+    """Extract student, judge, and reward token usage and store in ExecutionContext metadata.
+    
+    This aggregates token usage from multiple sources:
+    1. Student tokens from ExecutionContext.metadata['token_usage'] (flat structure from Atlas SDK)
+    2. Student tokens from conversation_result.metadata.agent.token_usage (harness aggregation)
+    3. Student tokens from per_turn_results[].token_usage (top-level, if available)
+    4. Reward tokens from ExecutionContext.metadata['session_reward_audit'][].raw_response.usage
+    5. Judge tokens from per_turn_results[].token_usage.judge and .judge_response
+    6. Learning tokens are already in ExecutionContext.metadata['token_usage']['learning']
+    """
+    if ExecutionContext is None:
+        return
+    
+    def safe_int(value: Any) -> int:
+        """Safely convert value to int, handling strings and None."""
+        try:
+            return int(value) if value is not None else 0
+        except (TypeError, ValueError):
+            return 0
+    
+    try:
+        context = ExecutionContext.get()
+        
+        # ====================================================================
+        # STEP 1: Extract student tokens from ExecutionContext (flat structure)
+        # ====================================================================
+        # Atlas SDK stores student tokens in ExecutionContext.metadata['token_usage']
+        # as a flat structure: {prompt_tokens, completion_tokens, total_tokens, calls}
+        # IMPORTANT: Extract this BEFORE modifying the dict structure
+        ec_token_usage_raw = context.metadata.get("token_usage", {})
+        student_tokens_from_ec = {}
+        
+        if isinstance(ec_token_usage_raw, dict):
+            # Check if top-level token keys exist (student tokens from Atlas SDK)
+            # These might coexist with nested keys (like 'learning'), so we check for them directly
+            has_top_level_tokens = (
+                "prompt_tokens" in ec_token_usage_raw 
+                or "completion_tokens" in ec_token_usage_raw 
+                or "total_tokens" in ec_token_usage_raw
+            )
+            # Only extract if 'student' key doesn't already exist (avoid double-counting)
+            has_student_key = "student" in ec_token_usage_raw
+            
+            if has_top_level_tokens and not has_student_key:
+                # Extract top-level student tokens (flat structure from Atlas SDK)
+                # These are stored directly by student.py._apply_usage_payload()
+                prompt = safe_int(ec_token_usage_raw.get("prompt_tokens"))
+                completion = safe_int(ec_token_usage_raw.get("completion_tokens"))
+                total = safe_int(ec_token_usage_raw.get("total_tokens"))
+                
+                # Only extract if we have meaningful values
+                if prompt > 0 or completion > 0 or total > 0:
+                    student_tokens_from_ec = {
+                        "prompt_tokens": prompt,
+                        "completion_tokens": completion,
+                        "total_tokens": total if total > 0 else (prompt + completion),
+                    }
+        
+        # Initialize token_usage in metadata if not present (or ensure it's a dict)
+        if "token_usage" not in context.metadata:
+            context.metadata["token_usage"] = {}
+        elif not isinstance(context.metadata["token_usage"], dict):
+            # If it's not a dict (shouldn't happen, but defensive), reset it
+            context.metadata["token_usage"] = {}
+        
+        token_usage = context.metadata["token_usage"]
+        
+        # ====================================================================
+        # STEP 2: Extract student tokens from conversation_result (harness)
+        # ====================================================================
+        student_tokens_from_conv = {}
+        if conversation_result:
+            metadata = conversation_result.get("metadata", {})
+            agent_metadata = metadata.get("agent", {})
+            agent_token_usage = agent_metadata.get("token_usage", {})
+            
+            if isinstance(agent_token_usage, dict) and any(agent_token_usage.values()):
+                student_tokens_from_conv = {
+                    "prompt_tokens": safe_int(agent_token_usage.get("prompt_tokens")),
+                    "completion_tokens": safe_int(agent_token_usage.get("completion_tokens")),
+                    "total_tokens": safe_int(agent_token_usage.get("total_tokens")),
+                }
+            
+            # Also try extracting from per_turn_results directly
+            per_turn = conversation_result.get("per_turn_results", [])
+            student_tokens_from_turns = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+            
+            for turn in per_turn:
+                turn_token_usage = turn.get("token_usage", {})
+                if isinstance(turn_token_usage, dict):
+                    # Extract top-level agent tokens (if present)
+                    for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                        value = turn_token_usage.get(key)
+                        if value is not None:
+                            student_tokens_from_turns[key] += safe_int(value)
+            
+            if any(student_tokens_from_turns.values()):
+                # Merge with conversation_result tokens (prefer conversation_result if both exist)
+                if not student_tokens_from_conv:
+                    student_tokens_from_conv = student_tokens_from_turns
+        
+        # Combine student tokens (prefer ExecutionContext if available, fallback to conversation_result)
+        final_student_tokens = student_tokens_from_ec if any(student_tokens_from_ec.values()) else student_tokens_from_conv
+        
+        if final_student_tokens and any(final_student_tokens.values()):
+            # Initialize student token usage
+            if "student" not in token_usage:
+                token_usage["student"] = {
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "total_tokens": 0,
+                }
+            
+            student_usage = token_usage["student"]
+            student_usage["prompt_tokens"] += final_student_tokens.get("prompt_tokens", 0)
+            student_usage["completion_tokens"] += final_student_tokens.get("completion_tokens", 0)
+            student_usage["total_tokens"] += final_student_tokens.get("total_tokens", 0)
+        
+        # ====================================================================
+        # STEP 3: Extract reward tokens from session_reward_audit
+        # ====================================================================
+        reward_audit = context.metadata.get("session_reward_audit", [])
+        reward_tokens = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        
+        if isinstance(reward_audit, list):
+            for audit_entry in reward_audit:
+                if isinstance(audit_entry, dict):
+                    raw_response = audit_entry.get("raw_response", {})
+                    if isinstance(raw_response, dict):
+                        usage = raw_response.get("usage", {})
+                        if isinstance(usage, dict):
+                            reward_tokens["prompt_tokens"] += safe_int(usage.get("prompt_tokens"))
+                            reward_tokens["completion_tokens"] += safe_int(usage.get("completion_tokens"))
+                            reward_tokens["total_tokens"] += safe_int(usage.get("total_tokens"))
+        
+        if any(reward_tokens.values()):
+            if "reward" not in token_usage:
+                token_usage["reward"] = {
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "total_tokens": 0,
+                }
+            
+            reward_usage = token_usage["reward"]
+            reward_usage["prompt_tokens"] += reward_tokens["prompt_tokens"]
+            reward_usage["completion_tokens"] += reward_tokens["completion_tokens"]
+            reward_usage["total_tokens"] += reward_tokens["total_tokens"]
+        
+        # ====================================================================
+        # STEP 4: Extract judge tokens from per_turn_results
+        # ====================================================================
+        judge_tokens = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        
+        if conversation_result:
+            per_turn = conversation_result.get("per_turn_results", [])
+            for turn in per_turn:
+                turn_token_usage = turn.get("token_usage", {})
+                if isinstance(turn_token_usage, dict):
+                    # Extract judge and judge_response token usage (nested)
+                    for judge_key in ("judge", "judge_response"):
+                        judge_usage = turn_token_usage.get(judge_key, {})
+                        if isinstance(judge_usage, dict):
+                            prompt = safe_int(judge_usage.get("prompt_tokens"))
+                            completion = safe_int(judge_usage.get("completion_tokens"))
+                            total = safe_int(judge_usage.get("total_tokens"))
+                            
+                            judge_tokens["prompt_tokens"] += prompt
+                            judge_tokens["completion_tokens"] += completion
+                            # Use provided total_tokens, or calculate from prompt + completion if missing
+                            if total > 0:
+                                judge_tokens["total_tokens"] += total
+                            else:
+                                judge_tokens["total_tokens"] += prompt + completion
+        
+        if any(judge_tokens.values()):
+            if "judge" not in token_usage:
+                token_usage["judge"] = {
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "total_tokens": 0,
+                }
+            
+            judge_usage = token_usage["judge"]
+            judge_usage["prompt_tokens"] += judge_tokens["prompt_tokens"]
+            judge_usage["completion_tokens"] += judge_tokens["completion_tokens"]
+            # Calculate total if not already set correctly
+            if judge_tokens["total_tokens"] > 0:
+                judge_usage["total_tokens"] += judge_tokens["total_tokens"]
+            else:
+                judge_usage["total_tokens"] += judge_tokens["prompt_tokens"] + judge_tokens["completion_tokens"]
+        
+        # Note: Learning tokens are already stored in token_usage['learning'] by synthesizer.py
+        # No need to extract them here
+    
+    except Exception as exc:
+        logger.debug("Failed to store student/judge/reward token usage: %s", exc)
 
 
 def _extract_atlas_metadata() -> Dict[str, Any]:
@@ -171,8 +386,12 @@ async def _run_single_task(
         )
     finally:
         atlas_crm_adapter.release_structured_task(task_pointer)
-    metadata = _extract_atlas_metadata()
+    
+    # Extract student and judge token usage from conversation_result and store in ExecutionContext
     final_payload = _parse_final_answer(getattr(result, "final_answer", None))
+    _store_student_and_judge_token_usage(final_payload.get("conversation_result"))
+    
+    metadata = _extract_atlas_metadata()
     raw_result = getattr(result, "model_dump", lambda: None)()
 
     return {
@@ -243,58 +462,128 @@ def run_atlas_baseline(
         for payload in task_payloads:
             tasks_file.write(json.dumps(payload, ensure_ascii=False) + "\n")
 
-    async def _run_all() -> List[Dict[str, Any]]:
-        results: List[Dict[str, Any]] = []
-        total = len(task_payloads)
-        start_time = time.time()
-        for idx, payload in enumerate(task_payloads, start=1):
-            convo_id = payload.get("conversation", {}).get("conversation_id")
+    # Load existing results for resume support
+    sessions_path = atlas_output_dir / "sessions.jsonl"
+    existing_results: Dict[str, Dict[str, Any]] = {}
+    if sessions_path.exists():
+        try:
+            with sessions_path.open("r", encoding="utf-8") as handle:
+                for line in handle:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        record = json.loads(line)
+                        convo_id = record.get("conversation_id")
+                        if convo_id:
+                            existing_results[convo_id] = record
+                    except (json.JSONDecodeError, TypeError, ValueError) as exc:
+                        logger.warning("Failed to parse existing session line, skipping: %s", exc)
+                        continue
             logger.info(
-                "Atlas progress %d/%d (%.1f%%) – starting conversation %s",
-                idx,
-                total,
-                (idx / total) * 100.0,
-                convo_id,
+                "Found %d existing Atlas results in %s, will resume from remaining conversations",
+                len(existing_results),
+                sessions_path,
             )
-            task_start = time.time()
-            result = await _run_single_task(
-                payload,
-                config_path=config_path,
-                run_id=run_id,
-            )
-            results.append(result)
-            duration = time.time() - task_start
-            overall = time.time() - start_time
-            rate = idx / overall if overall else 0.0
-            eta = (total - idx) / rate if rate else float("inf")
-            eta_text = (
-                "N/A"
-                if eta == float("inf")
-                else time.strftime("%H:%M:%S", time.gmtime(int(max(0.0, eta))))
-            )
-            logger.info(
-                "Atlas progress %d/%d – finished %s in %.1fs (elapsed %.1fs, ETA %s)",
-                idx,
-                total,
-                convo_id,
-                duration,
-                overall,
-                eta_text,
-            )
-        return results
+        except Exception as exc:
+            logger.warning("Failed to load existing Atlas results, starting fresh: %s", exc)
 
-    results = asyncio.run(_run_all())
+    # Filter out already-processed conversations
+    remaining_task_payloads = [
+        payload for payload in task_payloads
+        if payload.get("conversation", {}).get("conversation_id") not in existing_results
+    ]
+    
+    if not remaining_task_payloads:
+        logger.info("All Atlas conversations already processed, returning existing results")
+        results = list(existing_results.values())
+    else:
+        logger.info(
+            "Processing %d Atlas conversations (%d already completed, %d remaining)",
+            len(task_payloads),
+            len(existing_results),
+            len(remaining_task_payloads),
+        )
+
+        async def _run_all() -> List[Dict[str, Any]]:
+            results: List[Dict[str, Any]] = []
+            total = len(remaining_task_payloads)
+            start_time = time.time()
+            
+            # Open sessions file in append mode only if we have existing results (resume mode)
+            # Otherwise open in write mode (fresh start)
+            sessions_file = sessions_path.open("a" if existing_results else "w", encoding="utf-8")
+            
+            try:
+                for idx, payload in enumerate(remaining_task_payloads, start=1):
+                    convo_id = payload.get("conversation", {}).get("conversation_id")
+                    logger.info(
+                        "Atlas progress %d/%d (%.1f%%) – starting conversation %s",
+                        idx,
+                        total,
+                        (idx / total) * 100.0,
+                        convo_id,
+                    )
+                    task_start = time.time()
+                    try:
+                        result = await _run_single_task(
+                            payload,
+                            config_path=config_path,
+                            run_id=run_id,
+                        )
+                    except Exception as exc:
+                        logger.exception("Atlas task %s failed", convo_id)
+                        result = {
+                            "conversation_id": convo_id,
+                            "final_payload": {
+                                "status": "error",
+                                "error": str(exc),
+                            },
+                            "conversation_result": None,
+                            "task_payload": payload,
+                            "atlas_metadata": {},
+                            "raw_result": None,
+                        }
+                    
+                    results.append(result)
+                    
+                    # Write result immediately (incremental writing for crash recovery)
+                    sessions_file.write(json.dumps(_to_primitive(result), ensure_ascii=False) + "\n")
+                    sessions_file.flush()  # Ensure data is written to disk
+                    
+                    duration = time.time() - task_start
+                    overall = time.time() - start_time
+                    rate = idx / overall if overall else 0.0
+                    eta = (total - idx) / rate if rate else float("inf")
+                    eta_text = (
+                        "N/A"
+                        if eta == float("inf")
+                        else time.strftime("%H:%M:%S", time.gmtime(int(max(0.0, eta))))
+                    )
+                    logger.info(
+                        "Atlas progress %d/%d – finished %s in %.1fs (elapsed %.1fs, ETA %s)",
+                        idx,
+                        total,
+                        convo_id,
+                        duration,
+                        overall,
+                        eta_text,
+                    )
+            finally:
+                sessions_file.close()
+            
+            return results
+
+        new_results = asyncio.run(_run_all())
+        results = list(existing_results.values()) + new_results
+    
     logger.info(
-        "Atlas run complete: %d conversations processed. Writing outputs to %s",
+        "Atlas run complete: %d conversations processed (%d existing + %d new). Outputs written to %s",
         len(results),
+        len(existing_results),
+        len(results) - len(existing_results),
         atlas_output_dir,
     )
-
-    timestamp = run_timestamp.isoformat()
-    sessions_path = atlas_output_dir / "sessions.jsonl"
-    with sessions_path.open("w", encoding="utf-8") as handle:
-        for record in results:
-            handle.write(json.dumps(_to_primitive(record), ensure_ascii=False) + "\n")
 
     runs_success = sum(1 for record in results if record["final_payload"].get("status") == "ok")
     harness_success = sum(
@@ -362,7 +651,7 @@ def run_atlas_baseline(
     }
 
     metrics = {
-        "timestamp": timestamp,
+        "timestamp": run_timestamp.isoformat(),
         "total_conversations": len(results),
         "atlas_successful_runs": runs_success,
         "harness_successes": harness_success,
@@ -388,7 +677,7 @@ def run_atlas_baseline(
     readme_path = atlas_output_dir / "README.md"
     readme = [
         "# Atlas Baseline Run",
-        f"- Generated: {timestamp}",
+        f"- Generated: {run_timestamp.isoformat()}",
         f"- Run ID: `{run_id}`",
         f"- Config: `{config_path}`",
         f"- Conversations: `{conversations_path}`",

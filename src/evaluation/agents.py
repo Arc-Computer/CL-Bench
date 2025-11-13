@@ -483,6 +483,7 @@ class LiteLLMGPT4Agent(LiteLLMChatAgent):
         max_output_tokens: int = 800,
         schema_path: Optional[Path] = None,
         tasks_path: Optional[Path] = None,
+        tool_catalog_limit: int = 50,  # Show all tools by default (we have 38)
     ) -> None:
         default_model = os.getenv("CRM_BASELINE_GPT41_MODEL", "gpt-4.1-mini")
         super().__init__(
@@ -492,6 +493,7 @@ class LiteLLMGPT4Agent(LiteLLMChatAgent):
             max_output_tokens=max_output_tokens,
             schema_path=schema_path,
             tasks_path=tasks_path,
+            tool_catalog_limit=tool_catalog_limit,
         )
 
 

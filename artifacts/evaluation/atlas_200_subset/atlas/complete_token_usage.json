@@ -1,0 +1,44 @@
+{
+  "token_usage": {
+    "total_sessions": 400,
+    "by_role": {
+      "reward": {
+        "sessions": 218,
+        "tokens": {
+          "prompt_tokens": 2397366,
+          "completion_tokens": 163535,
+          "total_tokens": 2560901
+        }
+      },
+      "student": {
+        "sessions": 0,
+        "tokens": {}
+      },
+      "judge": {
+        "sessions": 0,
+        "tokens": {}
+      },
+      "learning": {
+        "sessions": 0,
+        "tokens": {}
+      }
+    }
+  },
+  "costs": {
+    "reward": {
+      "model": "gpt-4.1-mini",
+      "input_cost": 0.9589464,
+      "output_cost": 0.26165600000000006,
+      "total_cost": 1.2206024
+    }
+  },
+  "database": {
+    "learning_key": "65de471fd8b3b2490aa2d5008195b10babed5a123a89ff6cf348ac371c733a0d",
+    "learning_registry": {
+      "student_learning_length": 3383,
+      "teacher_learning_length": 3549,
+      "playbook_entries": 3,
+      "updated_at": "2025-11-12 18:39:55.453664+00:00"
+    }
+  }
+}

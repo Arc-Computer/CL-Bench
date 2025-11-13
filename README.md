@@ -1,196 +1,212 @@
-# Arc CRM Benchmark
+# Arc Continual Learning Benchmark
 
-A synthetic CRM environment for evaluating continual learning in production LLM agents. This benchmark provides a production-realistic testbed for measuring agent adaptation through the [Atlas](https://arc.computer) continual learning framework, enabling systematic evaluation of runtime adaptation ([atlas-sdk](https://github.com/Arc-Computer/atlas-sdk)) and offline training improvements ([ATLAS Core](https://github.com/Arc-Computer/ATLAS)).
+A comprehensive benchmark for evaluating LLM agents on continual learning in stateful environments. This framework tests agent reliability, adaptation, and performance on multi-turn workflows involving state mutations, cross-entity relationships, and production-style constraints.
 
-## Purpose
+## Overview
 
-Arc CRM Benchmark tests whether agents can improve from ~80% to ≥95% reliability on state-modifying CRM workflows through continual learning. It provides:
+This benchmark framework evaluates whether LLM agents can learn and adapt in complex stateful environments where actions modify persistent state, entities have cross-references, and workflows span multiple turns. Unlike analytics or search tasks, stateful environments require agents to:
 
-- **Production-realistic CRM environment** with full schema (contacts, clients, opportunities, quotes, contracts, documents, notes), enforcing foreign-key relationships, enum validation, and business logic constraints
-- **1,500+ synthetic scenarios** generated via Curator with GPT-5-mini, covering 28 CRM tasks with controlled success/failure ratios
-- **Atlas SDK integration** for runtime adaptive learning with dual-agent supervision (Student + Teacher)
-- **Evaluation harness** measuring agent performance, reward signals, and learning metrics
-- **Baseline comparisons** for Claude 4.5 Sonnet and GPT-4.1
+- **Track state mutations** across multiple operations (create, modify, delete)
+- **Maintain entity relationships** with referential integrity
+- **Execute multi-turn workflows** with cross-turn dependencies
+- **Adapt through continual learning** to improve consistency and reliability
 
-This environment serves as the evaluation layer in the Atlas continual learning loop:
+**Current implementation:** CRM workflows serve as the first comprehensive testbed, providing production-realistic constraints and a diverse task distribution. Additional stateful environments (financial services, telco, healthcare, manufacturing) will be added to expand the benchmark's scope.
 
-```
-Runtime (atlas-sdk):  Agent executes CRM tasks → Adaptive supervision → Telemetry
-      ↓
-Benchmark (this repo): Scenario harness → Reward evaluation → Learning metrics
-      ↓
-Training (ATLAS Core): GRPO on exported traces → New teacher checkpoints
-```
+### What This Benchmark Provides
 
-## How It Fits Into Atlas
+- **Production-realistic stateful environment** with full schema and validation constraints
+- **1,200+ multi-turn conversations** covering diverse workflows with varying complexity
+- **Comprehensive evaluation harness** measuring tool execution, response quality, and task completion
+- **Flexible agent integrations** supporting Claude, GPT-4.1, GPT-4.1-mini, and custom agents
+- **Optional Atlas SDK integration** for runtime adaptive learning with dual-agent supervision
+- **Extensible framework** designed for additional stateful environment implementations
 
-**Atlas SDK** ([runtime](https://github.com/Arc-Computer/atlas-sdk)) wraps any agent with an adaptive dual-agent reasoning loop. The Student executes tasks while the Teacher provides supervision based on a capability probe. Tasks route into supervision lanes (`auto`, `paired`, `coach`) depending on confidence, allowing agents to stay fast on familiar work while receiving guidance on novel challenges.
+## Why Stateful Environments Matter
 
-**Arc CRM Benchmark** (this repo) provides the synthetic CRM environment and evaluation harness to measure adaptation. Scenarios test realistic state-modifying workflows (create client, update opportunity, generate quote) with production-style constraints.
+Most LLM benchmarks focus on search, question-answering, or single-turn tasks. Stateful environments present unique challenges:
 
-**ATLAS Core** ([training](https://github.com/Arc-Computer/ATLAS)) consumes exported runtime traces and uses GRPO (Group Relative Policy Optimization) to train improved teacher checkpoints from production data.
+1. **State Persistence**: Actions modify persistent state that affects subsequent operations
+2. **Cross-Entity Dependencies**: Operations must respect foreign key relationships and referential integrity
+3. **Multi-Turn Workflows**: Complex tasks require maintaining context across 7-10+ turns with cross-turn references
+4. **Production Constraints**: Real-world validation rules (enums, business logic, duplicate detection) must be enforced
+5. **Continual Learning Opportunity**: Repeated workflows provide learning signal for adaptation
+
+These challenges mirror production systems where LLM agents must reliably interact with databases, APIs, and enterprise applications—making this benchmark essential for evaluating real-world agent deployments.
 
 ## Key Features
 
-### Synthetic Dataset (1,500+ Scenarios)
-Generated using [Curator](https://github.com/bespokelabsai/curator) with GPT-5-mini, producing diverse test cases with:
-- Natural language task descriptions derived from production CRM patterns
-- Realistic entity relationships (companies, contacts, opportunities)
-- Contextual failures (not random mutations): wrong enums, missing FKs, workflow violations
-- Controlled 60/40 success/failure ratio for balanced evaluation
+### Production-Realistic Stateful Environment (CRM)
 
-### Production-Realistic CRM Schema
-Pydantic models with strict validation:
-- UUID defaults, enum constraints (Literal types), foreign-key enforcement
-- Production-style guards: duplicate email rejection, non-negative amounts, relationship validation
-- Human-readable error messages matching real CRM APIs
+The current implementation uses a comprehensive CRM environment:
+
+- **Full entity model**: Clients, contacts, opportunities, quotes, contracts, documents, notes
+- **Strict validation**: Foreign-key relationships, enum constraints, business logic guards
+- **Realistic constraints**: Duplicate email rejection, non-negative amounts, relationship validation
+- **Human-readable errors**: Error messages matching real CRM API patterns
+- **Deterministic reproducibility**: Every conversation can be regenerated from seed data
+
+### Comprehensive Dataset
+
+- **1,200+ conversations** with varying complexity:
+  - **Simple** (1-3 turns): Single-entity operations
+  - **Medium** (4-6 turns): Cross-entity workflows
+  - **Complex** (7-10 turns): Multi-step processes with state mutations
+- **Schema-grounded**: All conversations respect production constraints
+- **Standardized evaluation subset** (400 conversations, seed=42): Maintains complexity distribution for consistent baseline comparisons
 
 ### Evaluation Harness
-Executes scenarios against agents with:
-- Tool call capture and CRM state diffing
-- Structured JSONL logging compatible with Atlas telemetry
-- Verifier scoring (deterministic validators + optional LLM judge)
-- Support for multiple agent providers (Claude, OpenAI, mock)
-- Both in-memory (`mock`) and Postgres backends
 
-### Gymnasium-Compatible RL Environment
-For custom reinforcement learning workflows:
-- `CrmEnv` wraps CRM backend as standard Gymnasium environment
-- Configurable observations, actions, and reward shaping
-- Automatic state reset and transaction isolation
+- **Tool execution validation**: Verifies correct tool calls and arguments
+- **Response quality assessment**: Evaluates natural language responses via LLM judge
+- **Multiple backends**: In-memory (`mock`) and PostgreSQL (`postgres`) options
+- **Structured logging**: JSONL output compatible with analysis pipelines
+- **Token usage tracking**: Comprehensive metrics for cost analysis
+- **Multi-granularity metrics**: Conversation-level, turn-level, and operational metrics
 
-## Repository Structure
+### Optional Atlas Integration
 
-```
-src/
-  crm_sandbox.py              # Entity models and MockCrmApi
-  scenario_generator.py       # Curator-based synthetic generation
-  scenario_harness.py         # Scenario execution and validation
-  crm_argument_schemas.py     # Pydantic schemas with Literal enum types
-  run_baseline.py             # CLI for baseline evaluations
-  harness.py                  # Agent integrations (Claude/OpenAI)
-  crm_env.py                  # Gymnasium RL environment
-  validators.py               # Deterministic state checks
-data/
-  fake_crm_tables_schema.json # Canonical CRM schema
-  Agent tasks.csv             # Task frequency weights for generation
-tests/                        # Pytest suite
-artifacts/
-  scenarios_single_turn/      # Validated single-turn scenario library
-  conversations_multi_turn/   # Production multi-turn datasets (simple/medium/complex mix)
-  baselines/                  # Evaluation logs and JSONL outputs
-```
+The benchmark can integrate with [Atlas SDK](https://github.com/Arc-Computer/atlas-sdk) for runtime adaptive learning:
+
+- **Student/Teacher loop**: Dual-agent supervision for continual learning
+- **Learning synthesis**: Automatic guidance generation from teacher interventions
+- **Telemetry persistence**: PostgreSQL-backed learning state management
+
+See `docs/atlas_integration.md` for Atlas setup instructions.
 
 ## Quick Start
 
 ### Installation
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
+# Clone the repository
+git clone https://github.com/Arc-Computer/arc-crm-benchmark.git
+cd arc-crm-benchmark
+
+# Create virtual environment
+python3 -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install dependencies
+pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-> **Dependencies note:** The base `requirements.txt` is tuned for the Curator generation pipeline, which depends on `anthropic<0.48` and the current `0.1.x` releases of `bespokelabs-curator`. If you need newer Anthropic/LiteLLM versions for Atlas SDK work, install `requirements-atlas.txt` (ideally in a separate virtualenv) after the core requirements.
-
-For judge-only or mock-baseline runs (no scenario generation), use the lightweight `requirements-judge.txt` to avoid pulling the full Curator/HuggingFace stack:
+**Lightweight installation** (for evaluation only, without dataset generation):
 
 ```bash
 pip install -r requirements-judge.txt
 ```
 
-### Set Up Postgres Backend (Optional)
+### Set Up PostgreSQL Backend (Optional)
 
-For testing with a real database:
+For realistic database interactions:
 
 ```bash
+# Copy environment template
 cp .env.example .env
+
+# Start PostgreSQL via Docker
 docker compose up -d
+
+# Seed the database
 ./scripts/db_seed.sh
 ```
 
 Default credentials are in `.env.example` (safe for local development).
 
-### Atlas Setup (runtime + telemetry)
-
-Atlas wraps the existing ConversationHarness so the teacher can grade final CRM outcomes. Follow these steps (see `docs/atlas_integration.md` for the full runbook and smoke-test checklist):
-
-1. **Install Atlas SDK in editable mode**
-   ```bash
-   pip install -e external/atlas-sdk[dev]
-   ```
-   This aligns with the vendor quick-start (`external/atlas-sdk/README.md`) and lets you modify the bundled CRM adapter.
-2. **Export required env vars** – copy `configs/atlas/.env.example` into your shell (or append to `.env`). At minimum set:
-   - `OPENAI_API_KEY` (student + teacher models, GPT‑4.1 family)
-   - `GEMINI_API_KEY` (Gemini 2.5 Flash/Pro for judges + learning)
-   - `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME=crm_sandbox` (student backend)
-   - `STORAGE__DATABASE_URL=postgresql://atlas:atlas@localhost:5433/atlas` (Atlas telemetry DB)
-3. **Verify Postgres connectivity** – run a single harness conversation with `--backend postgres` to ensure the CRM DB seeds/reset correctly (see `src/evaluation/conversation_harness.py:596-603`).
-4. **Review configs/docs** – `configs/atlas/crm_harness.yaml` pins the default student/teacher/judge models (GPT‑4.1 / GPT‑4.1‑mini / Gemini 2.5) and forces `orchestration.forced_mode: paired` so the capability probe stays off. The workflow, dataset revision tagging, and artifact locations are detailed in `docs/atlas_integration.md`.
-
-> **Heads up:** Atlas depends on `litellm>=1.77.7`. If you also work on Curator generation (which pins `litellm==1.61.3`), use separate virtualenvs to avoid dependency conflicts.
-
-### Run Baseline Evaluation
+### Run Your First Evaluation
 
 ```bash
-# Load API keys (at minimum OPENAI_API_KEY or ANTHROPIC_API_KEY for the model you plan to exercise)
+# Load environment variables
 set -a; source .env; set +a
 
-# Example: run GPT-4.1 on the full multi-turn dataset with the LLM judge enabled
-python -m src.evaluation.run_baseline \
-    --conversations artifacts/conversations_multi_turn/20251105T144453Z/full/chains.jsonl \
-    --agent gpt4.1 \
-    --model gpt-4.1 \
-    --seed 42 \
-    --output artifacts/baselines/20251106_gpt4.1_full.jsonl
+# Run baseline evaluation (5 conversations, quick test)
+python3 -m src.evaluation.run_baseline \
+    --conversations artifacts/datasets/final_1200.jsonl \
+    --agent claude \
+    --model claude-sonnet-4-5-20250929 \
+    --backend postgres \
+    --sample 5 \
+    --output artifacts/evaluation/my_first_run.jsonl \
+    --temperature 0.0 \
+    --max-output-tokens 800
 ```
 
-Helpful variations:
+**Available agents:**
+- `claude` – Claude Sonnet 4.5 (or override with `--model`)
+- `gpt4.1` – OpenAI GPT-4.1 (or override with `--model`)
+- `mock` – Deterministic replay (useful for harness validation)
 
-- Evaluate a quick medium-only smoke sample (e.g., 20 conversations):
+**Common options:**
+- `--sample N` – Evaluate a subset of conversations
+- `--seed 42` – Reproducible random sampling
+- `--no-judge` – Disable LLM judge (tool execution only)
+- `--backend mock` – Use in-memory backend (no database required)
 
-  ```bash
-  python -m src.evaluation.run_baseline \
-      --conversations artifacts/conversations_multi_turn/20251105T144453Z/full/chains.jsonl \
-      --agent claude \
-      --model claude-sonnet-4-5-20250929 \
-      --sample 20 \
-      --seed 123 \
-      --output artifacts/baselines/20251106_claude_sample.jsonl
-  ```
+## Repository Structure
 
-- Disable the LLM judge (tool execution only) by passing `--no-judge`.
-
-The CLI accepts the following agent flags:
-- `gpt4.1` – OpenAI GPT-4.1 (model overridden via `--model`)
-- `claude` – Claude Sonnet 4.5 (override with `--model`)
-- `mock` – deterministic replay of the ground-truth tool call (useful for harness validation)
-
-Baseline outputs include per-conversation JSONL logs and the captured token usage / judge decisions. Store logs under `artifacts/baselines/` for reproducibility.
-
-#### Response Verification
-
-The harness can grade natural-language responses alongside tool execution when conversations include an `expected_response` stanza. Example turn payload:
-
-```json
-{
-  "turn_id": 1,
-  "expected_tool": "client_search",
-  "expected_args": {"name": "Acme Corp"},
-  "expected_response": {
-    "text": "Initiated client_search with name=Acme Corp",
-    "evaluation": "structured",
-    "answers": ["Initiated client_search with name=Acme Corp"]
-  },
-  "verification_mode": "runtime_response"
-}
+```
+arc-crm-benchmark/
+├── src/
+│   ├── evaluation/          # Evaluation harness and baseline runners
+│   ├── integration/         # Atlas SDK integration (optional)
+│   └── crm_sandbox.py       # CRM entity models and API
+├── scripts/                 # Utility scripts for evaluation and analysis
+├── configs/                 # Configuration files (Atlas, agents)
+├── data/                    # Schema definitions and task templates
+├── docs/                    # Documentation and guides
+├── artifacts/
+│   ├── datasets/            # Pre-generated conversation datasets
+│   └── evaluation/          # Evaluation results and outputs
+└── tests/                   # Test suite
 ```
 
-Set `expected_response.evaluation` to `"judge"` (or `"requires_judge": true`) to delegate grading to GPT‑4.1 via LiteLLM. The baseline log records execution accuracy, response accuracy, and the blended metric so teams can track regression over time.
+## Dataset
 
-Each per-turn harness record now includes `tool_success`, `response_success`, and the legacy `success` field (the conjunction of both). Conversation metadata publishes `tool_success_rate`, `response_success_rate`, and `combined_success_rate` alongside the historical `task_success_rate`, enabling Issue 42 Stage 1 reports to distinguish tool execution fidelity from response quality.
+The benchmark includes a pre-generated dataset of 1,200 multi-turn conversations:
 
-### Programmatic Usage
+- **Location**: `artifacts/datasets/final_1200.jsonl`
+- **Format**: JSONL (one conversation per line)
+- **Complexity distribution**:
+  - Simple: ~23% (1-3 turns)
+  - Medium: ~52% (4-6 turns)
+  - Complex: ~25% (7-10 turns)
+
+**Standardized evaluation subset** (400 conversations, seed=42):
+- **Location**: `artifacts/datasets/evaluation_400.jsonl`
+- Maintains full dataset's complexity distribution
+- Use for consistent baseline comparisons
+
+Each conversation includes:
+- Natural language user turns
+- Expected tool calls and arguments
+- Expected responses (for LLM judge evaluation)
+- Initial CRM state (entities to seed)
+- Cross-turn entity references
+
+## Evaluation Metrics
+
+The harness tracks comprehensive metrics at multiple granularities:
+
+### Conversation-Level Metrics
+- **Strict Success**: All turns in conversation succeeded
+- **Tool Success**: At least one tool call succeeded
+- **Response Success**: At least one response met quality standards
+
+### Turn-Level Metrics
+- **Tool execution accuracy**: Did the tool execute correctly?
+- **Response quality**: Did the agent's response meet expectations?
+- **Verification method**: Exact match vs. LLM judge evaluation
+
+### Operational Metrics
+- **Token usage**: Prompt tokens, completion tokens, total tokens
+- **Cost estimates**: Based on model pricing
+- **Execution time**: Wall-clock time per conversation
+
+## Programmatic Usage
+
+### Basic CRM Operations
 
 ```python
 from src.crm_sandbox import MockCrmApi
@@ -220,305 +236,132 @@ quote = api.create_quote(
 
 All relationship and enum constraints are enforced with clear error messages.
 
-## Data Generation Pipeline
-
-The benchmark’s multi-turn conversations are built in layers so every turn stays grounded in validated data while remaining easy to reproduce and scale:
-
-1. **Validated single-turn library.** We begin with `artifacts/scenarios_single_turn/scenarios_clean.jsonl`, a curated 60/40 success/failure set. `ScenarioRepository` indexes these records by tool/outcome and enriches them with entity metadata so downstream turns can share clients, opportunities, quotes, etc.
-
-2. **Workflow templates and chains.** `src/conversation_templates.py` defines deterministically structured workflows (e.g., onboarding, quote generation). `WorkflowChain` objects stitch templates into multi-segment journeys with explicit success/failure patterns and handoff rules, encoding the 60/40 mix at the segment level.
-
-3. **Curator-guided sampling.** Two Bespoke Curator models drive generation:
-   - `ScenarioSelector` receives turn metadata and selects compatible single-turn scenarios from the validated pool.
-   - `ChainUtteranceGenerator` writes natural-language user turns that reference the selected arguments and prior context.
-   Both emit structured Pydantic responses (`ScenarioSelectionResponse`, `TurnUtteranceResponse`) so the pipeline remains reproducible. Setting `CURATOR_SIMPLE_DATASET=1` switches to deterministic offline stubs for tests and CI.
-
-4. **Mock CRM simulation.** `src/generation/chain_conversation_generator.py` resolves cross-turn references, seeds the mock CRM (`MockCrmApi`) with required entities, executes each tool call, and captures reference payloads. Per-segment summaries (expected/actual outcome, entities created/referenced) and per-turn annotations (scenario IDs, persona hints, handoff traces) are recorded for analytics and continual-learning signals.
-
-5. **Harness validation.** `ConversationHarness` replays each conversation against a fresh CRM instance, failing fast if a success segment fails (or vice versa). The CLI (`scripts/generate_conversations.py --mode chain`) wraps this flow—smoke tests print expected vs. actual segment outcomes, while full runs validate every generated conversation before writing `chains.jsonl`.
-
-6. **Reproducible artifacts.** The chained generator exports a manifest and analytics report alongside the dataset (`artifacts/conversations_multi_turn/20251105T144453Z/full/manifest.json` and `report.md`), plus a no-fallback verification pass (`verification_report.json`, `quality_checks.md`) and lint summary (`lint_report.json`). The docs capture the exact commands, seeds, and model names used so datasets can be regenerated or scaled (e.g., new workflow chains, alternative Curator backends).
-
-To scale the pipeline, define additional workflow templates/chains, run the generator with your preferred Curator model (Gemini 2.5 Flash or GPT‑5‑mini via LiteLLM), and regenerate the manifest/analytics/verification artifacts. Because every step is validated against the CRM schema (and the no-fallback audit), the resulting dataset remains production-quality without manual clean-up.
-
-### Current Artifact Snapshot
-
-- **Single-turn scenarios** (validated 60/40 mix): `artifacts/scenarios_single_turn/scenarios_clean.jsonl` (495 records)
-- **Chained conversations** (1,500 conversations; 900 simple / 450 medium / 150 complex; 40% expected failures): `artifacts/conversations_multi_turn/20251107T134304Z/full/chains_eval_enriched.jsonl`
-- **Manifest**: `artifacts/conversations_multi_turn/20251107T134304Z/full/manifest.json`
-- **Analytics report**: `artifacts/conversations_multi_turn/20251107T134304Z/full/report.md`
-- **Verification log**: `artifacts/conversations_multi_turn/20251107T134304Z/full/verification_report.json`
-- **Lint summary**: `artifacts/conversations_multi_turn/20251107T134304Z/full/lint_report.json`
-- **Quality summary**: `artifacts/conversations_multi_turn/20251107T134304Z/full/quality_checks.md`
-
-**Dataset Quality Note**: The eval split has been enriched with detailed expected responses derived from actual tool execution results, improving LLM judge pass rates from 45.7% to 58.7%. For baseline evaluations, use `chains_eval_5to10.jsonl` (133 conversations, 852 turns, avg 6.4 turns) which provides multi-turn conversations (5-10 turns) with zero execution errors and enriched responses.
-
-**Complexity Dimensions**: The benchmark measures two orthogonal difficulty axes. *Complex* chains test long-context tracking over 3-segment workflows (8-12 turns) with terminal failures. *Medium* chains test error recovery through mid-chain failures that require reasoning with partial context and handling template references to failed turns. Both dimensions are essential for production-robust agents.
-
-## Reproducing the Datasets
-
-### Single-Turn Scenario Library
-
-The repository includes a curated library (`artifacts/scenarios_single_turn/scenarios_clean.jsonl`). To add fresh Curator-generated scenarios for a specific tool, run:
-
-```bash
-# Example: regenerate upload_document scenarios (60% success / 40% failure)
-PYTHONPATH=. python scripts/generate_missing_scenarios.py \
-    --tool upload_document \
-    --success-count 10 \
-    --failure-count 7 \
-    --scenarios-file artifacts/scenarios_single_turn/scenarios_clean.jsonl
-```
-
-The script validates each scenario using `ConversationHarness` before appending it. Repeat for any additional tools that need more coverage. To audit coverage across the library:
-
-```bash
-PYTHONPATH=. python scripts/analyze_scenario_coverage.py \
-    --scenarios artifacts/scenarios_single_turn/scenarios_clean.jsonl
-```
-
-### Multi-Turn Conversation Sets
-
-The production dataset was created in three passes (simple / medium / complex) and merged into a single JSONL file. Replace `${TIMESTAMP}` with a fresh UTC stamp when regenerating.
-
-```bash
-export TIMESTAMP=$(date -u +"%Y%m%dT%H%M%SZ")
-mkdir -p artifacts/conversations_multi_turn/${TIMESTAMP}/{simple,medium,complex,full}
-
-# Simple chains (900 conversations)
-CURATOR_SIMPLE_DATASET=0 PYTHONPATH=. python scripts/generate_conversations.py \
-    --mode chain \
-    --count 900 \
-    --seed 42 \
-    --model-name gpt-4.1-mini \
-    --chain-id client_management_chain \
-    --chain-id contact_document_note \
-    --output-dir artifacts/conversations_multi_turn/${TIMESTAMP}/simple \
-    | tee artifacts/conversations_multi_turn/${TIMESTAMP}/simple/run.log
-
-# Medium chains (450 conversations)
-CURATOR_SIMPLE_DATASET=0 PYTHONPATH=. python scripts/generate_conversations.py \
-    --mode chain \
-    --count 450 \
-    --seed 43 \
-    --model-name gpt-4.1-mini \
-    --chain-id client_opp_quote \
-    --chain-id search_quote_review \
-    --chain-id quote_remediation \
-    --chain-id summary_contract \
-    --chain-id clone_expansion \
-    --output-dir artifacts/conversations_multi_turn/${TIMESTAMP}/medium \
-    | tee artifacts/conversations_multi_turn/${TIMESTAMP}/medium/run.log
-
-# Complex chains (150 conversations)
-CURATOR_SIMPLE_DATASET=0 PYTHONPATH=. python scripts/generate_conversations.py \
-    --mode chain \
-    --count 150 \
-    --seed 44 \
-    --model-name gpt-4.1-mini \
-    --chain-id onboarding_pipeline_contract \
-    --chain-id onboarding_opp_deal \
-    --output-dir artifacts/conversations_multi_turn/${TIMESTAMP}/complex \
-    | tee artifacts/conversations_multi_turn/${TIMESTAMP}/complex/run.log
-
-# Merge and produce a single dataset
-PYTHONPATH=. python scripts/merge_chain_runs.py \
-    --input artifacts/conversations_multi_turn/${TIMESTAMP}/simple/chains.jsonl \
-    --input artifacts/conversations_multi_turn/${TIMESTAMP}/medium/chains.jsonl \
-    --input artifacts/conversations_multi_turn/${TIMESTAMP}/complex/chains.jsonl \
-    --output artifacts/conversations_multi_turn/${TIMESTAMP}/full/chains.jsonl
-
-# Analytics + verification
-PYTHONPATH=. python analysis/chains_manifest.py \
-    --dataset artifacts/conversations_multi_turn/${TIMESTAMP}/full/chains.jsonl \
-    --output artifacts/conversations_multi_turn/${TIMESTAMP}/full/manifest.json \
-    --seed 42 \
-    --model-name gpt-4.1-mini
-
-PYTHONPATH=. python analysis/generate_chains_report.py \
-    --dataset artifacts/conversations_multi_turn/${TIMESTAMP}/full/chains.jsonl \
-    --output artifacts/conversations_multi_turn/${TIMESTAMP}/full/report.md \
-    --seed 42 \
-    --model-name gpt-4.1-mini \
-    --baseline artifacts/conversations_multi_turn/${TIMESTAMP}/full/run.log
-
-PYTHONPATH=. python scripts/verify_no_fallbacks.py \
-    --artifacts-dir artifacts/conversations_multi_turn/${TIMESTAMP}/full \
-    --output artifacts/conversations_multi_turn/${TIMESTAMP}/full/verification_report.json
-
-PYTHONPATH=. python analysis/lint_chains.py \
-    --dataset artifacts/conversations_multi_turn/${TIMESTAMP}/full/chains.jsonl \
-    --summary artifacts/conversations_multi_turn/${TIMESTAMP}/full/lint_report.json \
-    --max-findings 50
-```
-
-Copy the resulting `full/` directory to `artifacts/conversations_multi_turn/` (replacing the existing timestamp) and update `chains.jsonl` if you are promoting a new dataset.
-
-## Integration with Atlas SDK
-
-### Runtime Evaluation
+### Running Evaluations Programmatically
 
 ```python
-from atlas.sdk import Agent, Scenario
-from src.harness import BaselineHarness
-from src.crm_backend import DatabaseConfig
-from src.scenario_harness import load_scenarios_from_jsonl
+from pathlib import Path
+from src.evaluation.run_baseline import run_baseline
 
-# Load curated scenarios
-scenarios = load_scenarios_from_jsonl("artifacts/scenarios_single_turn/scenarios_clean.jsonl")
-
-# Configure agent via Atlas SDK (Teacher + Student)
-agent = Agent.from_config("configs/atlas_teacher_student.yaml")
-
-harness = BaselineHarness(
-    agent=agent,
+results = run_baseline(
+    conversations_path=Path("artifacts/datasets/final_1200.jsonl"),
+    agent="claude",
+    model="claude-sonnet-4-5-20250929",
     backend="postgres",
-    db_config=DatabaseConfig.from_env(),
-    log_path="artifacts/baseline_claude_postgres.jsonl",
+    output_path=Path("artifacts/evaluation/results.jsonl"),
+    sample=100,
+    seed=42,
 )
-
-# Run evaluation
-result = harness.evaluate(scenarios)
-print(f"Reliability: {result.success_rate:.3f}")
-
-# Telemetry is automatically logged for Atlas ingest
 ```
 
-### Continual Learning Loop
+## Atlas SDK Integration (Optional)
 
-```python
-from atlas.sdk import atlas_run
-from src.harness import ClaudeAgent
-from src.scenario_harness import load_scenarios_from_jsonl
+For runtime adaptive learning, integrate with [Atlas SDK](https://github.com/Arc-Computer/atlas-sdk):
 
-agent = ClaudeAgent(model_name="claude-sonnet-4.5")
-scenarios = load_scenarios_from_jsonl("artifacts/scenarios_single_turn/scenarios_clean.jsonl")
+### Setup
 
-result = atlas_run(
-    agent=agent,
-    scenarios=scenarios[:10],
-    storage_url="postgresql://atlas:atlas@localhost:5433/atlas",
-)
+1. **Install Atlas SDK**:
+   ```bash
+   pip install -e external/atlas-sdk[dev]
+   ```
 
-# Export telemetry for training
-# arc-atlas --database-url postgresql://... --output traces.jsonl
-```
+2. **Configure environment** (see `docs/SETUP_GUIDE.md`):
+   - Set up PostgreSQL databases (`crm_sandbox` and `atlas`)
+   - Configure `.env` with API keys and database credentials
+   - Apply required Atlas SDK modifications (if needed)
 
-### Training with ATLAS Core
+3. **Run Atlas evaluation**:
+   ```bash
+   python scripts/run_atlas_evaluation.py \
+       --conversations artifacts/datasets/evaluation_400.jsonl \
+       --config configs/atlas/crm_harness.yaml \
+       --output-dir artifacts/evaluation/atlas_run \
+       --sample 400 \
+       --seed 42
+   ```
 
-After collecting runtime traces, train improved teacher checkpoints:
-
-```bash
-# Export runtime traces from Atlas SDK
-arc-atlas \
-  --database-url postgresql://atlas:atlas@localhost:5433/atlas \
-  --output crm_traces.jsonl \
-  --include-status approved
-
-# Train new teacher checkpoint with ATLAS Core
-cd /path/to/ATLAS
-python scripts/run_offline_pipeline.py \
-  --export-path crm_traces.jsonl \
-  output_dir=results/crm-teacher-grpo
-```
-
-The CRM benchmark scenarios provide realistic failure modes for the training loop to learn from, enabling systematic improvement on state-modifying workflows.
-
-## Reinforcement Learning
-
-For custom RL workflows (Atlas SDK provides adaptive learning out-of-the-box):
-
-```python
-from src.crm_env import CrmEnv
-
-env = CrmEnv(
-    backend="mock",
-    reset_database_each_episode=True,
-    expose_reference=False,  # Hide ground truth for training
-)
-
-observation, info = env.reset()
-action = {
-    "tool": "opportunity_search",
-    "arguments": {"stage": "Prospecting"}
-}
-observation, reward, terminated, truncated, info = env.step(action)
-```
-
-The environment provides binary or shaped rewards (configurable via `RewardConfig`).
+See `docs/atlas_integration.md` for complete setup instructions and `docs/evaluation_execution_commands.md` for command reference.
 
 ## Running Tests
 
 ```bash
+# Run test suite
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest
+
+# Run specific test file
+pytest tests/test_crm_sandbox.py
 ```
 
 Tests cover entity models, API methods, validators, scenario generation, and the evaluation harness.
 
-## Learning Metrics
+## Extending the Benchmark
 
-The benchmark tracks five core metrics demonstrating continual learning (aligned with Atlas SDK telemetry):
+This framework is designed for extensibility to additional stateful environments:
 
-| Metric | Definition | Target |
-|--------|-----------|--------|
-| **Cue Hit Rate** | % of episodes triggering playbook retrieval | ≥60% |
-| **Adoption Rate** | % of retrieved playbooks injected into prompts | ≥90% |
-| **Reward Delta** | Δ(reward) baseline vs. guided episodes | ≥+15pp |
-| **Token Delta** | Δ(tokens) baseline vs. guided episodes | ≥-40% |
-| **Transfer Success** | Accuracy improvement on held-out tasks | ≥+40% |
+### Adding New Environments
 
-These metrics validate that agents are learning production-transferable patterns, not memorizing synthetic data.
+Future environments under consideration:
+- **Financial Services**: Trading systems, portfolio management, transaction processing
+- **Telecommunications**: Network provisioning, customer service workflows, billing systems
+- **Healthcare**: Patient records, appointment scheduling, clinical workflows
+- **Manufacturing**: Inventory management, production scheduling, quality control
 
-## Scenario Generation
+To add a new environment:
+1. Define schema and entity models (following `src/crm_sandbox.py` patterns)
+2. Create task definitions and workflow templates
+3. Generate conversations using `schema_pipeline/`
+4. Integrate with evaluation harness
 
-Scenarios are generated using Curator with strict schema validation:
+### Contributing New Use Cases
 
-```bash
-python -m src.generate_scenarios \
-    --method curator \
-    --count 1500 \
-    --success-ratio 0.6 \
-    --seed 42
-```
+We welcome contributions of additional stateful environments! Areas for contribution:
 
-Each scenario includes:
-- `task` - Natural language description
-- `setup_entities` - Pre-populated CRM state
-- `expected_args` - Ground truth API arguments with validated enums
-- `verification_mode` - Success criteria
-- `expect_success` - True for happy paths, False for edge cases
+- **New environment implementations**: Define schemas, workflows, and datasets for new domains
+- **Extended scenarios**: Add task types or edge cases to existing environments
+- **Evaluation metrics**: Propose new reward functions or success criteria specific to domain constraints
+- **Backend integrations**: Add support for real APIs or databases beyond PostgreSQL
+- **Documentation**: Improve guides, examples, or API documentation
 
-## Contributing
-
-Contributions are welcome to expand benchmark coverage:
-
-- **New scenarios**: Add task types or edge cases to `data/Agent tasks.csv`
-- **Additional validators**: Extend `validators.py` with new state checks
-- **Backend integrations**: Add support for other CRM APIs or databases
-- **Evaluation metrics**: Propose new reward functions or success criteria
+**Getting started:**
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Make your changes
+4. Add tests for new functionality
+5. Ensure all tests pass (`pytest`)
+6. Commit your changes (`git commit -m 'Add amazing feature'`)
+7. Push to the branch (`git push origin feature/amazing-feature`)
+8. Open a Pull Request
 
 Please open an issue to discuss major changes before submitting a PR.
 
+## Documentation
+
+- **[Setup Guide](docs/SETUP_GUIDE.md)**: Complete environment setup instructions
+- **[Evaluation Commands](docs/evaluation_execution_commands.md)**: Command reference for running evaluations
+- **[Atlas Integration](docs/atlas_integration.md)**: Atlas SDK integration guide
+
 ## Research & Resources
 
-- **Atlas Documentation**: [docs.arc.computer](https://docs.arc.computer)
 - **Atlas SDK**: [github.com/Arc-Computer/atlas-sdk](https://github.com/Arc-Computer/atlas-sdk)
 - **ATLAS Core**: [github.com/Arc-Computer/ATLAS](https://github.com/Arc-Computer/ATLAS)
-- **Curator**: [github.com/bespokelabsai/curator](https://github.com/bespokelabsai/curator)
-
-## License
-
-MIT License - see LICENSE file for details.
+- **Atlas Documentation**: [docs.arc.computer](https://docs.arc.computer)
 
 ## Citation
 
 If you use this benchmark in your research:
 
 ```bibtex
-@software{arc_crm_benchmark,
-  title = {Arc CRM Benchmark: A Synthetic Environment for Continual Learning Evaluation},
+@software{arc_continual_learning_benchmark,
+  title = {Arc Continual Learning Benchmark: Evaluating LLM Agents on Stateful Environments},
   author = {Arc Computer},
   year = {2025},
-  url = {https://github.com/arc-ai/arc-crm-benchmark}
+  url = {https://github.com/Arc-Computer/arc-crm-benchmark}
 }
 ```
+
+## License
+
+MIT License - see [LICENSE](LICENSE) file for details.
+
+## Acknowledgments
+
+This benchmark framework was developed to provide a production-realistic testbed for evaluating LLM agents on continual learning in stateful environments. The CRM implementation demonstrates the framework with enterprise-grade constraints, enabling researchers and practitioners to evaluate agent reliability, efficiency, and adaptation capabilities in scenarios that mirror real-world deployments.
