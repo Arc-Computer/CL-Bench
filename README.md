@@ -74,7 +74,7 @@ All baseline agents share the same prompting and runtime configuration so model 
 
 - **Prompt inputs** (`src/evaluation/agents.py`):
   - System message contains (a) a summary of the sanitized CRM schema, (b) the top Reply-derived workflow frequencies from `data/Agent_tasks.csv`, and (c) a catalog of the 38 available tools pulled from `MockCrmApi`.
-  - User message per turn is a JSON payload with the natural-language request, prior tool outputs (so IDs can be reused), expected success flags, and optional evaluation hints. No raw database dumps, few-shot exemplars, or hidden instructions are injected.
+  - User message per turn is a JSON payload containing the natural-language request, prior tool outputs (so IDs can be reused), expected success flags, and the dataset’s `expected_response` structure (text template, acceptable answers, evaluation rubric) when it exists. This gives the models clear response-format guidance while they still have to choose tools/arguments on their own. No raw database dumps, few-shot exemplars, or hidden instructions are injected.
 - **Models & parameters**: Claude Sonnet 4.5 (`--agent claude`), GPT-4.1 (`--agent gpt4.1 --model gpt-4.1`), and GPT-4.1 Mini (`--model gpt-4.1-mini`), all run with `temperature=0.0`, `max_output_tokens=800`, and the Postgres backend.
 - **Judge configuration**: GPT-4.1 judge with 70% goal / 30% process weighting and a 0.8 pass threshold (`src/evaluation/llm_judge.py`). The judge only activates if exact argument matching fails but the tool executed successfully.
 
