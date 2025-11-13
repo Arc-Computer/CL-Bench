@@ -28,7 +28,8 @@ plt.rcParams.update({
     'lines.linewidth': 2.0,
 })
 
-# Data from reply-case-study.md (194/400 conversations, 48.5% complete)
+# Data from baseline evaluation results (artifacts/baselines/)
+# Based on 400-conversation standardized evaluation subset
 models = {
     'Claude 4.5 Sonnet': {
         'capability': 76.0,      # Conversations w/ ≥1 tool success

@@ -12,7 +12,8 @@ from pathlib import Path
 output_dir = Path('artifacts/visualizations')
 output_dir.mkdir(parents=True, exist_ok=True)
 
-# Data from reply-case-study.md (194/400 conversations, 48.5% complete)
+# Data from baseline evaluation results (artifacts/baselines/)
+# Based on 400-conversation standardized evaluation subset
 models = ['Claude 4.5\nSonnet', 'GPT-4.1', 'GPT-4.1\nMini', 'Atlas']
 colors = ['#475569', '#94a3b8', '#cbd5e1', '#3b82f6']  # Dark gray, medium gray, light gray, Arc blue
 

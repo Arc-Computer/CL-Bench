@@ -1,16 +1,8 @@
 """Helper for running CRM conversations through Atlas SDK.
 
-TODOs for full Atlas integration (tracked from docs/atlas_integration_plan.md):
-1. Build a dedicated Atlas adapter + environment that wrap ConversationHarness so turns
-   execute through Atlas (student/teacher loop) while preserving tool/response validation.
-2. Register that adapter with Atlas (via atlas.connectors.registry) instead of relying on
-   the generic python callable interface that only passes plain text prompts.
-3. Update configs/atlas/*.yaml to reference the new adapter/environment once they exist
-   and remove temporary scaffolding in this module.
-4. Pipe Atlas telemetry (cue hits, adoption, reward/token deltas) from ExecutionContext
-   into the per-turn results written below.
-5. Replace the current offline smoke harness with a real LLM run (ATLAS_OFFLINE_MODE=0)
-   once the adapter is in place to confirm end-to-end telemetry is emitted.
+This module provides integration between the CRM benchmark harness and the Atlas SDK,
+enabling runtime adaptive learning with dual-agent supervision (student/teacher loop).
+See docs/atlas_integration.md for setup instructions and configuration details.
 """
 
 from __future__ import annotations
