@@ -45,6 +45,7 @@ The current implementation uses a comprehensive CRM environment:
 - **Realistic constraints**: Duplicate email rejection, non-negative amounts, relationship validation
 - **Human-readable errors**: Error messages matching real CRM API patterns
 - **Deterministic reproducibility**: Every conversation can be regenerated from seed data
+- **Schema provenance**: The CRM schema is a renamed and lightly simplified version of the sanitized reference Reply shared with us. Only the structure (tables, fields, enums, relations) is retained; all field names were changed and no production data or metadata left Reply systems. See `data/fake_crm_tables_schema.json` for the exact artifact included in this repository.
 
 ### Comprehensive Dataset
 
@@ -54,6 +55,9 @@ The current implementation uses a comprehensive CRM environment:
   - **Complex** (7-10 turns): Multi-step processes with state mutations
 - **Schema-grounded**: All conversations respect production constraints
 - **Standardized evaluation subset** (400 conversations, seed=42): Maintains complexity distribution for consistent baseline comparisons
+- **Evaluation usage**: The 400-conversation subset (`artifacts/datasets/evaluation_400.jsonl`) is reused across baselines and Atlas continual-learning runs. Baseline agents use it purely for scoring (no learning). Atlas operates in an online-learning regime on the same stream; we document this so performance comparisons are grounded in identical inputs even though no separate hold-out slice is currently published. If you need a hold-out test run, we can generate one from the remaining 800 conversations on request.
+
+Every conversation is generated deterministically from the sanitized schema and seed entities. No production Reply data or identifiers are present in any artifact shipped with the benchmark.
 
 ### Evaluation Harness
 
@@ -64,6 +68,17 @@ The current implementation uses a comprehensive CRM environment:
 - **Token usage tracking**: Comprehensive metrics for cost analysis
 - **Multi-granularity metrics**: Conversation-level, turn-level, and operational metrics
 
+### Baseline Agent Configuration
+
+All baseline agents share the same prompting and runtime configuration so model comparisons isolate capability differences:
+
+- **Prompt inputs** (`src/evaluation/agents.py`):
+  - System message contains (a) a summary of the sanitized CRM schema, (b) the top Reply-derived workflow frequencies from `data/Agent_tasks.csv`, and (c) a catalog of the 38 available tools pulled from `MockCrmApi`.
+  - User message per turn is a JSON payload with the natural-language request, prior tool outputs (so IDs can be reused), expected success flags, and optional evaluation hints. No raw database dumps, few-shot exemplars, or hidden instructions are injected.
+- **Models & parameters**: Claude Sonnet 4.5 (`--agent claude`), GPT-4.1 (`--agent gpt4.1 --model gpt-4.1`), and GPT-4.1 Mini (`--model gpt-4.1-mini`), all run with `temperature=0.0`, `max_output_tokens=800`, and the Postgres backend.
+- **Judge configuration**: GPT-4.1 judge with 70% goal / 30% process weighting and a 0.8 pass threshold (`src/evaluation/llm_judge.py`). The judge only activates if exact argument matching fails but the tool executed successfully.
+
+This setup ensures the baseline is as strong and reproducible as possible while keeping all schema knowledge limited to the sanitized artifact already included in the repo.
 ### Optional Atlas Integration
 
 The benchmark can integrate with [Atlas SDK](https://github.com/Arc-Computer/atlas-sdk) for runtime adaptive learning:
