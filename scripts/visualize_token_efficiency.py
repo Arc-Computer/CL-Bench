@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate token efficiency and cost reduction visualization for Reply presentation."""
+"""Generate token efficiency and cost reduction visualization for benchmark evaluation."""
 
 import matplotlib.pyplot as plt
 import numpy as np

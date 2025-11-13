@@ -448,5 +448,5 @@ To run multiple evaluation attempts in parallel or sequentially:
 
 - Review `docs/evaluation_execution_commands.md` for complete command reference
 - Review `docs/atlas_integration.md` for Atlas-specific details
-- Review `docs/reply-case-study.md` for evaluation context and objectives
+- Review `README.md` for benchmark overview and usage examples
 

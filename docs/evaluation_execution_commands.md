@@ -419,6 +419,5 @@ echo "Run parameters: ..." > artifacts/evaluation/run_20251111_001/README.md
 
 - **Complete Setup Guide**: `docs/SETUP_GUIDE.md` - Step-by-step setup instructions
 - **Atlas Integration Details**: `docs/atlas_integration.md` - Atlas-specific configuration
-- **Case Study Context**: `docs/reply-case-study.md` - Evaluation objectives and methodology
 - **Repository README**: `README.md` - General repository information
 

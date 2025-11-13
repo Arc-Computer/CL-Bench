@@ -1,25 +1,50 @@
-# Arc CRM Benchmark
+# Arc Continual Learning Benchmark
 
-A production-realistic synthetic CRM environment for evaluating LLM agents on state-modifying workflows. This benchmark provides a comprehensive testbed for measuring agent performance, reliability, and adaptation through continual learning frameworks.
+A comprehensive benchmark for evaluating LLM agents on continual learning in stateful environments. This framework tests agent reliability, adaptation, and performance on multi-turn workflows involving state mutations, cross-entity relationships, and production-style constraints.
 
 ## Overview
 
-Arc CRM Benchmark tests whether agents can reliably execute complex, multi-turn CRM workflows involving state mutations, cross-entity relationships, and production-style validation constraints. It provides:
+This benchmark framework evaluates whether LLM agents can learn and adapt in complex stateful environments where actions modify persistent state, entities have cross-references, and workflows span multiple turns. Unlike analytics or search tasks, stateful environments require agents to:
 
-- **Production-realistic CRM environment** with full schema (contacts, clients, opportunities, quotes, contracts, documents, notes)
-- **1,200+ multi-turn conversations** covering diverse CRM workflows with varying complexity
+- **Track state mutations** across multiple operations (create, modify, delete)
+- **Maintain entity relationships** with referential integrity
+- **Execute multi-turn workflows** with cross-turn dependencies
+- **Adapt through continual learning** to improve consistency and reliability
+
+**Current implementation:** CRM workflows serve as the first comprehensive testbed, providing production-realistic constraints and a diverse task distribution. Additional stateful environments (financial services, telco, healthcare, manufacturing) will be added to expand the benchmark's scope.
+
+### What This Benchmark Provides
+
+- **Production-realistic stateful environment** with full schema and validation constraints
+- **1,200+ multi-turn conversations** covering diverse workflows with varying complexity
 - **Comprehensive evaluation harness** measuring tool execution, response quality, and task completion
 - **Flexible agent integrations** supporting Claude, GPT-4.1, GPT-4.1-mini, and custom agents
 - **Optional Atlas SDK integration** for runtime adaptive learning with dual-agent supervision
+- **Extensible framework** designed for additional stateful environment implementations
+
+## Why Stateful Environments Matter
+
+Most LLM benchmarks focus on search, question-answering, or single-turn tasks. Stateful environments present unique challenges:
+
+1. **State Persistence**: Actions modify persistent state that affects subsequent operations
+2. **Cross-Entity Dependencies**: Operations must respect foreign key relationships and referential integrity
+3. **Multi-Turn Workflows**: Complex tasks require maintaining context across 7-10+ turns with cross-turn references
+4. **Production Constraints**: Real-world validation rules (enums, business logic, duplicate detection) must be enforced
+5. **Continual Learning Opportunity**: Repeated workflows provide learning signal for adaptation
+
+These challenges mirror production systems where LLM agents must reliably interact with databases, APIs, and enterprise applications—making this benchmark essential for evaluating real-world agent deployments.
 
 ## Key Features
 
-### Production-Realistic CRM Schema
+### Production-Realistic Stateful Environment (CRM)
+
+The current implementation uses a comprehensive CRM environment:
 
 - **Full entity model**: Clients, contacts, opportunities, quotes, contracts, documents, notes
 - **Strict validation**: Foreign-key relationships, enum constraints, business logic guards
 - **Realistic constraints**: Duplicate email rejection, non-negative amounts, relationship validation
 - **Human-readable errors**: Error messages matching real CRM API patterns
+- **Deterministic reproducibility**: Every conversation can be regenerated from seed data
 
 ### Comprehensive Dataset
 
@@ -27,8 +52,8 @@ Arc CRM Benchmark tests whether agents can reliably execute complex, multi-turn 
   - **Simple** (1-3 turns): Single-entity operations
   - **Medium** (4-6 turns): Cross-entity workflows
   - **Complex** (7-10 turns): Multi-step processes with state mutations
-- **Deterministic and reproducible**: Every conversation can be regenerated from seed data
-- **Schema-grounded**: All conversations respect production CRM constraints
+- **Schema-grounded**: All conversations respect production constraints
+- **Standardized evaluation subset** (400 conversations, seed=42): Maintains complexity distribution for consistent baseline comparisons
 
 ### Evaluation Harness
 
@@ -37,6 +62,7 @@ Arc CRM Benchmark tests whether agents can reliably execute complex, multi-turn 
 - **Multiple backends**: In-memory (`mock`) and PostgreSQL (`postgres`) options
 - **Structured logging**: JSONL output compatible with analysis pipelines
 - **Token usage tracking**: Comprehensive metrics for cost analysis
+- **Multi-granularity metrics**: Conversation-level, turn-level, and operational metrics
 
 ### Optional Atlas Integration
 
@@ -267,14 +293,32 @@ pytest tests/test_crm_sandbox.py
 
 Tests cover entity models, API methods, validators, scenario generation, and the evaluation harness.
 
-## Contributing
+## Extending the Benchmark
 
-Contributions are welcome! Areas for contribution:
+This framework is designed for extensibility to additional stateful environments:
 
-- **New scenarios**: Add task types or edge cases to expand coverage
-- **Additional validators**: Extend validation logic for new failure modes
-- **Backend integrations**: Add support for other CRM APIs or databases
-- **Evaluation metrics**: Propose new reward functions or success criteria
+### Adding New Environments
+
+Future environments under consideration:
+- **Financial Services**: Trading systems, portfolio management, transaction processing
+- **Telecommunications**: Network provisioning, customer service workflows, billing systems
+- **Healthcare**: Patient records, appointment scheduling, clinical workflows
+- **Manufacturing**: Inventory management, production scheduling, quality control
+
+To add a new environment:
+1. Define schema and entity models (following `src/crm_sandbox.py` patterns)
+2. Create task definitions and workflow templates
+3. Generate conversations using `schema_pipeline/`
+4. Integrate with evaluation harness
+
+### Contributing New Use Cases
+
+We welcome contributions of additional stateful environments! Areas for contribution:
+
+- **New environment implementations**: Define schemas, workflows, and datasets for new domains
+- **Extended scenarios**: Add task types or edge cases to existing environments
+- **Evaluation metrics**: Propose new reward functions or success criteria specific to domain constraints
+- **Backend integrations**: Add support for real APIs or databases beyond PostgreSQL
 - **Documentation**: Improve guides, examples, or API documentation
 
 **Getting started:**
@@ -306,8 +350,8 @@ Please open an issue to discuss major changes before submitting a PR.
 If you use this benchmark in your research:
 
 ```bibtex
-@software{arc_crm_benchmark,
-  title = {Arc CRM Benchmark: A Synthetic Environment for LLM Agent Evaluation},
+@software{arc_continual_learning_benchmark,
+  title = {Arc Continual Learning Benchmark: Evaluating LLM Agents on Stateful Environments},
   author = {Arc Computer},
   year = {2025},
   url = {https://github.com/Arc-Computer/arc-crm-benchmark}
@@ -320,4 +364,4 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## Acknowledgments
 
-This benchmark was developed to provide a production-realistic testbed for evaluating LLM agents on state-modifying workflows. The CRM schema and workflows are designed to mirror real-world enterprise CRM systems, enabling researchers and practitioners to evaluate agent reliability, efficiency, and adaptation capabilities in realistic scenarios.
+This benchmark framework was developed to provide a production-realistic testbed for evaluating LLM agents on continual learning in stateful environments. The CRM implementation demonstrates the framework with enterprise-grade constraints, enabling researchers and practitioners to evaluate agent reliability, efficiency, and adaptation capabilities in scenarios that mirror real-world deployments.

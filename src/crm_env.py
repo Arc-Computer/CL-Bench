@@ -49,9 +49,25 @@ except ImportError:  # pragma: no cover - legacy gym fallback.
 
 from .crm_backend import DatabaseConfig, PostgresCrmBackend
 from .crm_sandbox import MockCrmApi
-from .golden_cases import GOLDEN_CASES, GoldenCase
+
+# Golden cases are optional - used for legacy Gymnasium-based RL environment
+try:
+    from .golden_cases import GOLDEN_CASES, GoldenCase
+except ImportError:
+    GOLDEN_CASES = []
+    GoldenCase = None  # type: ignore
+
 from src.evaluation.verification import CrmStateSnapshot, ValidationResult, VerificationMode, get_task_verification_mode
-from .verifier import ToolTrace, Verifier, VerifierRequest, VerifierResult, get_registered_verifier
+
+# Verifier is optional - used for legacy verification approach
+try:
+    from .verifier import ToolTrace, Verifier, VerifierRequest, VerifierResult, get_registered_verifier
+except ImportError:
+    ToolTrace = None  # type: ignore
+    Verifier = None  # type: ignore
+    VerifierRequest = None  # type: ignore
+    VerifierResult = None  # type: ignore
+    get_registered_verifier = None  # type: ignore
 
 
 ALLOWED_TOOLS: Tuple[str, ...] = (
